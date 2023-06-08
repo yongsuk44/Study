@@ -137,7 +137,8 @@ graph BT
     MutableSet --> MutableCollection;
     MutableList --> MutableCollection;
     MutableCollection --> Collection;
-    MutableCollection --> Iterable;
+    MutableCollection --> MutableIterable;
+    MutableIterable --> Iterable;
     
     subgraph read-write
         MutableList;
