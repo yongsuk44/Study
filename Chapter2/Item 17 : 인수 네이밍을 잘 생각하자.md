@@ -129,3 +129,63 @@ drawCircle(
 ```
 
 이렇게 호출하면 명확하게 어떤 동작을 하는지 쉽게 이해할 수 있습니다.
+
+---
+
+## 함수형 매개변수
+함수 타입의 매개변수에 대해서는 개발자들이 신경써서 처리해야 합니다. 
+Kotlin에서는 함수 타입의 매개변수는 특별하게 마지막 위치에 작성해야 합니다. 
+
+함수 이름이 함수 타입의 인수를 설명하기도 합니다. 
+
+예를 들어, `repeat`를 보면 이후의 람다가 반복되어야 하는 코드 블록이라는 것을 예상할 수있고, 
+`thread`의 경우 이후의 블록이 새 스레드의 바디라는 것이 직관적입니다. 
+이런 함수의 이름은 마지막 위치에서 사용된 함수만을 설명합니다.
+
+```kotlin
+thread { ... }
+```
+
+그 외의 모든 함수 타입의 인수는 쉽게 잘못 해석될 수 있기 때문에 명명된 인수를 지정해야 합니다.
+
+예를 들어, 아래의 생성되는 뷰를 보시죠
+
+```kotlin
+val view = linearLayout {
+    textView("Click")
+    button({ /* 1 */  }, { /* 2 */ })
+}
+```
+
+어느 함수가 이 빌더의 일부이고 어느 것이 클릭 리스너인지 알기 쉽지 않습니다.   
+리스너 이름을 지정하고 빌더를 인수 외부로 이동하여 명확하게 지정 해야 합니다.
+
+```kotlin
+val view = linearLayout {
+    textView("Click")
+    button(
+        onClick = { /* 1 */  }, 
+        { /* 2 */ }
+    )
+}
+```
+
+또한, 복수의 함수 타입 인수는 혼란스러울 수 있습니다.
+
+```kotlin
+fun call(before: () -> Unit = { }, after: () -> Unit = { }) {
+    before()
+    println("Calling")
+    after()
+}
+
+call( {print("CALL")}) // CALLCalling
+call { print("CALL") } // CallingCALL
+```
+
+이런 상황을 방지하기 위해, 함수 타입의 단일 인수가 없을 때, 모든 인수에 이름을 붙이는것이 좋습니다.
+
+```kotlin
+call(before = { print("CALL") }) // CALLCalling
+call(after = { print("CALL") }) // CallingCALL
+```
