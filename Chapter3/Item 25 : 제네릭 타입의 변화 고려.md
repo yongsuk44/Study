@@ -15,7 +15,7 @@ fun main() {
 }
 ```
 
-## 변위 수식어(variance modifier) `out` `in`
+## 변위 수식어(variance modifier) out과 in
 위와 같은 관계가 필요한 경우, 변위 수식어 `out` 또는 `in`을 사용해야 합니다.
 
 ### out
@@ -55,3 +55,62 @@ fun main(args: Array<String>) {
     val nothings: Cup<Nothing> = Cup<Int>() // OK
 }
 ```
+
+## Function Type
+
+함수 타입 사이에는 예상되는 타입이나 파라미터, 반환 타입이 다른 경우에도 연관성이 있습니다.
+
+```kotlin
+fun printProcessedNumber(transition: (Int) -> Any) { 
+    print(transition(42))
+}
+```
+
+위 `printProcessedNumber`함수는 `transition` 함수를 인수(Argument)로 받고 있습니다.  
+`transition`은 `Int`를 인수로 받고 `Any`를 반환하는 함수입니다.
+
+하지만 `transition`함수는 `(Int)->Number`, `(Number)->Any`, `(Number)->Number`, `(Any)->Number`, `(Number)->Int` 등과 같이 사용될 수 있습니다.
+
+```kotlin
+val intToDouble: (Int) -> Number = { it.toDouble() }
+val numberAsText: (Number) -> Any = { it.toShort()() }
+val identity: (Number) -> Number = { it }
+val numberToInt: (Number) -> Int = { it.toInt() }
+val numberHash: (Any) -> Number = { it.hashCode() }
+
+printProcessedNumber(intToDouble)
+printProcessedNumber(numberAsText)
+printProcessedNumber(identity)
+printProcessedNumber(numberToInt)
+printProcessedNumber(numberHash)
+```
+
+그 이유는 위 모든 타입들 사이에 아래와 같은 관계가 있기 때문입니다.
+
+```mermaid
+graph BT
+    A("(Any) -> Number") --> C("(Number) -> Number")
+    B("(Number) -> Int") --> C
+    C --> D("(Int) -> Number")
+    C --> E("(Number) -> Any")
+    D --> F("(Int) -> Any")
+    E --> F
+```
+
+위 계층에서는 위에서 아래로 내려갈수록 다음과 같은 특징을 가지는 것을 알 수 있습니다.
+- 파라미터 타입은 더 상위 타입으로 이동
+- 반환 타입은 더 하위 타입으로 이동
+
+이러한 사실로 우리는 다음과 같은 사실을 알 수 있습니다.
+
+- 함수 타입의 파라미터 타입은 `in` 수식어가 나타내는 것처럼 반공변(contravariant)
+- 함수 타입의 반환 타입은 `out` 수식어가 나태는 것처럼 공변(covariant)
+
+> ( T<sub>1</sub> , T<sub>2</sub> ) → Q  
+> `in` → T<sub>1</sub>  
+> `in` → T<sub>2</sub>  
+> `out` → Q
+
+위와 같은 함수 타입 말고도 변위 수식어를 가진 유명한 타입들은 다음과 같이 있습니다.
+- `List`는 `out` 수식어를 가진 공변(covariant) 타입
+- `MutableList`는 `in` 수식어를 가진 반공변(contravariant) 타입
