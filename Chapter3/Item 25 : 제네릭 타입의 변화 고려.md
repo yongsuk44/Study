@@ -287,3 +287,70 @@ public interface Continuation<in T> {
     public fun resumeWith(result: Result<T>)
 }
 ```
+
+---
+
+## 변위 수식어(variance modifier)의 위치
+
+variance modifier의 위치는 2가지 위치에서 사용될 수 있습니다.
+
+첫 번째는 일반적인 선언 위치(declaration-side)입니다. 
+이는 클래스나 인터페이스 선언에 붙어 해당 클래스나 인터페이스가 사용되는 모든 곳에 영향을 줍니다.
+
+```kotlin
+// Decalration-side variance modifier
+class Box<out T>(val value: T) 
+val boxStr: Box<String> = Box("Hello World")
+val boxAny: Box<Any> = boxStr
+```
+
+두 번째는 사용 위치(use-side)인데, 이는 특정 변수에 대한 변위 제한성입니다.
+이는 모든 인스턴스에 대해 변위 제한성이 적용될 필요가 없으나, 특정 변수에는 필요한 경우 사용됩니다.
+
+```kotlin
+class Box<T>(val value: T) 
+val boxStr: Box<String> = Box("Hello World")
+// Use-side variance modifier
+val boxAny: Box<out Any> = boxStr
+```
+ 
+예를 들어 `MutableList`는 `in` 제한자를 사용하면 요소를 반환하는 것이 불가능해지기에 `in` 제한자를 가질 수 없습니다.
+그러나 단일 파라미터 타입의 경우, 특정 타입을 받아들일 수 있는 모든 컬렉션을 허용하도록 그 타입을 반공변(`in`)으로 만들 수 있습니다.
+
+```kotlin
+interface Dog
+interface Cutie
+
+data class Puppy(val name: String) : Dog, Cutie
+data class Hound(val name: String) : Dog
+data class Cat(val name: String) : Cutie
+
+fun fillWithPuppies(list: MutalbleList<in Puppy>) {
+    list.add(Puppy("Bobby"))
+    list.add(Puppy("Rex"))
+}
+
+val dogs = mutableListOf<Dog>(Hound("Max"))
+fillWithPuppies(dogs)
+println(dogs)
+// [Hound(name=Max), Puppy(name=Bobby), Puppy(name=Rex)]
+
+val animals = mutableListOf<Cuite>(Cat("Smokey"))
+fillWithPuppies(animals)
+println(animals)
+// [Cat(name=Smokey), Puppy(name=Bobby), Puppy(name=Rex)]
+```
+
+`MutableList<out T>`를 사용할 때, 리스트에서 값을 읽는 것은 안전하다고 보장됩니다. 
+이는 `T`가 **공변성**을 가지기 때문에, `T`의 모든 하위 타입을 가진 리스트를 처리할 수 있습니다. 
+하지만 `set`과 같은 메소드를 사용해 리스트에 값을 추가하는 것은 허용되지 않습니다. 
+왜냐하면 이런 경우 `T`의 어떤 하위 타입도 추가할 수 있기 때문에 타입 안전성을 보장할 수 없기 때문입니다. 
+이런 이유로 `set` 메소드는 `Nothing` 타입의 인자를 필요로 합니다.
+
+반면에 `MutableList<in T>`를 사용할 때, 리스트에 값을 추가하는 것은 안전하다고 보장됩니다. 
+이는 `T`가 **반공변성**을 가지기 때문에, `T`의 모든 상위 타입을 가진 리스트를 처리할 수 있습니다. 
+하지만 `get`과 같은 메소드를 사용해 리스트에서 값을 읽는 것은 허용되지 않습니다. 
+왜냐하면 이런 경우 `T`의 어떤 상위 타입도 반환할 수 있기 때문에 타입 안전성을 보장할 수 없기 때문입니다. 
+이런 이유로 `get` 메소드는 `Any?` 타입을 반환합니다.
+
+따라서, 제네릭 객체에서 읽기만 하는 경우에는 자유롭게 `out`을, 해당 제네릭 객체를 수정하는 경우에는 `in`을 사용할 수 있습니다.
