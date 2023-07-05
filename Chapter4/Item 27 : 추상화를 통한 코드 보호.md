@@ -180,3 +180,52 @@ msgDisplay.setChristmasMode(true)
 그럼에도, 추상화는 여전히 기본 클래스에 강하게 연결되어 있으므로, 원본 클래스의 변경 없이 서브 클래스의 동작을 완전히 변경하는 것은 어려울 수 있습니다.
 
 이를 해결하기 위해 클래스를 더 추상적인 인터페이스 뒤로 숨겨서 사용할 수 있습니다.
+
+---
+
+## 인터페이스 활용 추상화
+
+Kotlin 표준 라이브러리를 살펴보면, 거의 모든 것이 인터페이스로 표현되는 것을 알 수 있습니다.
+
+- `listOf()`는 `List` 인터페이스를 반환합니다. 이는 다른 팩토리 메서드들에게도 찾아 볼 수 있는 패턴입니다.
+- 컬렉션 처리 함수들은 `Iterable`이나 `Collection`에 대한 확장 함수로 `List`, `Map` 등의 인터페이스를 반환합니다.
+- 프로퍼티 델리게이트는 `ReadOnlyProperty`나 `ReadWriteProperty`라는 인터페이스 뒤에 숨겨져 있습니다.
+- `lazy` 함수도 반환 타입으로 `Lazy`라는 인터페이스를 선언하고 있습니다.
+
+라이브러리 개발자들은 보통 내부 클래스의 가시성(visibility)을 제한하고 인터페이스를 통해 이를 노출하는 방식을 택합니다.
+이는 사용자들이 이 클래스들을 직접 사용하지 않으므로 인터페이스만 유지하면서 해당 구현을 자유롭게 변경할 수 있는 이점이 있기 때문입니다.
+
+> 위와 같이 객체를 인터페이스 뒤에 숨김으로써 실제 구현을 추상화하고, 사용자가 이 추상화에만 의존하도록 강제함으로써 결합도를 낮추는것이 인터페이스를 활용한 추상화의 핵심입니다.
+
+위 핵심내용을 토대로 클래스를 인터페이스 뒤로 숨기는 예시를 살펴보겠습니다.
+
+```kotlin
+interface MessageDisplay {
+    fun show(message: String, duration: MessageLength = LONG)
+}
+
+class ToastDisplay(val context: Context): MessageDisplay {
+    override fun show(message: String, duration: MessageLength) {
+        val toastDuration = when (duration) {
+            SHORT -> Toast.LENGTH_SHORT
+            LONG -> Toast.LENGTH_LONG
+        }
+
+        Toast.makeText(context, message, toastDuration).show()
+    }
+}
+
+enum class MessageLength { SHORT, LONG }
+```
+
+위와 같이 변경되면 태블릿에서는 토스트를 스마트폰에서는 스낵바를 표시하는 클래스를 주입하는 등의 더 많은 유연성을 얻을 수 있습니다.
+또한 `MessageDisplay`는 Android, iOS, 웹 간에 공유되는 공통 모듈에서도 사용할 수 있습니다.
+
+또 다른 이점은, 인터페이스의 가짜구현이 클래스를 모킹보다 간단하며, 모킹 라이브러리를 필요로 하지 않습니다.
+
+```kotlin
+val msgDisplay: MessageDisplay = TestMessageDisplay()
+```
+
+마지막으로 선언과 사용이 분리되어 있어, `ToastDisplay`와 같은 실제 클래스를 변경하는데 더 유연합니다.
+그러나, 사용 방식을 변경하려면 `MessageDisplay` 인터페이스와 이를 구현하는 모든 클래스를 변경해야 하는것이 불편할 수 있습니다.
