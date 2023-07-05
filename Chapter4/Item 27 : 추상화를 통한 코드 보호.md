@@ -122,3 +122,61 @@ enum class MessageLength { SHORT, LONG }
 
 함수는 간단한 추상화 방법이지만 한계가 있습니다. 함수는 상태를 가지고 있지 않으며, 함수의 시그니처를 변경하는 것은 대부분 모든 사용처에 영향을 미칩니다.
 구현을 추상화하는 더 강력한 방법은 클래스를 사용하는 것입니다.
+
+---
+
+## 클래스를 이용한 추상화
+
+메시지 표시 기능을 클래스로 추상화하는 방법은 아래와 같습니다.
+
+```kotlin
+class MessageDisplay(val context: Context) {
+    fun show(
+        message: String,
+        length: MessageLength = MessageLength.LONG
+    ) {
+        val toastDuration = when (length) {
+            SHORT -> Toast.LENGTH_SHORT
+            LONG -> Toast.LENGTH_LONG
+        }
+
+        Toast.makeText(context, message, toastDuration).show()
+    }
+}
+
+enum class MessageLength { SHORT, LONG }
+
+val msgDisplay = MessageDisplay(context)
+msgDisplay.show("Hello World!")
+```
+
+클래스가 함수보다 더 강력한 이유는 클래스는 상태를 유지할 수 있고 여러 함수를 노출할 수 있기 때문입니다. 
+위의 예시처럼 클래스의 상태는 `context`이며, 이는 생성자를 통해 주입됩니다. 
+
+아래와 같이 DI 프레임워크를 사용하면 클래스 생성을 위임할 수 있습니다.
+
+```kotlin
+@Inject lateinit var msgDisplay: MessageDisplay
+```
+
+또한, 테스트를 위해 해당 클래스에 의존하는 다른 클래스의 기능을 테스트하기 위해 클래스를 mockking 할 수 있습니다.
+
+```kotlin
+val msgDisplay: MessageDisplay = mockk()
+```
+
+추가적으로, 메시지 표시 설정을 위한 다양한 메서드를 추가할 수 있습니다.
+
+```kotlin
+msgDisplay.setChristmasMode(true)
+```
+
+이처럼, 클래스는 개발자에게 많은 유연성을 제공하지만 그럼에도 여전히 제한 사항이 있습니다.
+
+클래스가 `final`로 선언된 경우 해당 클래스 타입 아래에 어떤 구현체가 존재하는지를 파악해야 합니다.
+그렇기 떄문에 해당 클래스를 변경하거나 확장하는 것이 제한될 수 있습니다.
+
+`open` 클래스를 사용하면 기본 클래스를 상속받은 서브 클래스를 통해 다양한 기능을 추가하거나 기존 기능을 수정하는 등의 확장을 통해 `final`에 대한 제한을 약간 완화할 수 있습니다.
+그럼에도, 추상화는 여전히 기본 클래스에 강하게 연결되어 있으므로, 원본 클래스의 변경 없이 서브 클래스의 동작을 완전히 변경하는 것은 어려울 수 있습니다.
+
+이를 해결하기 위해 클래스를 더 추상적인 인터페이스 뒤로 숨겨서 사용할 수 있습니다.
