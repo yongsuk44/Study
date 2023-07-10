@@ -101,3 +101,80 @@ private tailrec fun <T> powerset(
 
 타입은 객체에 많은 정보를 제공하며, 타입은 특정 메서드 집합을 명시하며, 일부 타입은 문서에서 책임을 명시하게 됩니다.
 함수를 보는 경우 반환 타입과 인수 타입에 대한 정보는 매우 중요합니다.
+
+---
+
+## 주석 필요성 판단
+
+Java가 처음 등장했을 때 문헌형 프로그래밍이라는 주석을 활용하여 모든 것을 상세하게 설명하는 방식이 인기를 끌었습니다.
+하지만 10년이 지난 후에는 주석에 대한 강한 비판이 일어나며, 코드의 가독성 향상에 초점을 맞춰야 한다는 주장이 강해졌습니다.
+
+하지만 주석은 함수나 클래스 같은 코드 요소를 더 높은 수준으로 설명하고, 계약을 명확히 하는 중요한 역할을 합니다.
+또한, 주석은 자동 문서 생성을 위해 사용되며, 이는 프로젝트의 정보를 제공하는 중요한 부분이 될 수 있습니다.
+
+물론, 모든 경우에 주석이 필요한 것은 아닙니다. 많은 함수들은 자체적으로 이해가 가능하며, 추가적인 설명이 필요하지 않습니다.
+예를 들어, `product`는 익숙한 수학적 개념이므로, 아래 코드는 주석 없이도 충분히 이해가 가능합니다.
+
+```kotlin
+fun List<Int>.product(): Int = fold(1) { acc, i -> acc * i }
+```
+
+강조하고 싶은 내용이 이미 코드에 명확하게 드러나 있다면, 주석은 단지 방해만 됩니다.
+함수의 이름과 파라미터가 이미 그 기능을 명확히 설명하고 있는 경우, 주석을 작성하지 않는 것이 좋을 수 있습니다.
+아래의 예시는 함수의 이름과 파라미터 타입만으로도 기능을 유추할 수 있으므로, 추가적인 주석은 필요하지 않습니다.
+
+```kotlin
+// Product of all numbers in a list
+fun List<Int>.product(): Int = fold(1) { acc, i -> acc * i }
+```
+
+또한, 코드를 구조화하는데 필요한 주석 대신 함수를 추출하는 것이 좋습니다.
+아래의 `update` 함수는 더 작은 단위로 분리할 수 있는 부분이 명확합니다.
+
+```kotlin
+// before 
+fun update() {
+    for (user in users) {
+        user.update()
+    }
+
+    for (book in books) {
+        updateBook(book)
+    }
+}
+```
+
+```kotlin
+// after
+fun update() {
+    updateBooks()
+    updateUsers()
+}
+
+private fun updateBooks() {
+    for (book in books) {
+        updateBook(book)
+    }
+}
+
+private fun updateUsers() {
+    for (user in users) {
+        user.update()
+    }
+
+}
+```
+
+그러나, 주석이 중요하고 유용한 경우도 많이 있습니다.
+예를 들어, Kotlin 표준 라이브러리의 대부분의 공개 함수들은 자유롭게 활용 가능하도록 잘 정의된 계약을 가지고 있습니다.
+
+```kotlin
+/**
+ * Returns a new read-only list of given elements.
+ * The returned list is serializable (JVM).
+ */
+public fun <T> listOf(vararg elements: T): List<T> =
+    if (elements.size > 0) elements.asList() else emptyList()
+```
+
+`listOf` 함수를 보면, 이 함수는 읽기 전용이며 JVM에서 직렬화가 가능한 `List`를 반환한다는 것을 명시하고 있습니다.
