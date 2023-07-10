@@ -1,4 +1,4 @@
-# Item 31: Define contract with documentation
+# Item 31: 문서를 통한 Contract 정의
 
 아래 메시지를 표시하는 함수를 보면 메시지 노출 시간을 자유롭게 바꾸도록 함수를 추상화 하였습니다.
 
