@@ -101,3 +101,37 @@ val list = MyList.of(1, 2)
 
 Kotlin을 사용하는 주니어 개발자들은 Companion Object 멤버들을 단일 블록에 그룹화해야 하는 static 멤버처럼 취급하는 경우가 있습니다.
 그러나, Companion Object는 실제로 훨씬 더 강력합니다. 예를 들어, Companion Object는 인터페이스를 구현하고 클래스를 확장할 수 있습니다.
+
+---
+
+## Extension factory functions
+
+가끔씩, 기존의 `companion object` 함수처럼 작동하는 팩토리 함수를 생성하고자 하는 경우가 있습니다.
+그런데 이 `companion object`를 수정할 수 없거나, 혹은 별도의 파일에 새 함수를 명시하고 싶은 경우가 있을 수 있습니다.
+
+이럴 때, `companion object`의 또 다른 장점인 확장 함수를 정의할 수 있습니다.
+
+예를 들어, `Tool` 인터페이스를 변경할 수 없다고 가정하고 아래 코드를 보시죠
+
+```kotlin
+interface Tool {
+    companion object { /*...*/ }
+}
+```
+
+그럼에도 여전히 아래와 같이 `companion object`에 대한 확장 함수를 정의할 수 있습니다.
+
+```kotlin
+fun Tool.Companion.createBigTool(/*...*/): BigTool =  { /*...*/ } 
+```
+
+그러면 이제, `Tool.createBigTool()`를 호출하여 팩토리 함수를 사용할 수 있습니다.
+
+위와 같은 방식은 외부 라이브러리를 팩토리 메서드로 확장하는데 매우 강력한 방법입니다.   
+단지 주의해야 할 점은, `companion object`를 통한 확장 함수를 만들기 위해서는 객체가 비어 있더라도 어떠한 형태의 `companion object`가 필요합니다.
+
+```kotlin
+interface Tool {
+    companion object { }
+}
+```
