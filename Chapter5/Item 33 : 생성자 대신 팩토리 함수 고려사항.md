@@ -1,4 +1,4 @@
-# Item 33: Consider factory functions instead of constructors
+# Item 33: 생성자 대신 팩토리 함수도 고려하자
 
 Kotlin에서 클래스의 인스턴스를 얻는 가장 일반적인 방법은 기본 생성자(constructor)를 통해 얻는 방법입니다.
 
@@ -122,7 +122,7 @@ interface Tool {
 그럼에도 여전히 아래와 같이 `companion object`에 대한 확장 함수를 정의할 수 있습니다.
 
 ```kotlin
-fun Tool.Companion.createBigTool(/*...*/): BigTool =  { /*...*/ } 
+fun Tool.Companion.createBigTool(/*...*/): BigTool = { /*...*/ } 
 ```
 
 그러면 이제, `Tool.createBigTool()`를 호출하여 팩토리 함수를 사용할 수 있습니다.
@@ -132,7 +132,7 @@ fun Tool.Companion.createBigTool(/*...*/): BigTool =  { /*...*/ }
 
 ```kotlin
 interface Tool {
-    companion object { }
+    companion object {}
 }
 ```
 
@@ -156,8 +156,8 @@ Kotlin 'Anko' 라이브러리에서는 이와 같이 `reified type`을 가진 �
 
 또한, 이 함수는 인자를 넘겨주는 것도 가능합니다. `intentFor<MainActivity>("page to 2", "row to 5")`
 
-`List`나 `Map` 같은 경우에는 최상위 팩토리 함수를 이용한 객체 생성이 굉장히 효과적입니다. 
+`List`나 `Map` 같은 경우에는 최상위 팩토리 함수를 이용한 객체 생성이 굉장히 효과적입니다.
 왜냐하면 `listOf(1,2,3)`는 `List.of(1,2,3)`보다 훨씬 간결하고 읽기 쉽기 때문입니다.
 
-하지만, `public` 최상위 함수를 사용할 때는 주의해야 합니다. `public` 최상위 함수의 단점은 어디에서나 접근이 가능하다는 것이기 때문에, IDE의 팁들을 혼란스럽게 만들 수 있습니다. 
+하지만, `public` 최상위 함수를 사용할 때는 주의해야 합니다. `public` 최상위 함수의 단점은 어디에서나 접근이 가능하다는 것이기 때문에, IDE의 팁들을 혼란스럽게 만들 수 있습니다.
 이 문제는 최상위 팩토리 함수가 클래스 메소드와 같은 이름을 가질 때 문제가 될 수 있습니다. 따라서, 최상위 팩토리 함수의 이름 작명 시 주의해야 합니다.
