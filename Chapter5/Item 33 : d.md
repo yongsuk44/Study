@@ -135,3 +135,29 @@ interface Tool {
     companion object { }
 }
 ```
+
+---
+
+## Top-level functions
+
+객체 생성 시 가장 많이 보편화된 방법은 최상위 팩토리 함수를 사용하는 것입니다. 대표적으로 `listOf`, `setOf`, `mapOf` 등이 있습니다.
+
+예를 들어 안드로이드에서는 `Activity`를 시작하기 위한 `Intent`를 생성하는 함수를 정의하는 방법이 있습니다.
+
+```kotlin
+class MainActivity : AppCompatActivity() {
+    companion object {
+        fun getIntent(context: Context): Intent = Intent(context, MainActivity::class.java)
+    }
+}
+```
+
+Kotlin 'Anko' 라이브러리에서는 이와 같이 `reified type`을 가진 최상위 함수인 `intentFor`를 사용할 수 있습니다. `intentFor<MainActivity>()`
+
+또한, 이 함수는 인자를 넘겨주는 것도 가능합니다. `intentFor<MainActivity>("page to 2", "row to 5")`
+
+`List`나 `Map` 같은 경우에는 최상위 팩토리 함수를 이용한 객체 생성이 굉장히 효과적입니다. 
+왜냐하면 `listOf(1,2,3)`는 `List.of(1,2,3)`보다 훨씬 간결하고 읽기 쉽기 때문입니다.
+
+하지만, `public` 최상위 함수를 사용할 때는 주의해야 합니다. `public` 최상위 함수의 단점은 어디에서나 접근이 가능하다는 것이기 때문에, IDE의 팁들을 혼란스럽게 만들 수 있습니다. 
+이 문제는 최상위 팩토리 함수가 클래스 메소드와 같은 이름을 가질 때 문제가 될 수 있습니다. 따라서, 최상위 팩토리 함수의 이름 작명 시 주의해야 합니다.
