@@ -161,3 +161,82 @@ Kotlin 'Anko' 라이브러리에서는 이와 같이 `reified type`을 가진 �
 
 하지만, `public` 최상위 함수를 사용할 때는 주의해야 합니다. `public` 최상위 함수의 단점은 어디에서나 접근이 가능하다는 것이기 때문에, IDE의 팁들을 혼란스럽게 만들 수 있습니다.
 이 문제는 최상위 팩토리 함수가 클래스 메소드와 같은 이름을 가질 때 문제가 될 수 있습니다. 따라서, 최상위 팩토리 함수의 이름 작명 시 주의해야 합니다.
+
+---
+
+## Fake constructors
+
+Kotlin에서는 생성자를 최상위 함수처럼 사용할 수 있습니다.
+
+```kotlin
+class A
+val a = A()
+```
+
+그리고 `val refrence: () -> A = ::A`처럼 최상위 함수와 같이 참조가 됩니다. (생성자 참조는 함수 인터페이스 구현)
+
+이러한 코드는 생성자와 함수 사이에서 차이점으로 대소문자의 차이 밖에 보이지 않습니다.
+하지만, 일반적으로 클래스는 대문자로 시작하고, 함수는 소문자로 시작합니다.
+
+함수가 대문자로 시작하는 경우도 있긴 합니다. Kotlin 표준 라이브러리의 경우 `List`와 `MutableList`는 인터페이스 형태로 생성자를 가질 수 없습니다.
+그럼에도 불구하고, Kotlin 개발자는 다음과 같이 `List(4) { "Count : $it" }` 생성의 요구가 있었고 이는 Kotlin 1.1부터 지원하게 되었습니다.
+
+```kotlin
+public inline fun <T> List(
+    size: Int,
+    init: (index: Int) -> T
+): List<T> = MutableList(size, init)
+
+public inline fun <T> MutableList(
+    size: Int,
+    init: (index: Int) -> T
+): MutableList<T> {
+    val list = ArrayList<T>(size)
+    repeat(size) { index -> list.add(init(index)) }
+    return list
+}
+```
+
+이와 같은 최상위 함수들은 생성자처럼 보이고 작동함과 동시에 팩토리 함수의 모든 장점을 가지고 있습니다.   
+개발자들은 이들이 내부적으로 최상위 함수라는 것을 알지 못하기에 종종 **Fake Constructors**라고 부릅니다.
+
+개발자들이 가짜 생성자(Fake Constructors)를 선택하는 주된 이유는 다음과 같습니다.
+
+- 인터페이스에 `constructor`가 있어야 하는 경우
+- `reified type argument`가 필요한 경우
+
+그 외에는 가짜 생성자는 일반 생성자처럼 보이고 작동해야 합니다. 
+만약에 캐싱을 포함하고 싶거나, `nullable` 타입을 반환하거나, 생성 가능한 클래스의 서브클래스를 반환하려는 경우 
+`companion object` 팩토리 메소드와 같이 이름이 있는 팩토리 함수를 사용해야 합니다.
+
+가짜 생성자를 선언하는 또 다른 방법도 있습니다. `companion object`에 `invoke` 연산자를 사용하면 비슷한 결과를 얻을 수 있습니다.
+
+```kotlin
+class Tree<T> {
+    companion object {
+        operator fun <T> invoke(size: Int, generator: (Int) -> T): Tree<T> {
+            // ...
+        }
+    }
+}
+
+Tree(10) { "$it" }
+```
+
+그러나 `companion object`에서 `invoke`를 구현하여 가짜 생성자를 만드는 방법은 아래와 같은 두 가지 주요 이유로 인해 권장되지 않습니다.
+
+`invoke` 라는 이름은 객체를 '호출' 하는 연산을 의미합니다. 이것은 객체를 '생성'하는 연산과는 별개의 개념입니다.
+따라서 이 방식으로 가짜 생성자를 만드는 것은 용어의 일관성을 해칩니다.
+
+또한 `companion object`의 `invoke` 연산자를 사용하여 가짜 생성자를 만드는 것은 일반적인 최상위 함수를 사용하는 것보다 복잡합니다.
+이 복잡성은 리플렉션(Reflection)을 사용하여 코드를 조사할 때 특히 드러납니다.
+리플렉션은 프로그램이 실행 중 자신의 구조를 조사하고 수정할 수 있는 능력을 가진 Java의 특징 입니다.
+리플렉션을 사용하여 `Constructor`, `Fake constructor`, `companion object invoke()`를 참조할 때의 코드를 비교해보면,
+`companion object invoke()`는 다른 2가지 방식보다 더 복잡한 형태를 띄우고 있기에 이 방식은 권장되지 않습니다.
+
+Constructor: `val f: () -> Tree = ::Tree`  
+Fake constructor: `val f: () -> Tree = ::Tree`  
+Invoke in Companion object : `val f: () -> Tree = Tree.Companion::invoke`
+
+따라서 가짜 생성자가 필요한 경우 일반적인 최상위 함수를 사용하는 것이 좋습니다.
+이것은 가짜 생성자가 클래스 자체에서 생성자를 정의할 수 없거나, 생성자가 제공하지 않는 기능(==refied type parameter)이 필요할 때 사용될 수 있습니다.
