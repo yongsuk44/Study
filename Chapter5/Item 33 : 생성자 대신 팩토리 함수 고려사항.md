@@ -240,3 +240,33 @@ Invoke in Companion object : `val f: () -> Tree = Tree.Companion::invoke`
 
 따라서 가짜 생성자가 필요한 경우 일반적인 최상위 함수를 사용하는 것이 좋습니다.
 이것은 가짜 생성자가 클래스 자체에서 생성자를 정의할 수 없거나, 생성자가 제공하지 않는 기능(==refied type parameter)이 필요할 때 사용될 수 있습니다.
+
+---
+
+## Methods on a factory class
+
+팩토리 클래스는 상태를 가질 수 있기에 팩토리 함수보다 더 많은 기능을 제공할 수 있습니다.
+아래는 그 예시 입니다.
+
+```kotlin
+data class Student(
+    val id: Int,
+    val name: String,
+    val surname: String
+)
+
+class StudentsFactory {
+    var nextId = 0
+    fun next(name: String, surname: String) = Student(nextId++, name, surname)
+}
+
+val factory = StudentsFactory()
+val student = factory.next("Alice", "Smith")
+println(student) // Student(id=0, name=Alice, surname=Smith)
+
+val anotherStudent = factory.next("Bob", "Johnson")
+println(anotherStudent) // Student(id=1, name=Bob, surname=Johnson)
+```
+
+팩토리 클래스는 속성을 가지고 있고, 이런 속성들은 객체 생성을 최적화 하는데 활용됩니다.
+상태를 유지하면 캐싱을 활용하거나, 이전에 생성된 객체를 복제하여 객체 생성 속도를 향상시키는 등의 다양한 최적화나 기능을 도입할 수 있습니다.
