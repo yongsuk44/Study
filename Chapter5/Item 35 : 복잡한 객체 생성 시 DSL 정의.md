@@ -1,4 +1,4 @@
-# Item 35: Consider defining a DSL for complex object creation
+# Item 35: 복잡한 객체 생성 시 DSL 정의 고려
 
 DSL이란 '도메인 특화 언어'의 줄임말로, Kotlin의 여러 특징들을 활용해 구성 가능합니다. 
 이는 복잡한 객체나 객체의 계층 구조를 정의할 때 유용하며, 일단 정의되면 복잡성을 감추고 개발자가 의도를 명확하게 표현할 수 있게 해줍니다.
