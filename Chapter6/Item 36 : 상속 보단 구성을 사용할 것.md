@@ -122,3 +122,52 @@ class ImageLoader {
     }
 }
 ```
+
+---
+
+## Taking the whole package
+
+상속 사용 시 상위 클래스로부터 모든 것(메서드, 예상되는 동작 및 그 외의 동작 등)을 가져오게 됩니다.
+따라서 상속은 객체 계층 구조를 표현하는 데 좋은 방법이지만, 단순하게 일부 공통된 부분을 재사용하기 위해서는 사용될 필요가 없습니다.
+
+위와 같이 단순한 일부 공통 부분을 재사용하기 위해서는 구성을 통해 필요로 하는 동작을 선택할 수 있습니다.
+
+예를 들어 우리의 시스템에서 `Dog` 클래스를 표현하고, 이 `Dog`에 다음 2가지 동작을 추가하고 싶다고 가정해 봅시다.
+
+```kotlin
+abstract class Dog {
+    open fun bark() { }
+    open fun sniff() { }
+}
+```
+
+그런 다음, `Dog`를 사용하여 짖을 수 있지만, 냄새를 맡을 수 없는 `RobotDog`를 만드면 다음과 같은 문제가 발생될 수 있습니다.
+
+```kotlin
+class Labrador: Dog()
+
+class RobotDog: Dog() {
+    override fun sniff() { 
+        throw Error("Operation not supported")
+    }
+}
+```
+
+위 `RobotDog`는 필요하지 않은 메서드를 가지게 되므로 인터페이스 분리 원칙(interface segregation principle)을 위반합니다.
+또한 상위 클래스의 동작을 깨뜨리게 되어 Liskov 치환 원칙(Liskov Substitution Principle)을 위반하는 행동입니다.
+
+그리고 `RobotDog`가 계산을 할 수 있는 `Robot` 클래스로 표현되어야 할 경우 Kotlin에서는 다중 상속을 지원하지 않기에 문제가 될 수 있습니다.
+
+```kotlin
+abstract class Robot {
+    open fun calculate() { }
+}
+
+class RobotDog : Dog(), Robot() // Error 
+```
+
+위와 같은 문제점 있는 설계와 제한 사항들은 구성을 사용하게 되면 해결할 수 있습니다.
+
+- 재사용 하려는 기능을 선택할 수 있습니다.
+- 타입 계층을 표현하는데에는 인터페이스를 사용하는 것이 더 안전합니다.
+- 여러 인터페이스를 구현할 수 있습니다.
