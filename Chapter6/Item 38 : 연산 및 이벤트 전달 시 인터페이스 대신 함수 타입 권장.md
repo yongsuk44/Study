@@ -22,7 +22,7 @@ setOnClick(object : OnClick {
 })
 ```
 
-그러나 파라미터를 함수 타입으로 선언할 경우 더 많은 자유도를 얻을 수 있습니다. 
+그러나 파라미터를 함수 타입으로 선언할 경우 더 많은 자유도를 얻을 수 있습니다.
 
 ```kotlin
 fun setOnClick(onClick: (View) -> Unit) { /* ... */ }
@@ -79,12 +79,12 @@ typealias OnClick = (view: View) -> Unit
 이 모든 것이 종합되어 함수 타입은 일반적으로 SAM 보다 좋은 옵션이 될 수 있습니다.
 
 이러한 주장을 뒷받침하는 것중 하나는 많은 observer를 설정할 때 좋은 사례가 될 수 있습니다.
-클래식한 Java 방식은 종종 이들을 단일 리스너 인터페이스에 모읍니다.
+Java는 이들을 단일 리스너 인터페이스에 모으는 경우가 있습니다.
 
 ```kotlin
 class CalendarView {
     var listener: Listener? = null
-    
+
     interface Listener {
         fun onDateSelected(date: LocalDate)
         fun onPageChanged(date: LocalDate)
@@ -114,11 +114,10 @@ Kotlin 이외의 언어에서 사용되도록 클래스 설계 시 SAM 사용을
 인터페이스는 Java 클라이언트에게 더 깔끔하게 보이며 그들은 typealias나 IDE의 이름 제안을 볼 수 없습니다.
 또한 Java에서 Kotlin 함수 타입 사용 시 함수가 명시적으로 Unit을 반환하도록 요구합니다.
 
-
 ```kotlin
 class CalendarView {
     var onDateSelected: ((LocalDate) -> Unit)? = null
-    var onPageChanged: OnDateSelected? = null 
+    var onPageChanged: OnDateSelected? = null
 }
 
 interface OnDateSelected {
@@ -127,9 +126,9 @@ interface OnDateSelected {
 ```
 
 ```java
-CalendarView calendarView = new CalendarView();
-calendarView.setOnDateSelected(date -> Unit.INSTANCE);
-calendarView.setOnPageChanged(date -> {});
+CalendarView calendarView=new CalendarView();
+calendarView.setOnDateSelected(date->Unit.INSTANCE);
+calendarView.setOnPageChanged(date->{});
 ```
 
 위와 같이 Java에서 사용되도록 API 설계 시 함수 타입 대신 SAM을 사용하는 것이 합리적인지 판단해야 합니다.
