@@ -104,3 +104,34 @@ class CalendarView {
 위와 같이 변경하면, `onDateSelected`와 `onPageChanged`의 구현이 인터페이스에서 묶여야 할 필요가 없으며 이 함수들을 독립적으로 변경 될 수 있습니다.
 
 이처럼 인터페이스를 정의할 타당한 이유가 없다면, 함수 타입을 사용하는것이 더 좋습니다.
+
+---
+
+## SAM 권장 시기
+
+Kotlin 이외의 언어에서 사용되도록 클래스 설계 시 SAM 사용을 권장 할 수 있습니다.
+
+인터페이스는 Java 클라이언트에게 더 깔끔하게 보이며 그들은 typealias나 IDE의 이름 제안을 볼 수 없습니다.
+또한 Java에서 Kotlin 함수 타입 사용 시 함수가 명시적으로 Unit을 반환하도록 요구합니다.
+
+
+```kotlin
+class CalendarView {
+    var onDateSelected: ((LocalDate) -> Unit)? = null
+    var onPageChanged: OnDateSelected? = null 
+}
+
+interface OnDateSelected {
+    fun onClick(date: Date)
+}
+```
+
+```java
+CalendarView calendarView = new CalendarView();
+calendarView.setOnDateSelected(date -> Unit.INSTANCE);
+calendarView.setOnPageChanged(date -> {});
+```
+
+위와 같이 Java에서 사용되도록 API 설계 시 함수 타입 대신 SAM을 사용하는 것이 합리적인지 판단해야 합니다.
+
+위와 같은 경우를 제외하면 함수 타입을 선호하는것이 좋습니다.
