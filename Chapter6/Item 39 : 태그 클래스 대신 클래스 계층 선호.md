@@ -95,3 +95,52 @@ fun <T> ValueMatcher<T>.reversed(): ValueMatcher<T> = when(this) {
 ```
 
 이와 같이 무조건 `sealed`를 사용하는 것이 아닌 때에 따라 `abstract`를 사용하는 경우도 생각할 수 있습니다.
+
+---
+
+## 태그 클래스 != 상태 패턴
+
+태그 클래스와 상태 패턴은 동일한 것이 아닙니다.
+
+상태 패턴은 객체 내부 상태가 변경될 때 그 행동을 변경하게 하는 행동적인 소프트웨어 디자인 패턴입니다.
+주로 MVC, MVP, MVVM 등의 아키텍쳐에 따라 Controller, Presenter, ViewModel 등에 사용됩니다.
+
+또한 상태 패턴 사용 시 다양한 상태를 나타내는 클래스 계층과 현재 상태를 나타내는 변경 가능한 프로퍼티를 가지게 됩니다.
+
+예를 들어 아침 운동을 위한 앱을 작성하는 경우 각 운동 시작 전에 준비 시간이 있고, 운동이 끝나면 운동이 끝났다는 화면이 나타납니다.
+
+```kotlin
+sealed class WorkoutState
+
+class PreParerState(val exercies: Exercise): WorkoutState()
+class ExerciseState(val exercise: Exercise): WorkoutState()
+object DoneState : WorkoutState()
+
+fun List<Exercise>.toState(): List<WorkoutState> = 
+    flatMap { exercise ->
+        listOf(PreParerState(exercise), ExerciseState(exercise))
+    } + DoneState
+
+class WorkoutPresenter(/* ... */) {
+    private var state: WorkoutState = states.first()
+    
+    // ...
+}
+```
+
+다음과 같은 차이점이 있습니다.
+- 상태는 더 많은 책임을 갖는 더 큰 클래스의 일부 입니다.
+- 상태는 변화가 필요합니다.
+
+상태는 대부분 변경 가능한 단일 프로퍼티인 `State`에서 유지됩니다.
+
+구체적인 상태는 객체로 표현되며, 객체는 태그 클래스가 아닌 `sealed` 클래스 계층을 사용하는 것을 권장합니다.
+또한, 객체는 불변성을 유지하며, 상태를 변경해야 할 떄는 `state` 프로퍼티를 변경해야 합니다.
+
+상태가 변경될 때 마다 뷰를 갱시하기 위해 상태가 관찰되는 경우도 흔합니다.
+
+```kotlin
+private var state: WorkoutState by Delegates.observable(states.first()) { _, _, _ -> 
+    updateView()
+}
+```
