@@ -67,3 +67,31 @@ sealed class ValueMatcher<T> {
 
 이러한 구현은 여러 책임이 서로 얽히지 않아 훨씬 깔끔하며, 각 객체는 필요한 데이터만 가지고 있으며 어떤 파라미터를 받을지 정의할 수 있습니다.
 이처럼 타입 계층 구조를 사용하면 태그 클래스의 모든 단점을 제거할 수 있습니다.
+
+---
+
+## Sealed modifier
+
+Kotlin의 sealed modifier는 유용하며, `sealed` 클래스는 모든 하위 클래스 한정으로 동일한 파일에 있도록 제한할 수 있습니다.
+이러한 제한은 `when`문을 통해 모든 경우의 수를 처리하는 것이 보장됩니다.
+이는 `when`문에서 `else` 구문을 사용할 필요가 없다는 것을 의미합니다.
+
+이러한 이점을 활용하면 새로운 기능을 간편하게 추가할 수 있고 `when`문에서 빠트린 처리가 없도록 확인할 수 있습니다.
+
+이와 다르게, `abstract` 클래스를 사용하면 다른 개발자가 새로운 하위 클래스를 만들 수 있기에 새로운 하위 클래스에 대해 `when` 표현식이 처리하지 못하는 경우가 발생할 수 있습니다.
+이 때문에 `abstract` 클래스에서는 `when` 표현식 대신 함수를 `abstract`로 선언하고 각 하위 클래에서 해당 함수를 오버라이드 하는 것이 좋습니다.
+
+아래 방식은 `sealed` 클래스를 사용함으로써 `when` 표현식을 안전하게 사용할 수 있음을 보여줍니다.
+또한 새로운 함수를 확장하기 간편하며 새로운 기능을 추가하기도 쉽습니다. 
+만약 `ValueMatcher`가 `abstract` 클래스 였다면, 새로운 기능을 추가하는것이 까다롭고 최악의 경우 불가능할 수 있습니다.
+
+```kotlin
+fun <T> ValueMatcher<T>.reversed(): ValueMatcher<T> = when(this) {
+    is ValueMatcher.Equal -> ValueMatcher.NotEqual(value)
+    is ValueMatcher.NotEqual -> ValueMatcher.Equal(value)
+    is ValueMatcher.ListEmpty -> ValueMatcher.ListNotEmpty()
+    is ValueMatcher.ListNotEmpty -> ValueMatcher.ListEmpty()
+}
+```
+
+이와 같이 무조건 `sealed`를 사용하는 것이 아닌 때에 따라 `abstract`를 사용하는 경우도 생각할 수 있습니다.
