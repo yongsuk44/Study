@@ -80,3 +80,36 @@
 이러한 해시 테이블은 데이터베이스, 여러 인터넷 프로토콜, 많은 언어의 표준 라이브러리 컬렉션에서 사용되고 있씁니다.
 Kotlin/JVM에서는 기본적으로 제공되는 `set(LinkedHashSet)`과 `map(LinkedHashMap)`이 해시 테이블을 사용합니다.
 해시 코드를 생성하기 위해서는 `hashCode()`를 사용하면 됩니다.
+
+---
+
+## 가변성에 의한 문제점
+
+해시 테이블에 요소가 추가될 때에만 해시 값이 계산됩니다. 이 말은 요소가 변하더라도 그것이 이동하지 않다는 것을 의미하기도 합니다.
+이러한 성질로 인해 `LinkedHashSet`이나 `LinkedHashMap`의 `Key`는 객체가 추가된 후 변하게 되면 제대로 작동되지 않는 문제가 발생할 수 있습니다.
+
+```kotlin
+data class FullName(
+    var name: String,
+    var surname: String
+)
+
+val person = FullName("John", "Smith")
+
+val muSet = mutableSetOf<FullName>()
+muSet.add(person)
+person.surname = "Doe"
+
+print(person) // FullName(name=John, surname=Doe)
+print(person in muSet) // false
+print(muSet) // [FullName(name=John, surname=Doe)]
+```
+
+위 코드에서 알 수 있듯이, `FullName` 객체의 `surname`이 변경되어도 그 객체는 집합에서 움직이지 않습니다.
+결과적으로 해당 객체는 이제 집합에 존재하지 않는 것처럼 행동하게 됩니다.
+
+가변성을 띄우는 객체는 해시 기반의 자료구조나 다른 어떤 데이터 구조에서도 사용되지 않아야 합니다.
+`set`이나 `map`에 가변 요소를 넣는 것은 좋지 않으며, 특히 해당 컬렉션에 포함된 요소를 변경해서는 안됩니다.
+이는 불변성을 띄우는 객체를 사용하는 이유 중 하나 입니다.
+
+따라서 가변성이 필요한 경우에는 안전하게 처리하기 위한 추가적인 조치를 취해야 하며, 가능한 한 불변성을 유지하는 것이 좋습니다.
