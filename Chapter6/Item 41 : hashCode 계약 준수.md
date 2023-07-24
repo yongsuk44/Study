@@ -113,3 +113,96 @@ print(muSet) // [FullName(name=John, surname=Doe)]
 이는 불변성을 띄우는 객체를 사용하는 이유 중 하나 입니다.
 
 따라서 가변성이 필요한 경우에는 안전하게 처리하기 위한 추가적인 조치를 취해야 하며, 가능한 한 불변성을 유지하는 것이 좋습니다.
+
+---
+
+## hashCode 규약
+
+`hashCode` 메서드는 객체의 해시 코드를 반환하는 함수로 이를 사용하기 위해서는 아래 규약을 지켜야 합니다.
+
+### hashCode 일관성
+
+동일 객체에 대한 `hashcode` 메서드가 여러 번 호출될 경우, 객체의 `equals` 메서드에 사용되는 정보가 변경되지 않는 이상 항상 같은 정수를 반환해야 합니다.
+
+### `equals()`와 `hashCode()`의 일관성 유지
+두 객체가 `equals` 메서드를 통해 같다고 판단되면, 두 객체의 `hashCode` 메서드는 항상 같은 결과를 반환해야 합니다.
+
+만약 위 2가지 규약을 지키지 않으면, 해시 테이블 컬렉션에서 요소가 사라질 수 있습니다.
+
+```kotlin
+class FullName(
+    var name: String,
+    var surname: String
+) {
+    override fun equals(other: Any?): Boolean =
+        other is FullName && 
+                name == other.name &&
+                surname == other.surname
+}
+
+val muSet = mutableSetOf<FullName>()
+muSet.add(FullName("John", "Smith"))
+print(FullName("John", "Smith") in muSet) // false
+print(FullName("John", "Smith") == FullName("John", "Smith")) // true
+```
+
+Kotlin에서 `equals` 메서드 재정의하는 상황에서는 `hashCode` 메서드를 함께 오버라이드 하는 것이 좋습니다.
+
+추가적으로 필수는 아니지만, `hashCode` 메서드를 잘 활용하려면 가능한 한 넓은 범위로 요소를 분산시켜야 합니다.
+서로 다른 요소는 가능한 서로 다른 해시 값을 가져야 하는 것이 이상적입니다.
+
+예를 들어, 항상 같은 숫자를 반환하는 `hashCode` 메서드는 모든 요소를 동일한 버킷에 넣게 됩니다.
+이는 공식적인 규약을 충족하지만, 같은 버킷에 많은 수의 다른 요소가 모이는 상황은 해시 테이블의 장점이 사라지는 상황이 생기므로 필요가 없는 메서드로 볼 수 있습니다. 
+
+이를 통해, 적절하게 구현된 `hashCode` 함수와 충돌을 유발하는 함수의 중요성을 이해할 수 있습니다.
+아래는 `hashCode`가 성능에 어떤 영향을 미치는지에 대한 예시 입니다.
+
+```kotlin
+class Proper(val name: String) {
+    override fun equals(other: Any?): Boolean {
+        equalsCounter++
+        return other is Proper && name == other.name
+    }
+    
+    override fun hashCode(): Int = name.hashCode()
+    
+    companion object {
+        var equalsCounter = 0
+    }
+}
+
+class Terrible(val name: String) {
+    override fun equals(other: Any?): Boolean {
+        equalsCounter++
+        return other is Terrible && name == other.name
+    }
+    
+    override fun hashCode(): Int = 0
+    
+    companion object {
+        var equalsCounter = 0
+    }
+}
+
+val properSet = List(10000) { Proper("$it") }.toSet()
+print(Proper.equalsCounter) // 0
+
+val terribleSet = List(10000) { Terrible("$it") }.toSet()
+print(Terrible.equalsCounter) // 50117047
+
+Proper.equalsCounter = 0
+println(Proper("9999") in properSet) // true
+println(Proper.equalsCounter) // 1
+
+Proper.equalsCounter = 0
+println(Proper("A") in properSet) // false
+println(Proper.equalsCounter) // 0
+
+Terrible.equalsCounter = 0
+println(Terrible("9999") in terribleSet) // true
+println(Terrible.equalsCounter) // 2077
+
+Terrible.equalsCounter = 0
+println(Terrible("A") in terribleSet) // false
+println(Terrible.equalsCounter) // 10001
+```
