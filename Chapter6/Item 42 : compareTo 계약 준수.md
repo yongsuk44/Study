@@ -73,3 +73,40 @@ class User(val name: String, val surName: String) {
 
 val sorted = names.sortedWith(User.DISPLAY_ORDER)
 ```
+
+---
+
+## compareTo 구현
+
+직접 `compareTo` 구현하는 경우, 최상위 함수를 사용하여 구현하는 것이 좋습니다.   
+두 값을 비교하는 경우 `compareValues` 함수를 사용할 수 있습니다.
+
+```kotlin
+class User(
+    val name: String,
+    val surName: String
+): Comparable<User> {
+    override fun compareTo(other: User): Int =
+        compareValues(surName, other.surName)
+}
+```
+
+만약 더 많은 값을 통해 비교하거나 `selector`를 사용해 비교해야 하는 경우 `compareValuesBy`를 사용합니다.
+
+```kotlin
+class User(
+    val name: String,
+    val surName: String
+): Comparable<User> {
+    override fun compareTo(other: User): Int =
+        compareValuesBy(this, other, {it.surName}, {it.name} )
+}
+```
+
+이 함수는 대부분의 `Comparator`를 생성하는데 도움을 주며 특별한 로직으로 구현해야 하는 `Comparator`가 필요한 경우, 아래 3가지를 꼭 반환 해야 합니다.
+
+- 수신자와 other가 동등하면 0
+- 수신자가 other보다 크면 양수
+- 수신자가 other보다 작으면 음수
+
+위 3가지를 수행한 후, 비교가 대칭적(Anti-Symmetric), 전이적(Transitive), 연결성(connex)인지 확인하는 것도 중요합니다.
