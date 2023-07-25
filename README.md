@@ -5,3 +5,4 @@
 - **[3장 Reusability](Chapter3/3장%20정리.md)**
 - **[4장 Abstraction design](Chapter4/4장%20요약.md)**
 - **[5장 Object Creation](Chapter5/5장%20요약.md)**
+- **[6장 Class Design](Chapter6/6장%20요약.md)**
