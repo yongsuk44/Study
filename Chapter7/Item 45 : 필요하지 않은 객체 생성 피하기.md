@@ -29,9 +29,10 @@ println(i1 == i2) // true
 println(i1 === i2) // false
 ```
 
-위 `Int`는 `null` 허용 타입으로 작성되어 내부적으로 `int` 대신 `Integer`가 사용되도록 강제 합니다. 
+위 `Int`는 `null` 허용 타입으로 작성되어 내부적으로 `int` 대신 `Integer`가 사용되도록 강제 합니다.
 
-컴파일 시 만약 `Int`를 사용하게되면 일반적으로 기본형 `int`로 사용되지만, `Int?`와 같이 `null`을 허용하거나 타입 인수(type argument)로 사용될 때는 `Integer`가 대신 사용됩니다. 
+컴파일 시 만약 `Int`를 사용하게되면 일반적으로 기본형 `int`로 사용되지만, `Int?`와 같이 `null`을 허용하거나 타입 인수(type argument)로 사용될 때는 `Integer`가 대신
+사용됩니다.
 이는 기본형(`Integer` or `Long` 등)이 `null`이 될 수 없고 타입 인수(type argument)로 사용될 수 없기 때문입니다.
 
 ---
@@ -48,7 +49,7 @@ println(i1 === i2) // false
 패딩은 메모리 내에서 객체가 효율적으로 배치되도록 하기 위한 것입니다. 추가로 '32bit JVM'에서는 헤더의 오버헤드가 8byte입니다.
 
 객체는 객체 참조를 포함합니다. 이 참조는 해당 객체에 접근하는데 사용되는 주소 정보를 가집니다.  
-일반적으로 참조는 '32bit 플랫폼' 혹은 '-Xmx32G까지의 64bit 플랫폼'에서는 4byte를 차지하며, 32Gb 이상의 메모리 할당(-Xmx32G 이상)에서는 8byte를 차지합니다. 
+일반적으로 참조는 '32bit 플랫폼' 혹은 '-Xmx32G까지의 64bit 플랫폼'에서는 4byte를 차지하며, 32Gb 이상의 메모리 할당(-Xmx32G 이상)에서는 8byte를 차지합니다.
 
 이러한 수치들은 미미하게 보일 수 있지만, 객체가 많아질수록 누적되어 중요한 비용이 될 수 있습니다.
 특히 정수와 같은 작은 요소들을 생각할 때, 이들은 유의미한 차이를 만들어줍니다.
@@ -88,19 +89,23 @@ println(i1 === i2) // false
 
 #### 초기화
 
-객체의 필드와 속성은 해당 객체가 생성될 때 초기화됩니다. 
+객체의 필드와 속성은 해당 객체가 생성될 때 초기화됩니다.
 이 초기화 과정은 생성자에서 수행되며, 초기화에 필요한 계산이나 메모리 할당 등으로 인해 비용이 추가로 발생될 수 있습니다.
-
 
 ```kotlin
 class A
+
 private val a = A()
 
 // Benchmark result: 2.698 ns/op
-fun accessA(blackHole: BlackHole) { blackHole.consume(a) }
+fun accessA(blackHole: BlackHole) {
+    blackHole.consume(a)
+}
 
 // Benchmark result: 3.814 ns/op
-fun createA(blackHole: BlackHole) { blackHole.consume(a) }
+fun createA(blackHole: BlackHole) {
+    blackHole.consume(a)
+}
 
 // Benchmark result: 3828.540 ns/op
 fun createListAccessA(blackHole: BlackHole) {
@@ -117,3 +122,54 @@ fun createListCreateA(blackHole: BlackHole) {
 그리고 객체 재사용 시 첫 번째와 세번 쨰 비용을 제거할 수 있습니다.
 
 이를 이해하고 있으면 코드에서 불필요한 객체 수를 제한하는 것에 대해 생각할 수 있으며 아래는 이를 어떤 방식으로 처리하는 방법 입니다.
+
+---
+
+## `object` 선언
+
+객체를 매번 생성하는 대신 `object` 선언(싱글톤 패턴)을 사용 시 간단하게 객체를 재사용할 수 있습니다.  
+
+아래 구현은 `LinkedList` 구현으로 비어있을 수 있고 요소를 포함할 수 있고 나머지를 가리키는 노드일 수 있습니다.
+
+```kotlin
+sealed class LinkedList<T>
+
+class Node<T>(
+    val head: T,
+    val tail: LinkedList<T>
+) : LinkedList<T>()
+
+class Empty<T> : LinkedList<T>()
+
+val list: LinkedList<Int> = Node(1, Node(2, Node(3, Empty())))
+val list2: LinkedList<String> = Node("A", Node("B", Empty()))
+```
+
+이 구현은 리스트 생성 시 매번 `Empty` 인스턴스 생성하는것이며 이는 불필요한 객체 생성으로 이어질 수 있습니다.
+이를 해결하기 위해 하나의 인스턴스만 생성하고 이를 재사용하도록 할 수 있습니다.
+
+그러나 제네릭 타입으로 문제가 발생하는데 이와 같은 상황에서는 `Empty` 리스트가 모든 리스트의 하위 타입이 되도록 해야 합니다.
+이를 위해 `Nothing`이라는 특수한 타입을 사용하면 됩니다.
+
+이 `Nothing`은 모든 타입의 하위 타입으로 Kotlin에서 특별하게 제공되는 타입입니다.  
+이로 인해, `LinkedList<Nothing>`은 모든 `LinkedList`의 하위 타입이되어 모든 타입의 리스트에 대해서 공통된 `Empty` 리스트를 표현할 수 있게 됩니다.
+
+하지만 이러한 방식은 불변(immutable)객체에서만 사용해야 합니다. 만약 가변(mutable)객체에서 사용하게되면, 상태 공유로 인해 찾기 어려운 버그가 발생할 수 있습니다.
+
+```kotlin
+sealed class LinkedList<out T>
+
+class Node<out T>(
+    val head: T,
+    val tail: LinkedList<T>
+) : LinkedList<T>()
+
+object Empty : LinkedList<Nothing>()
+
+val list: LinkedList<Int> = Node(1, Node(2, Node(3, Empty)))
+val list2: LinkedList<String> = Node("A", Node("B", Empty))
+```
+
+이처럼 `object` 선언을 통해 불필요한 객체 생성을 피할 수 있지만, 더 많은 방법들이 존재하며 팩토리 함수와 캐시를 사용하는 것입니다.
+
+팩토리 함수는 객체 생성을 캡슐화하고 캐시는 이미 생성된 객체를 재사용하도록 합니다.
