@@ -388,7 +388,7 @@ fun Iterable<Int>.maxOrNull(): Int? {
 ```
 
 위 구현에는 2가지 단점이 있습니다.
-1. 각 단계에서 엘비스(?:) 연산자를 사용합니다.
+1. 각 단계에서 엘비스(?:) 연산자를 사용합니다.정
 2. `null` 가능 값을 사용하므로 JVM 내부에서는 `int` 대신 `Integer`를 사용합니다. 
 
 위 2가지 단점을 해결하려면 `while`을 사용하여 반복을 구현하면 됩니다.
@@ -407,5 +407,4 @@ fun Iterable<Int>.maxOrNull(): Int? {
     
     return max
 }
-```
 ```
