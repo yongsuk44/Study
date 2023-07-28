@@ -262,3 +262,57 @@ fun fibIter(n: Int): BigInteger {
 
 캐시 설계는 쉽지 않으며, 결국 성능과 메모리 사용량 사이의 균형을 찾아야하는 중요한 고려 사항입니다.
 따라서, 캐시 사용 시 위 장•단점을 고려하여 사용해야합니다. 또한 성능 문제를 메모리 문제로 바꾸는 것은 좋지 않습니다.
+
+---
+
+## 큰 사이즈 객체를 외부로 이동하여 사용
+
+리프팅(lifting) 기법은 반복 처리에서 무거운 연산을 최소화하는데 유용합니다.
+
+아래 예제에서는 `Iterable<T>`의 각 요소가 최대값인지 판별하려는 경우를 보여줍니다. 
+초기 함수에서는 `Iterable`의 각 요소마다 최대값을 찾게 되어 비효율적입니다.
+
+```kotlin
+fun <T: Comparable<T>> Iterable<T>.countMax(): Int = count { it == this.max() }
+```
+
+이를 최댓값을 1번만 계산하고 외부 범위에 저장하여 개선할 수 있습니다.
+아래와 같이 변경하게 되면 loop 중 최댓값을 계산할 필요가 없어집니다.
+
+```kotlin
+fun <T: Comparable<T>> Iterable<T>.countMax(): Int {
+    val max = this.max()
+    return count { it == max }
+}
+```
+
+### Regex, Lazy 초기화
+
+아래 예제는 정규 표현식을 사용하여 문자열이 유효한 IP 주소인지 검증하는 함수를 보여줍니다. 
+
+이 예제는 정규식 객체가 함수 호출이 될때마다 생성됩니다.
+정규식 패턴의 컴파일은 복잡한 작업으로 성능에 영향을 줄 수 있기에 문제가 될 수 있습니다.
+
+```kotlin
+fun String.isValidIpAddress(): Boolean {
+    return this.matches("\\A(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\z".toRegex())
+}
+```
+
+이를 정규식 객체를 최상위 범위에 생성하고 이를 재사용하는 방식으로 개선할 수 있습니다.
+
+```kotlin
+private val IS_VALID_EMAIL_REGEX = "\\A(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\z".toRegex()
+
+fun String.isValidIpAddress(): Boolean {
+    return this.matches(IS_VALID_EMAIL_REGEX)
+}
+```
+
+만약 위 함수가 다른 함수들과 같이 있고, 정규식 객체를 사용하지 않으면 생성되지 않도록 설정하려면 `lazy`를 통해 정규식을 초기화할 수 있습니다.
+
+```kotlin
+private val IS_VALID_EMAIL_REGEX by lazy {
+    "\\A(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\z".toRegex()
+}
+```
