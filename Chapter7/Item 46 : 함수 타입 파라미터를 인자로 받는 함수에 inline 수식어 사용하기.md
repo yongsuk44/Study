@@ -83,3 +83,60 @@ inline fun printValue(values: List<Int>) {
 
 printValue(listOf(1, 2, 3, 4, 5, 6, 7)) // print : 1 2 3 4
 ```
+
+---
+
+## `reified` 타입 인자와 `inline` 함수 활용
+
+제네릭은 2004년 J2SE 5.0 버전에서 Java 프로그래밍 언어에서 추가되었습니다.
+
+그러나 JVM 바이트 코드에는 여전히 포함되지 않아서 컴파일 중에 제네릭 타입은 지워집니다.
+
+예를 들어 `List<Int>`는 `List`로 컴파일됩니다. 이 때문에 객체가 `List<Int>` 인지 확인할 수 없고 `List` 인지만 확인할 수 있었습니다.
+
+```kotlin
+any is List<Int> // Error
+any is List<*> // OK
+```
+
+위와 같은 이유로 아래와 같이 타입 인자에 연산을 수행할 수 없습니다.
+
+```kotlin
+fun <T> printTypeName() {
+    print(T::class.simpleName) // Error
+}
+```
+
+이러한 제한을 `inline`과 `reified` 수식어를 사용하면,
+컴파일 타임에 타입 정보가 지워지는 것을 방지하고 런타임에도 이 정보를 활용할 수 있게 됩니다.
+
+`inline` 함수 호출이 그 본문으로 대체되고, `reified` 수식어를 사용하여 타입 파라미터의 사용을 타입 인자로 대체할 수 있습니다.
+
+```kotlin
+inline fun <reified T> printTypeName() {
+    print(T::class.simpleName) // OK
+}
+
+printTypeName<Int>() // Int
+printTypeName<Char>() // Char
+printTypeName<String>() // String
+```
+
+컴파일 중 위 내용이 아래와 같이 타입 인자가 타입 파라미터를 대체합니다.
+
+```kotlin
+print(Int::class.simpleName) // Int
+print(Char::class.simpleName) // Char
+print(String::class.simpleName) // String
+```
+
+`reified`는 유용한 수식어로 `inline` 함수와 함께 사용됩니다. 예를 들어, `filterIsInstance`는 특정 타입의 요소만 필터링하는 데 사용됩니다.
+
+```kotlin
+class Worker
+class Manager
+
+val employees: List<Any> = listOf(Worker(), Manager(), Worker())
+
+val workers: List<Worker> = employees.filterIsInstance<Worker>()
+```
