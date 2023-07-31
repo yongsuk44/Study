@@ -305,3 +305,54 @@ fun repeatNoninline() {
 함수를 `inline`으로 선언하면, 위와 같은 오버헤드를 최소화할 수 있습니다.
 
 특히 함수형 파라미터를 가진 유틸리티 함수를 정의할 때는 일반적으로 그 함수를 `inline`으로 만드는 것이 좋습니다.
+
+---
+
+## Non-local return 허용
+
+이전에 정의한 `repeatNoninline`의 구현 부분은 아래 `if`또는 `for`와 매우 비슷하게 구현되어 있습니다.
+
+```kotlin
+if(value != null) print(value)
+
+for (i in 1..10) print(i)
+
+repeatNoninline(10) { print(it) }
+```
+
+그러나 한 가지 중요한 차이점은 `return`이 내부에 허용되지 않습니다.
+
+```kotlin
+fun main() {
+    repeatNoninline(10) {
+        print(it)
+        return // Error : Not allowed
+    }
+}
+```
+
+이는 함수 리터럴이 어떻게 컴파일 되는지에 따라 달라지게 됩니다. 
+
+만약 함수 리터럴이 인라인 되지 않으면 코드는 다른 클래스에 위치해 있다고 판단하여 `main`에서 `return`할 수 없습니다.  
+그러나 함수 리터럴이 인라인 될 때 코드는 어차피 `main` 함수에 위치하게 되기 때문에 `return`을 허용할 수 있게 됩니다.
+
+```kotlin
+fun main() {
+    repeatInline(10) {
+        print(it)
+        return // OK
+    }
+}
+```
+
+덕분에 함수는 제어 구조처럼 보이고 동작할 수 있습니다.
+
+```kotlin
+fun getSomeMoney(): Money? {
+    repeat(100) {
+        val money = searchForMoney()
+        if (money != null) return money
+    }
+    return null
+}
+```
