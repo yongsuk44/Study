@@ -145,3 +145,41 @@ class Grades(
 
 위와 같이 `inline class`를 통해 ID를 사용하는 것은 안전할 것이며 또한 컴파일 중 모든 타입이 `Int`로 대체되므로 DB가 올바르게 생성됩니다.
 이렇게 하면 `inline class`를 통해 이전에 허용되지 않았던 위치에 타입을 도입할 수 있기에 성능 오버헤드 없이 더 안전한 코드를 가지게 됩니다.
+
+---
+
+## inline class와 interface
+
+`inline class`는 다른 클래스와 동일하게 인터페이스를 구현할 수 있습니다. 이 인터페이스는 원하는 측정 단위를 제대로 전달해줄 수 있습니다.
+
+```kotlin
+interface TimeUnit { 
+    val millis: Long
+}
+
+inline class Minutes(val minutes: Long): TimeUnit {
+    override val millis: Long
+        get() = minutes * 60 * 1000
+}
+
+inline class Millis(val milliseconds: Long): TimeUnit {
+    override val millis: Long get() = milliseconds
+}
+
+fun setUpTimer(time: TimeUnit) {
+    val millis = time.millis
+}
+
+setUpTimer(Minutes(10))
+setUpTimer(Millis(1000))
+```
+
+`inline class`의 특징 중 하나는 객체가 `inline` 되어 성능 최적화가 가능하다는 것입니다.
+그러나 인터페이스를 통해 객체를 사용하는 경우 이러한 `inline` 기능을 통한 성능 최적화를 할 수 없습니다.
+
+`inline class`는 컴파일 시점에서 단일 값으로 대체되는 클래스로 불필요한 객체 생성이 없어 성능이 향상됩니다.
+인터페이스는 특정 메서드 계약을 정의하며, `inline class`가 인터페이스를 구현하면 해당 인터페이스 타입을 통해 접근해야 하므로 실제 객체의 래핑이 필요합니다.
+`inline class`가 인터페이스를 통해 접근되면 `inline class`의 인스턴스는 실제 객체로 존재해야 하므로 인라인 최적화의 이점을 잃게 됩니다.
+
+위 예시에서 `TimeUnit` 인터페이스를 통해 `Minutes`와 `Millis` `inline class`를 사용하면, `inline class`의 인스턴스는 실제 객체로 작동해야 하므로 성능 이점을 얻을 수 없게 됩니다.
+이에 따라 `inline class`가 인터페이스를 구현하는 경우 성능 최적화의 이점을 누리기 어려우며, 성능에 대한 고려 없이 타입 안정성만을 목표로 하는 경우에는 유용할 수 있습니다.
