@@ -382,3 +382,37 @@ internal inline fun read() {
 
 private class Reader { /* ... */ }
 ```
+
+---
+
+## Crossinline과 noinline
+
+함수를 `inline` 처리하고 싶지만 어떠한 이유로 모든 함수 타입 인수를 `inline` 할 수 없는 경우가 필요할 수 있습니다. 
+
+이러한 경우 다음 수식어를 사용하여 처리할 수 있습니다.
+
+| 타입 | 설명                                                       |
+| --- |----------------------------------------------------------|
+| `crossinline` | 함수가 `inline` 되어야 하지만 'non-local return'이 허용되지 않음을 의미합니다. |
+| `noinline` | 인수가 `inline` 되지 않아야 함을 의미합니다.                         |
+
+```kotlin
+inline fun requestNewToken(
+    hasToken: Boolean, 
+    crossinline onRefresh: () -> Unit,
+    noinline onGenerate: () -> Unit
+) {
+    if (hasToken) {
+        // 함수가 inline 되지 않은 함수에 인수로 함수를 전달해야 하므로 noinline을 사용해야 합니다.
+        httpCall("get-token", onGenerate)
+    } else {
+        httpCall("refresh-token") {
+            // 'non-local return'이 허용되지 않는 컨텍스트에서 함수를 인라인하려면 crossinline을 사용해야 합니다.
+            onRefresh()
+            onGenerate()
+        }
+    }
+}
+
+fun httpCall(url: String, callback: () -> Unit) { /* ... */ }
+```
