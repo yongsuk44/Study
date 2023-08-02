@@ -183,3 +183,51 @@ setUpTimer(Millis(1000))
 
 위 예시에서 `TimeUnit` 인터페이스를 통해 `Minutes`와 `Millis` `inline class`를 사용하면, `inline class`의 인스턴스는 실제 객체로 작동해야 하므로 성능 이점을 얻을 수 없게 됩니다.
 이에 따라 `inline class`가 인터페이스를 구현하는 경우 성능 최적화의 이점을 누리기 어려우며, 성능에 대한 고려 없이 타입 안정성만을 목표로 하는 경우에는 유용할 수 있습니다.
+
+---
+
+## Typealias
+
+`typealias`는 기존 타입에 새로운 이름을 부여하는 기능을 제공합니다.
+
+```kotlin
+typealias NewName = Int
+val n: NewName = 10 
+```
+
+긴 타입의 이름이나 반복적으로 사용되는 타입에 대해 새로운 이름을 지정하는 데 유용합니다.
+
+일반적으로 반복되는 함수 타입에 이름을 부여하는 것이 관행입니다.
+
+```kotlin
+typealias ClickListener = (view: View, event: Event) -> Unit
+
+class View {
+    fun addClickListener(listener: ClickListener) {  }
+    fun removeClickListener(listener: ClickListener) {  }
+}
+```
+
+그러나 `typealias`은 단지 타입에 새로운 이름을 부여하는 것일 뿐 타입 오용으로부터 보호해주지는 않습니다.
+
+아래 예를 들어 `Int` 타입에 `Millis`와 `Seconds`라는 이름을 지정하면, 타입 체계가 우리를 보호해주는 것처럼 착각하게 만들 수 있습니다.
+그러나 아래 예시 처럼 사용해서는 안됩니다.
+
+```kotlin
+typealias Seconds = Int
+typealias Millis = Int
+
+fun getTime(): Millis = 10
+fun setUpTimer(time: Seconds) { }
+
+fun main() {
+    val seconds: Seconds = 10
+    val millis: Millis = seconds // No Compiler Error
+    
+    setUpTimer(getTime())
+}
+```
+
+측정 단위를 나타내려면 파라미터 이름이나 클래스를 사용해야 합니다. 파라미터 이름은 비용이 적게 들지만, 클래스를 사용하는 것이 더 보안적으로 좋습니다.
+
+`inline class`를 사용하면 위 2가지 옵션의 장점을 모두 얻을 수 있기에 측정 단위를 나타내는 경우 `inline class` 사용을 권장합니다.
