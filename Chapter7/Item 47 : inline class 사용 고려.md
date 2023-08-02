@@ -1,4 +1,4 @@
-# Item 47: inline class 사용 고려 
+# Item 47: inline class 사용 고려
 
 함수만 `inline`화 할 수 있는것이 아니며, 단일 값을 가진 객체도 이 값으로 대체될 수 있습니다.
 이러한 기능을 가능하게 하려면 단일 생성자 속성이 있는 클래스 앞에 `inline` 수식어를 붙여야 합니다.
@@ -33,7 +33,8 @@ Name.`greet-impl`(name)
 `inline class`를 통해 일부 유형(위 `String`과 같은)을 래핑할 수 있으며 성능 오버헤드 없이 사용할 수 있습니다.
 
 `inline class`는 2가지 용도로 사용됩니다.
-1. 측정 단위 나타내기 
+
+1. 측정 단위 나타내기
 2. 타입을 사용하여 사용자 오용 방지
 
 ---
@@ -43,8 +44,8 @@ Name.`greet-impl`(name)
 다음과 같이 타이머와 같이 측정 단위를 표현하는 상황을 예시로 들어 볼 수 있습니다.
 
 ```kotlin
-interface Timer { 
-    fun callAfter(timeMillis: Int, callback: () -> Unit) 
+interface Timer {
+    fun callAfter(timeMillis: Int, callback: () -> Unit)
 }
 ```
 
@@ -65,7 +66,7 @@ interface Timer {
 
 fun setUpUserWakeUpUser(user: User, timer: Timer) {
     val time: Int = user.decideAboutTime()
-    timer.callAfter(time) { 
+    timer.callAfter(time) {
         user.wakeUp()
     }
 }
@@ -95,7 +96,7 @@ interface Timer {
 
 fun setUpUserWakeUpUser(user: User, timer: Timer) {
     val time: Millis = user.decideAboutTime()
-    timer.callAfter(time.toMillis()) { 
+    timer.callAfter(time.toMillis()) {
         user.wakeUp()
     }
 }
@@ -110,3 +111,37 @@ val Int.ms get() = Millis(this)
 
 val timeMin: Minutes = 10.min
 ```
+
+---
+
+## 타입 오용으로부터 보호
+
+SQL DB에서 종종 ID로 요소를 식별하며 이 ID들은 모두 단순한 숫자인 경우가 많으며, 시스템에서 학생 성적이 있다고 가정하면 학생, 교사, 학교의 ID를 참조해야 할 가능성이 높습니다.
+
+```kotlin
+@Entity(tableName = "grades")
+class Grades(
+    @ColumnInfo(name = "studentId") val studentId: Int,
+    @ColumnInfo(name = "teacherId") val teacherId: Int,
+    @ColumnInfo(name = "schoolId") val schoolId: Int
+    // ...
+)
+```
+
+문제점으로 나중에 이러한 ID를 잘못 사용하기가 정말 쉽기에 모든 정수를 별도의 `inline class`로 래핑하는 것이 안전합니다.
+
+```kotlin
+inline class StudentId(val studentId: Int)
+inline class TeacherId(val teacherId: Int)
+inline class SchoolId(val schoolId: Int)
+
+class Grades(
+    @ColumnInfo(name = "studentId") val studentId: StudentId,
+    @ColumnInfo(name = "teacherId") val teacherId: TeacherId,
+    @ColumnInfo(name = "schoolId") val schoolId: SchoolId
+    // ...
+)
+```
+
+위와 같이 `inline class`를 통해 ID를 사용하는 것은 안전할 것이며 또한 컴파일 중 모든 타입이 `Int`로 대체되므로 DB가 올바르게 생성됩니다.
+이렇게 하면 `inline class`를 통해 이전에 허용되지 않았던 위치에 타입을 도입할 수 있기에 성능 오버헤드 없이 더 안전한 코드를 가지게 됩니다.
