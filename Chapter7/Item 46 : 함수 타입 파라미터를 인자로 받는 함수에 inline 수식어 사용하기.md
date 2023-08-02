@@ -394,7 +394,7 @@ private class Reader { /* ... */ }
 | 타입 | 설명                                                       |
 | --- |----------------------------------------------------------|
 | `crossinline` | 함수가 `inline` 되어야 하지만 'non-local return'이 허용되지 않음을 의미합니다. |
-| `noinline` | 인수가 `inline` 되지 않아야 함을 의미합니다.                         |
+| `noinline` | `inline` 함수의 함수 타입 인수가 `inline` 되지 않아야 함을 의미합니다.   |
 
 ```kotlin
 inline fun requestNewToken(
