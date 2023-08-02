@@ -356,3 +356,29 @@ fun getSomeMoney(): Money? {
     return null
 }
 ```
+
+---
+
+## inline 수식어 비용 
+
+`inline`은 유용한 수식어이지만 어디서나 사용될 수 있는 것은 아닙니다.
+`inline` 함수는 재귀로 사용할 수 없으며 반복적인 사이클은 더 위험합니다.
+
+만약 재귀로 사용할 경우 자기 자신을 무한하게 호출하게 될 것이며, 반복적인 사이클 형태로 만드는 경우  컴파일 시간에 에러를 발생시키지 않고, 런타임에 에러를 발생시키게 됩니다.
+
+```kotlin
+inline fun a() { b() }
+inline fun b() { c() }
+inline fun c() { a() }
+```
+
+`inline` 함수는 가시성을 제한한 요소를 사용할 수 없습니다.
+
+```kotlin
+internal inline fun read() {
+    val reader = Reader() // Error
+    // ...
+}
+
+private class Reader { /* ... */ }
+```
