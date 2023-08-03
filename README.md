@@ -6,3 +6,4 @@
 - **[4장 Abstraction design](Chapter4/4장%20요약.md)**
 - **[5장 Object Creation](Chapter5/5장%20요약.md)**
 - **[6장 Class Design](Chapter6/6장%20요약.md)**
+- **[7장 Make It Cheap](Chapter7/7장%20요약.md)**
