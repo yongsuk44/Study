@@ -34,20 +34,20 @@ public fun <T> Sequence<T>.filter(predicate: (T) -> Boolean): Sequence<T> {
 `Iterable`의 경우 각 단꼐에서 호출됩니다.
 
 ```kotlin
-val seq = sequenceOf(1,2,3)
-val filtered = seq.filter { 
+val seq = sequenceOf(1, 2, 3)
+val filtered = seq.filter {
     print("f$it")
-    (it % 2) == 1 
+    (it % 2) == 1
 }
 
 print(filtered)
 val asList = filtered.toList()
 print(asList)
 
-val list = listOf(1,2,3)
-val listFiltered = list.filter { 
+val list = listOf(1, 2, 3)
+val listFiltered = list.filter {
     print("f$it")
-    (it % 2) == 1 
+    (it % 2) == 1
 }
 
 print(listFiltered)
@@ -62,3 +62,47 @@ Kotlin에서 `Sequence`는 `Iterable`과 비교하여 다음과 같은 장점을
 
 이러한 이점으로 컬렉션의 크기와 복잡성이 커질수록 더욱 중요해집니다.
 따라서 2개 이상의 중간 연산자가 있는 큰 컬렉션을 다룰 때 `Sequence`를 사용하는 것이 효율적입니다.
+
+---
+
+## 순서의 중요성
+
+### Sequence 처리 (`element-by-element` 또는 `lazy order`)
+
+- lazy order : 시퀀스 처리는 연산을 "lazy"하게 처리합니다. 이 말은, 각 요소에 대해 모든 연산이 한 번에 수행되고, 그 다음 요소로 넘어간다는 것을 의미합니다.
+- 순서 : 첫 번째 요소를 가져와 연산을 수행하고, 다음 요소로 넘어갑니다. 예를 들어, `filter` -> `map` -> `forEach` 순서로 첫 번째 요소에 대해 수행한 후, 다음 요소로 진행합니다.
+- 자연스러움: 기본 `loop`를 통한 방식과 유사하며, 더 자연스럽게 코드를 이해할 수 있습니다.
+- 컴파일러 최적화 가능성: 요소별 순서는 기본 `loop`의 조건으로 최적화될 수 있어 효율성이 향상될 가능성이 있습니다. 
+
+### Iterable 처리 (`step-by-step` 또는 `eager order`)
+
+- eager order : 이터러블 처리는 "즉시" 처리됩니다. 첫 번째 연산이 전체 컬렉션에 적용되고, 그 다음 연산으로 넘어갑니다.
+- 순서 : 첫 번째 연산을 전체 컬렉션에 적용한 뒤, 그 다음 연산으로 넘어갑니다. 예를 들어, `filter`가 모든 요소에 대해 수행된 후, `map` -> `forEach` 순으로 진행됩니다.
+- 연산의 집중 : 특정 연산에 집중해서 한 번에 처리하기 때문에, 각 단계별 컬렉션의 변화를 파악할 수 있습니다.
+
+```kotlin
+sequenceOf(1, 2, 3)
+    .filter { print("f$it"); (it % 2) == 1 }
+    .map { print("m$it"); it * 2 }
+    .forEach { print("e$it") }
+// Prints : f1 m1 e2 f2 f3 m3 e6
+
+listOf(1, 2, 3)
+    .filter { print("f$it"); (it % 2) == 1 }
+    .map { print("m$it"); it * 2 }
+    .forEach { print("e$it") }
+
+// Prints : f1 f2 f3 m1 m3 e2 e6
+
+for (e in listOf(1, 2, 3)) {
+    print("f$e, ")
+
+    if (e % 2 == 1) {
+        print("m$e, ")
+        val m = e * 2
+        print("e$m, ")
+    }
+}
+
+// Prints : f1, m1, e2, f2, f3, m3, e6,
+```
