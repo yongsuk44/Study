@@ -106,3 +106,31 @@ for (e in listOf(1, 2, 3)) {
 
 // Prints : f1, m1, e2, f2, f3, m3, e6,
 ```
+
+---
+
+## Sequence는 최소한의 연산만 수행
+
+`Sequence`는 전체 컬렉션을 최소한의 연산을 수행하여 결과를 생성합니다. 
+
+만약 1M개의 요소를 지닌 컬렉션을 연산하여 처음 10개의 요소만 갖고오도록 한다면, 10개를 제외한 다른 요소의 연산 비용은 불필요합니다. 
+이때 `Iterable`의 경우 모든 연산이 전체 컬렉션을 반환하는 방식으로 처리되기에 효율적이지 않기에 `Sequence`를 사용하는 것이 좋습니다.
+
+아래 예시를 보면, 몇 단계의 처리가 있고 `find`로 처리를 끝내는 것을 볼 수 있습니다.
+
+```kotlin
+(1..10).asSequence()
+    .filter { print("f$it, "); it % 2 == 1 }
+    .map { print("m$it, "); it * 2 }
+    .find { it > 5 }
+// Print : f1, m1, f2, f3, m3
+
+(1..10)
+    .filter { print("f$it, "); it % 2 == 1 }
+    .map { print("m$it, "); it * 2 }
+    .find { it > 5 }
+// Print : f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, m1, m3, m5, m7, m9
+```
+
+중간 처리(intermediate processing) 단계가 있고 터미널 연산(위 코드의 경우 `find`)이 모든 요소를 반복할 필요가 없을 때 `Sequence`를 사용하면 처리 성능이 더 좋습니다.
+이러한 연산의 예로는 `first`, `find`, `take`, `any`, `all`, `none`, `indexOf` 등이 있습니다.
