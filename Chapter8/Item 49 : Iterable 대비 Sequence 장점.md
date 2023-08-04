@@ -291,3 +291,31 @@ fun productsSortAndProcessingSequence(): Double =
         .map { it.price }
         .average()
 ```
+
+---
+
+## Java stream
+
+Java 8에서 컬렉션 처리를 허용하는 `Stream`을 도입하였고 이는 Kotlin의 `Sequence`와 비슷하게 동작합니다.
+
+```kotlin
+producesList.asSequence()
+    .filter { it.bought }
+    .map { it.price }
+    .average()
+
+produecsList.stream()
+    .filter { it.bought }
+    .mapToDouble { it.price }
+    .average()
+    .orElse(0.0)
+```
+
+`Stream`은 터미널 처리 단계에서 `lazy`하게 수집되며 `Stream`과 `Sequence` 사이의 차이점은 다음과 같습니다.
+
+- `Sequence`는 더 많은 연산(확장 함수로 정의되기에)을 가지고 있으며 사용하기 쉽습니다.
+- `Stream` 처리는 병렬 함수를 사용하여 병렬 모드에서 시작할 수 있습니다. 이것은 여러 CPU 코어를 가진 기계에서 사용 시 엄청난 성능 향상을 끌어낼 수 있습니다.
+- `Sequence`는 공통 모듈, Kotlin/JVM, Kotlin/JS, Kotlin/Native 모듈에서 사용할 수 있습니다. `Stream`은 Kotlin/JVM 버전 8 이상에서만 사용할 수 있습니다.
+
+병렬 모드를 사용하여 이익을 얻을 수 있는 계산이 많은 처리에 대해서만 `Stream`을 드물게 사용하고
+그렇지 않으면, 다양한 플랫폼이나 공통 모듈에서 대응할 수 있는 `Sequence`를 사용하는 것이 좋습니다.
