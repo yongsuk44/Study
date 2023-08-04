@@ -248,4 +248,46 @@ File(crimes.csv).useLines { lines: Sequence<String> ->
 첫번째 구현에서 컬렉션 처리를 하면 약 8s가 소요되었고, 두번째 구현에서는 `Sequence`를 사용하여 약 3s가 소요되었습니다.
 위 결과와 같이 더 큰파일에 대한 `Sequence`를 사용하는 것은 메모리 뿐만 아니라 성능에도 큰 영향을 미칩니다.
 
-또한 둘 이상의 중간 연산이 있는 경우, 큰 컬렉션에 대한 `Sequence` 처리는 `List` 처리보다 성능이 뛰어나며, 약 20-40%의 성능 향상을 기대할 수 있습니다. 
+또한 둘 이상의 중간 연산이 있는 경우, 큰 컬렉션에 대한 `Sequence` 처리는 `List` 처리보다 성능이 뛰어나며, 약 20-40%의 성능 향상을 기대할 수 있습니다.
+
+---
+
+## sequences 처리가 더 느린 경우
+
+몇몇 연산에서는 전체 컬렉션에 대한 작업을 해야하기에 `Sequence`를 사용하더라도 이익을 볼 수 없는 경우가 있습니다.
+
+대표적으로 `sorted`가 있으며, `sorted`는 `Sequence`를 리스트로 누적 한 다음 Java 표준 라이브러리인 `sort`를 사용하여 구현합니다. 
+이 과정에서 추가적인 시간이 걸리지만, `Iterable`이 컬렉션이나 배열이 아니라면 그 차이는 크지 않습니다.
+
+`Sequence`가 `sorted`와 같은 연산을 해야하는 것에 대해 의견이 분분합니다. 
+왜냐하면 다음 요소를 계산하기 위해 모든 요소가 필요한 연산을 가진 `Sequence`는 부분적으로만 지연 연산을 하고 `Infinite Sequence`에서는 동작하지 않기 때문입니다.
+
+Kotlin 개발자들은 이 단점을 알고 있어야 하며, 특히 `Infinite Sequence`에서 사용할 수 없다는 것을 명심해야 합니다.
+
+위와 같은 의견이 갈리는 상황에도 불구하고 `sorted`는 인기 있는 연산이기에 추가되었고, 아래와 같은 방식으로 처리하는 것을 권장합니다.
+
+```kotlin
+generateSequence(0) { it + 1 }.take(10).sorted().toList() // [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+generateSequence(0) { it + 1 }.sorted().take(10).toList() // Infinite time. Does not return 
+```
+
+`sorted` 연산은 `Sequence` 처리가 더 느린 예시 입니다. 그럼에도 몇몇 처리 단계를 거치는 경우에는 `Sequence`를 사용하는 것이 성능에 더 좋습니다.
+
+```kotlin
+// Benchmarking measurement result: 150482ns
+fun productsSortAndProcessingList(): Double =
+    productsList
+        .sortedBy { it.price }
+        .filter { it.bought }
+        .map { it.price }
+        .average()
+
+// Benchmarking measurement result: 96811ns
+fun productsSortAndProcessingSequence(): Double =
+    productsList
+        .asSequence()
+        .sortedBy { it.price }
+        .filter { it.bought }
+        .map { it.price }
+        .average()
+```
