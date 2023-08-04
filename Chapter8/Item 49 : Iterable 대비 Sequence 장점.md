@@ -211,35 +211,35 @@ numbers.asSequence().filter { it % 10 == 0 }.map { it * 2 }.sum()
 
 이러한 비용은 사이즈 큰 컬렉션을 다룰 때 문제가 될 수 있습니다.
 
-예를 들어 파일을 읽는 경우, 파일의 크기가 GB 단위로 나갈 수 있습니다. 
+예를 들어 파일을 읽는 경우, 파일의 크기가 GB 단위로 나갈 수 있습니다.
 이러한 경우 모든 처리 단계에서 모든 데이터를 컬렉션에 할당하는 것은 엄청난 메모리 낭비로 볼 수 있습니다.
 
 그렇기에 기본적으로 파일을 처리하기 위해서는 `Sequence`를 사용합니다.
 
-아래 예시는 1GB의 범죄 파일을 컬렉션을 통해 처리하는 잘못된 솔루션 예제 입니다. 
+아래 예시는 1GB의 범죄 파일을 컬렉션을 통해 처리하는 잘못된 솔루션 예제 입니다.
 
 ```kotlin
 File("crimes.csv")
-    .readLines() 
-    .drop(1) 
-    .mapNotNull { it.split(",").getOrNull(6) } 
+    .readLines()
+    .drop(1)
+    .mapNotNull { it.split(",").getOrNull(6) }
     .filter { "CANNABIS" in it }
     .count()
     .let(::println)
 ```
 
-위 코드는 컬렉션을 생성하고 3개의 중간 연산을 거쳐 총 4개의 컬렉션을 생성하게 됩니다. 
+위 코드는 컬렉션을 생성하고 3개의 중간 연산을 거쳐 총 4개의 컬렉션을 생성하게 됩니다.
 이 중 3개는 1GB를 차지하는 데이터 파일의 대부분을 포함하고 있으므로 총 3GB 이상의 메모리를 소비해야 합니다.
 이러한 처리는 엄청난 메모리 낭비입니다. 위에서 설명한것 처럼 올바른 구현은 `Sequence`를 사용해야 합니다.
 
-아래 예제는 `useLines`를 사용하여 처리하는 예제 입니다. 
+아래 예제는 `useLines`를 사용하여 처리하는 예제 입니다.
 
 ```kotlin
 File(crimes.csv).useLines { lines: Sequence<String> ->
     lines
-        .drop(1) 
-        .mapNotNull { it.split(",").getOrNull(6) } 
-        .filter { "CANNABIS" in it } 
+        .drop(1)
+        .mapNotNull { it.split(",").getOrNull(6) }
+        .filter { "CANNABIS" in it }
         .count()
         .let(::println)
 }
@@ -256,10 +256,10 @@ File(crimes.csv).useLines { lines: Sequence<String> ->
 
 몇몇 연산에서는 전체 컬렉션에 대한 작업을 해야하기에 `Sequence`를 사용하더라도 이익을 볼 수 없는 경우가 있습니다.
 
-대표적으로 `sorted`가 있으며, `sorted`는 `Sequence`를 리스트로 누적 한 다음 Java 표준 라이브러리인 `sort`를 사용하여 구현합니다. 
+대표적으로 `sorted`가 있으며, `sorted`는 `Sequence`를 리스트로 누적 한 다음 Java 표준 라이브러리인 `sort`를 사용하여 구현합니다.
 이 과정에서 추가적인 시간이 걸리지만, `Iterable`이 컬렉션이나 배열이 아니라면 그 차이는 크지 않습니다.
 
-`Sequence`가 `sorted`와 같은 연산을 해야하는 것에 대해 의견이 분분합니다. 
+`Sequence`가 `sorted`와 같은 연산을 해야하는 것에 대해 의견이 분분합니다.
 왜냐하면 다음 요소를 계산하기 위해 모든 요소가 필요한 연산을 가진 `Sequence`는 부분적으로만 지연 연산을 하고 `Infinite Sequence`에서는 동작하지 않기 때문입니다.
 
 Kotlin 개발자들은 이 단점을 알고 있어야 하며, 특히 `Infinite Sequence`에서 사용할 수 없다는 것을 명심해야 합니다.
