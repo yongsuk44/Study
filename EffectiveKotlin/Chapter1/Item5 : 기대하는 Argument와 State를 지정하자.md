@@ -131,7 +131,7 @@ fun pop(number: Int = 1): List<T> {
 
 ## Nullability과 Smart-Casting
 
-`require`와 `check` 모두 [`Kotlin contracts`](../용어.md#contract)을 가지고 있으며, 이 `contracts`은 해당 함수가 반환될 때 해당 `predicate`가 참이라는 것을 명시한다.
+`require`와 `check` 모두 [`Kotlin contracts`](../../용어.md#contract)을 가지고 있으며, 이 `contracts`은 해당 함수가 반환될 때 해당 `predicate`가 참이라는 것을 명시한다.
 
 ```kotlin
 public inline fun require(value: Boolean): Unit {
