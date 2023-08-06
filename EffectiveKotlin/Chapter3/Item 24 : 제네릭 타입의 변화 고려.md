@@ -228,7 +228,7 @@ class Failure<out E>(val error: E) : Response<Nothing, E>()
 
 ### 반공변성과 업캐스팅 충돌
 
-공변성과 [in-positions](../용어.md#in-positions)에서 발생하는 비슷한 문제가 반공변성을 [out-positions](../용어.md#out-positions)에서 사용하려고 할 때 발생됩니다. 
+공변성과 [in-positions](../../용어.md#in-positions)에서 발생하는 비슷한 문제가 반공변성을 [out-positions](../../용어.md#out-positions)에서 사용하려고 할 때 발생됩니다. 
 
 Out-positions 역시 암시적인 업캐스팅을 허용합니다.
 
