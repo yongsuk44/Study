@@ -8,3 +8,317 @@ Rxjava, Reactor와 같이 잘 정리된 기존 JVM 라이브러리들이 있습�
 그러나 코루틴은 그 이상을 제공합니다. 
 코루틴은 멀티플랫폼으로 모든 Kotlin 플랫폼(JVM, JS, IOS, 공통 모듈 등)에서 사용될 수 있습니다.
 또한 코드 구조를 크게 바꾸지 않습니다. 대부분의 코루틴 기능은 간단하게 사용할 수 있습니다.
+
+## Android - Coroutine
+
+Android 앱 로직 구현 시 빈번하게 하는 작업은 다음과 같습니다.
+
+1. 하나 또는 여러 소스(API, 뷰 요소, database, preferences, 다른 앱)에서 데이터를 가져옵니다.
+2. 이 데이터를 처리(파싱 등)합니다.
+3. 이 데이터로 뷰에 표시하거나, 데이터베이스에 저장하거나 API로 보내는 등의 동작을 합니다.
+
+아래 예시는 API를 통해 뉴스를 가져와 정렬한 후 화면에 표시하는 상황입니다.
+
+```kotlin
+fun onCreate() {
+    val news = getNewsFromApi() 
+    val sortedNews = news.sortedByDescending { it.publishedAt }
+    view.showNews(sortedNews)
+}
+```
+
+Android 앱에서는 View를 수정할 때에는 메인 스레드에서만 처리해야 합니다.
+메인 스레드는 중간에 절대 중단(suspending) 되어서는 안됩니다. 중단되는 경우 앱이 크래쉬가 발생하여 멈추게 됩니다.
+
+따라서 위 함수는 구현될 수 없습니다.
+메인 스레드에서 위 함수를 실행하면 `getNewsFromApi` 함수가 메인 스레드를 중단시키게 되고, 앱이 크래쉬가 발생하게 됩니다.
+별도의 스레드를 구현해서 위 함수를 실행하면 `showNews` 호출 시 View를 수정하는 행위이기에 앱이 크래쉬가 발생하게 됩니다. 
+
+### Thread switching
+
+이러한 문제를 해결하기 위해 스레드를 전환하는 방법을 사용할 수 있습니다. 먼저 블록될 수 있는 스레드로 전환한 후, 메인 스레드로 전환합니다.
+
+```kotlin
+fun onCreate() {
+    val news = getNewsFromApi() 
+    val sortedNews = news.sortedByDescending { it.publishedAt }
+    
+    runOnUiThread {
+        view.showNews(sortedNews)
+    }
+}
+```
+
+위와 같이 스레드 전환이 이루어지는 코드를 일부 찾을 수 있지만, 위 구현은 아래와 같은 문제가 되는 것으로 알려져 있습니다.
+
+1. 스레드들을 취소하는 메커니즘이 없기에 메모리 누수를 자주 겪게 됩니다.
+2. 너무 많은 스레드를 생성하는 것은 많은 비용이 발생하게 됩니다.
+3. 빈번한 스레드 스위칭은 관리가 어렵습니다.
+4. 코드가 불필요하게 커지고 복잡해집니다.
+
+위 문제들은 다음과 같은 상황에서 명확하게 드러납니다.
+
+View의 열고 닫음을 빠르게 동작하는 UI가 있습니다.
+이 때 View를 열면 데이터를 읽고 처리하기 위해 여러 스레드를 시작한다고 가정합니다.
+
+만약 이때 생성되는 스레드들을 취소하지 않으면, 계속해서 위 작업들을 실행하고 있을 것이고, 더 이상 존재하지 않는 View를 수정하려고 할 수 있습니다.
+이는 불필요한 작업과 Background에서의 예외 발생, 그리고 다른 예기치 않은 결과를 초래할 수 있습니다.
+
+### Callbacks
+
+콜백(callback)은 위 문제를 해결할 수 있는 또 다른 패턴입니다.
+
+콜백은 함수를 `non-blocking`으로 만들되, 콜백 함수가 시작한 프로세스가 완료되면 실행해야 하는 함수를 전달하는 것입니다.
+
+아래는 콜백 패턴을 사용하면 어떻게 되는지 보여주는 예시 입니다.
+
+```kotlin
+fun onCreate() {
+    getNewsFromApi { news ->
+        val sortedNews = news.sortedByDescending { it.publishedAt }
+        view.showNews(sortedNews)
+    }
+}
+```
+
+그러나 위 코드는 구현의 취소를 지원하지 않습니다.
+
+취소 가능한 콜백 함수를 만들 수 있지만, 쉽지 않습니다.
+각 콜백 함수가 취소를 위해 특별히 구현되어 있어야 하며, 그것들을 취소하려면 모든 객체를 별도로 수집해야 합니다.
+
+```kotlin
+fun onCreate() {
+    startedCallbacks += getNewsFromApi { news -> 
+        val sortedNews = news.sortedByDescending { it.publishedAt }
+        view.showNews(sortedNews)
+    }
+}
+```
+
+콜백 구조는 이 외에도 많은 단점이 있습니다. 
+아래는 3개의 End-Point에서 데이터를 가져와야 하는 복잡한 경우입니다.
+
+```kotlin
+fun showNews() {
+    getConfigFromApi { config ->
+        getNewsFromApi(config) { news ->
+            getUserFromApi { user ->
+                view.showNews(news, user)
+            }
+        }
+    }
+}
+```
+
+#### 병렬 처리
+
+뉴스와 사용자 데이터를 동시에 가져오는 것은 병렬 처리를 필요로 합니다. 
+하지만 콜백 아키텍처는 병렬 처리를 자연스럽게 지원하지 않으며, 이를 달성하려면 복잡한 코드 구조가 필요합니다.
+
+#### 취소 지원
+
+취소 기능은 많은 경우 필수적인데, 특히 사용자가 요청을 중단하거나, 다른 활동으로 전환하거나, 앱을 종료하는 등의 상황에서 중요합니다. 
+이를 위해 각 콜백이 취소 가능하도록 개별적으로 구현해야 합니다. 그리고 콜백을 취소하려면, 그것들을 추적하고 관리하는 추가적인 코드가 필요합니다.
+
+#### 가독성 
+
+콜백이 중첩될수록 코드의 들여쓰기 수가 증가하여, 코드의 가독성이 떨어집니다. 
+이는 코드의 복잡성을 높이고 버그를 발생시킬 가능성을 높입니다.
+
+#### 순서 제어
+
+콜백을 사용하면, 어떤 것이 어떤 것 뒤에 일어나는지를 제어하는 것이 어렵습니다.
+예를 들어, 특정 작업이 완료된 후에만 실행되어야 하는 코드(hideProgressBar 등)를 콜백 밖에 위치시키면, 해당 코드는 기대했던 것보다 먼저 실행될 수 있습니다.
+이를 해결하려면 또 다른 콜백을 사용해야 하는데, 이는 코드의 복잡성을 더욱 높이게 됩니다.
+
+```kotlin
+fun onCreate() {
+    showProgressBar()
+    showNews()
+    hideProgressBar() // 잘못됨
+}
+```
+
+ProgressBar는 뉴스를 보여주는 과정이 시작된 직후에 숨겨지므로, 실질적으로 그것이 표시된 직후에 숨겨집니다. 이를 작동시키려면, showNews를 콜백 함수로 만들어야 합니다.
+
+```kotlin
+fun onCreate() { 
+    showProgressBar()
+    showNews { hideProgressBar() }
+}
+```
+
+그래서 콜백 구조는 복잡한 경우에 완벽하다 말하기 어렵습니다.
+
+### RxJava와 다른 반응형 스트림
+
+안드로이드와 백엔드 개발에서 주로 사용되는 방식은 RxJava 또는 그 후속작인 Reactor와 같은 반응 스트림입니다.
+이 방식을 사용하면, 모든 작업이 시작, 처리 및 관찰 가능한 데이터 스트림 내에서 이루어집니다. 이런 스트림들은 스레드 전환과 동시 처리를 지원하므로, 앱에서 처리 작업을 병렬로 수행하는 데 자주 활용됩니다.
+
+아래는 RxJava를 사용하여 문제를 해결하는 방법을 보여주는 예입니다:
+
+```kotlin
+fun onCreate() {
+    disposables += getNewsFromApi()
+        .subscribeOn(Schedulers.io())
+        .observeOn(AndroidSchedulers.mainThread())
+        .map { news -> news.sortedByDescending { it.publishedAt } }
+        .subscribe { news -> view.showNews(news) }
+}
+```
+
+위의 예시에서 `disposables`는 사용자가 화면을 떠나는 상황에서 스트림을 중단하기 위해 필요한 것입니다.
+
+이 방식은 메모리 누수가 없고, 취소가 지원되며, 스레드를 효율적으로 사용하기에 콜백보다 더 좋은 방법입니다.
+하지만, 문제는 복잡성 입니다. ‘이상적’으로 작성한 코드와 비교하면 두 코드 사이에는 공통점이 거의 없습니다.
+
+```kotlin
+fun onCreate() {
+    val news = getNewsFromApi()
+    val sortedNews = news.sortedByDescending { it.publishedAt }
+    view.showNews(sortedNews)
+}
+```
+
+또한 `subscribeOn`, `observeOn`, `map`, `subscribe` 등의 함수들을 다시 학습해야 하며 취소는 반드시 명시적으로 이루어져야 합니다.
+
+그리고 함수들은 `Observable` or `Single` 클래스로 래핑된 객체로 반환해야 합니다. 이 때문에 RxJava를 도입할 때 코드의 상당 부분을 리팩토링해야 합니다.
+
+`fun getNewsFromApi(): Single<List<News>>`
+
+위에서 3개의 End-Point를 호출해야하는 문제를 다시 보면, 이 문제는 RxJava로 적절하게 해결할 수 있지만 더욱 복잡해질 수 있습니다.
+
+```kotlin
+fun showNews() {
+    disposables += Observable.zip(
+        getConfigFromApi().flatMap { getNewsFromApi(it) },
+        getUserFromApi(),
+        BiFunction { news: List<News>, config: Config -> Pair(news, config) }
+    )
+        .subscribeOn(Schedulers.io())
+        .observeOn(AndroidSchedulers.mainThread())
+        .subscribe { (news, config) -> view.showNews(news, config) }
+}
+```
+
+위 코드는 동시성을 가지고 있으며 메모리 누수가 없지만, `zip`과 `flatMap` 같은 RxJava 함수를 도입하고, 값을 `Pair`로 묶은 다음 이를 분해 하고 있습니다.
+이는 올바른 구현이지만 매우 복잡합니다.
+
+### Kotlin Coroutines 사용하기
+
+Kotlin코루틴 도입의 핵심 기능은 특정 시점에 코루틴을 중단하고 이 후 재개하는 방식이 코루틴 기능의 핵심 입니다.
+이 덕분에 메인 스레드에서 코드를 실행하고 API로부터 데이터 요청 시 중단할 수 있습니다.
+
+코루틴이 중단되면, 스레드는 차단되지 않고 자유롭게 이동할 수 있고 뷰를 변경하거나 다른 코루틴을 처리하는 데 사용할 수 있습니다.
+
+데이터가 준비되면 코루틴은 메인 스레드를 기다립니다. ( 드문 경우이지만, 메인 스레드를 기다리는 코루틴의 대기열이 있을 수 있습니다.)
+기다린 후 메인 스레드를 얻으면 중단한 지점부터 다시 진행할 수 있습니다.
+
+```kotlin
+val scope = CoroutineScope(Dispatchers.Main)
+
+fun onCreate() {
+    scope.launch { updateNews() }
+    scope.launch { updateProfile() }
+}
+
+suspend fun updateNews() {
+    showProgressBar()
+    val news = getNewsFromApi() // Suspending function -> updateProfile() can run
+    val sortedNews = news.sortedByDescending { it.publishedAt }
+    view.showNews(sortedNews)
+    hideProgressBar()
+}
+
+suspend fun updateProfile() {
+    val user = getUserData()
+    view.showUser(user)
+}
+```
+
+위 코드를 보면 `updateNews`와 `updateProfile` 힘수는 메인 스레드에서 각각 별도의 코루틴으로 동작되고 있습니다.
+이들은 스레드를 차단하는 것이 아닌 코루틴을 잠시 중단함으로써, 이를 교차해서 수행할 수 있습니다.
+
+`updateNews` 함수가 API 응답을 기다리는 동안 메인 스레드는 `updateProfile`이 사용합니다.
+
+여기서는 사용자의 데이터가 이미 캐싱되어 있기에 `getUserData`는 중단되지 않다고 가정하고 있습니다.
+따라서 `updateProfile`은 중단되지 않고 실행할 수 있습니다. 
+
+이 시간은 API 응답을 받는데 충분하지 않았기에 그 동안 메인 스레드는 사용되지 않았습니다.
+데이터가 도착하면 메인 스레드를 점유하고 `getNewsFromAPI` 이후 지점부터 `updateNews` 함수를 다시 시작합니다.
+
+
+코루틴은 중단과 재개가 가능한 구성요소 입니다. 
+JS, Rust, Python 등의 언어에서 찾을 수 있는 async/await 또는 generator 같은 개념도 코루틴을 활용하지만 그 기능은 제한적입니다.
+
+따라서 첫번째 문제는 아래와 같이 코루틴을 활용함으로써 해결할 수 있습니다.
+
+```kotlin
+fun onCreate() {
+    viewModelScope.launch {
+        val news = getNewsFromApi()
+        val sortedNews = news.sortedByDescending { it.publishedAt }
+        view.showNews(sortedNews)
+    }
+}
+```
+
+    이 코드는 `viewModelScope`를 사용하는데 이는 현재 Android에서 자주 사용되는 scope 입니다.
+    또는 Custom Scope를 사용할 수 있습니다. 위 2가지 옵션은 나중에 나오니 이러한 옵션들이 있다. 정도로 이해하면 됩니다.
+
+위 코드는 메인 스레드에서 실행되지만 메인 스레드를 차단하지 않습니다.
+
+일시 중단 메커니즘 덕분에 데이터를 기다려야 할 때 코루틴을 일시 중단하게 되며 코루틴이 일시 중단되면, 메인 스레드는 다른 일들을 처리할 수 있습니다.
+그리고 데이터가 준비되면, 코루틴은 메인 스레드를 다시 가져와 이전에 멈춘곳 부터 다시 시작하게 됩니다.
+
+이를 통해 3개의 End-Point 호출에 관련한 문제도 처리할 수 있게 됩니다.
+
+```kotlin
+fun showNews() {
+    viewModelScope.launch {
+        val config = getConfigFromApi()
+        val news = getNewsFromApi(config)
+        val user = getUserFromApi()
+        view.showNews(user, news)
+    }
+}
+```
+
+위 방법은 좋아 보이지만, 각 함수 호출이 직렬처리 되므로 각각 1초가 걸린다면 전체 함수는 총 3초가 걸리게 되므로 최적화되어 있지 않습니다.
+
+이 때 `async`와 `await` 함수를 사용하면 즉시 다른 코루틴을 시작하고 그 결과를 나중에 기다릴 수 있습니다.
+
+```kotlin
+fun showNews() {
+    viewModelScope.launch {
+        val config = async { getConfigFromApi() }
+        val news = async { getNewsFromApi(config.await()) }
+        val user = async { getUserFromApi() }
+        view.showNews(user.await(), news.await())
+    }
+}
+```
+
+또한 코루틴 사용 시 다양한 UseCase를 쉽게 구현하고 다른 Kotlin 기능을 활용할 수 있게 됩니다.
+아래 예시는 for-loop 또는 컬렉션 처리 함수의 사용을 제한하지 않고 뉴스의 다음 페이지를 병렬 또는 순차적으로 다운로드 받는 방식입니다.
+
+```kotlin
+// 모든 페이지를 동시에 불러옴
+fun showAllNews() { 
+    viewModelScope.launch {
+        val allNews = (0 until getNumberOfPages())
+            .map { page -> async { getNewsFromApi(page) } }
+            .flatMap { it.await() }
+        view.showAllNews(allNews)
+    }
+}
+// 다음 페이지를 차례대로 불러옴
+fun showPagesFromFirst() {
+    viewModelScope.launch {
+        for (page in 0 until getNumberOfPage()) {
+            val news = getNewsFromApi(page)
+            view.showNextPage(news)
+        }
+    }
+}
+```
