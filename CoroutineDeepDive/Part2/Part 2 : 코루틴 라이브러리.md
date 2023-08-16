@@ -54,3 +54,8 @@ suspend 함수는 서로 `Continuation`을 전달하며 호출 스택을 쌓아�
 - 자식 코루틴은 부모 코루틴으로부터 `CoroutineContext`를 상속받으며, 필요한 경우 덮어 쓸 수 있습니다.
 - 부모 코루틴 취소 시 자식 코루틴도 취소됨, 자식 코루틴 오류 발생 시 부모 코루틴도 파괴됩니다.
 - 다른 코루틴 빌더와 달리 `runBlocking`은 root 코루틴으로만 사용됩니다.
+
+### The Big Picture
+
+- 모든 코루틴은 `CoroutineScope`에서 시작되어야 하며, 이는 `runBlocking` 또는 특정 프레임워크에 의해 제공됩니다.
+- suspend 함수 내에서 Scope가 없기에 `coroutineScope` 함수를 사용하여 Scope를 적용해야 합니다.
