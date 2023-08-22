@@ -59,3 +59,19 @@ suspend 함수는 서로 `Continuation`을 전달하며 호출 스택을 쌓아�
 
 - 모든 코루틴은 `CoroutineScope`에서 시작되어야 하며, 이는 `runBlocking` 또는 특정 프레임워크에 의해 제공됩니다.
 - suspend 함수 내에서 Scope가 없기에 `coroutineScope` 함수를 사용하여 Scope를 적용해야 합니다.
+
+### using coroutineScope
+
+- `coroutineScope`는 일시 정지 함수 내에서 필요한 Scope를 생성하고, 람다 식에서 반환된 값을 반환하는 일시 정지 함수입니다.
+- 이는 코드 구조화와 동시성을 관리하는데 유용하며, 코루틴의 효과적인 관리를 도와줍니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    lanunch {
+        delay(1000L)
+        print("World!")
+    }
+    
+    print("Hello,")
+}
+```
