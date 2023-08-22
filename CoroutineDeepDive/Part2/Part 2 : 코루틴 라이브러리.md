@@ -75,3 +75,10 @@ suspend fun main(): Unit = coroutineScope {
     print("Hello,")
 }
 ```
+
+## [Part 2.2 : Coroutine Context](코루틴%20컨텍스트.md)
+
+### CoroutienContext Interface
+- `CoroutineContext`는 요소와 요소의 집합을 나타내는 인터페이스로 `Job`, `CoroutineName`, `CoroutineDispatcher` 등과 같은 `Element` 인스턴스의 집합입니다.
+- 위 요소들은 그 자체로 `CoroutineContext`가 될 수 있으며 이러한 구조는 컨텍스트 관리를 유연하게 만들어 줍니다.
+- 위 요소들은 유니크 키를 가지며 이를 통해 요소를 식별하고 고유하게 관리할 수 있습니다.
