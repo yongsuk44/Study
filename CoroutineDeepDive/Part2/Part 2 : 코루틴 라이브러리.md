@@ -97,3 +97,8 @@ suspend fun main(): Unit = coroutineScope {
 
 - 앞서 말한것처럼 `CoroutineContext`은 2개의 컨텍스트를 합칠 수 있고 이를 통해 새로운 컨텍스트를 생성할 수 있습니다.
 - 2개의 서로 다른 키를 합칠 경우 2가지 키 모두 응답되며, 동일한 키를 가진 다른 요소가 추가되면 `map`과 같이 새로운 요소가 이전 요소를 대체 합니다.
+
+### Empty coroutine context
+
+- `EmptyCoroutineContext`는 그 자체로 어떠한 행동도 하지 않으며, 다른 컨텍스트와 결합하면 결합된 다른 컨텍스트는 원래의 컨텍스트와 동일하게 동작됩니다.
+- `EmptyCoroutineContext`는 초기 상태로 사용하거나, 필요에 따라 컨텍스트를 동적으로 확장하고자 할 때 유용합니다.
