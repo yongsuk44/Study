@@ -92,3 +92,8 @@ suspend fun main(): Unit = coroutineScope {
 - `kotlinx.coroutines` 라이브러리에서 `companion object`를 요소의 키로 사용하는 것이 일반적입니다.
 - 이름이 `Key`인 `companion object`는 특정 클래스(`CoroutineName`) 또는 인터페이스(`Job`)를 가리킬 수 있고, 
   동일한 Key를 사용하여 여러 클래스(`job`,`SupervisorJob` 등)을 가리킬 수 있습니다.
+
+### Adding Contexts
+
+- 앞서 말한것처럼 `CoroutineContext`은 2개의 컨텍스트를 합칠 수 있고 이를 통해 새로운 컨텍스트를 생성할 수 있습니다.
+- 2개의 서로 다른 키를 합칠 경우 2가지 키 모두 응답되며, 동일한 키를 가진 다른 요소가 추가되면 `map`과 같이 새로운 요소가 이전 요소를 대체 합니다.
