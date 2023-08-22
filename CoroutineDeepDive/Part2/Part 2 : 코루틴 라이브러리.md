@@ -79,6 +79,16 @@ suspend fun main(): Unit = coroutineScope {
 ## [Part 2.2 : Coroutine Context](코루틴%20컨텍스트.md)
 
 ### CoroutienContext Interface
+
 - `CoroutineContext`는 요소와 요소의 집합을 나타내는 인터페이스로 `Job`, `CoroutineName`, `CoroutineDispatcher` 등과 같은 `Element` 인스턴스의 집합입니다.
 - 위 요소들은 그 자체로 `CoroutineContext`가 될 수 있으며 이러한 구조는 컨텍스트 관리를 유연하게 만들어 줍니다.
 - 위 요소들은 유니크 키를 가지며 이를 통해 요소를 식별하고 고유하게 관리할 수 있습니다.
+
+### Finding elements in CoroutineContext
+
+- `CoroutineContext`는 `map`과 유사한 `Key-Value` 구조와 유사하며, 요소는 `Unique Key`로 식별됩니다.
+- `CoroutineContext`는 `get`, `[]` 메서드와 `Key`를 통해 특정 요소를 찾을 수 있고, 찾는 요소가 없는 경우 `null`을 반환 합니다.
+- Kotlin에서 클래스 이름은 해당 클래스의 `companion object`에 대한 참조로 작동됩니다. (`ctx[CoroutineName] == ctx[CoroutineName.Key]`) 
+- `kotlinx.coroutines` 라이브러리에서 `companion object`를 요소의 키로 사용하는 것이 일반적입니다.
+- 이름이 `Key`인 `companion object`는 특정 클래스(`CoroutineName`) 또는 인터페이스(`Job`)를 가리킬 수 있고, 
+  동일한 Key를 사용하여 여러 클래스(`job`,`SupervisorJob` 등)을 가리킬 수 있습니다.
