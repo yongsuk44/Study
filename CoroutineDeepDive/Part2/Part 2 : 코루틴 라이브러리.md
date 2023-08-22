@@ -102,3 +102,8 @@ suspend fun main(): Unit = coroutineScope {
 
 - `EmptyCoroutineContext`는 그 자체로 어떠한 행동도 하지 않으며, 다른 컨텍스트와 결합하면 결합된 다른 컨텍스트는 원래의 컨텍스트와 동일하게 동작됩니다.
 - `EmptyCoroutineContext`는 초기 상태로 사용하거나, 필요에 따라 컨텍스트를 동적으로 확장하고자 할 때 유용합니다.
+
+### ## Subtracting Elements
+
+- `CoroutineContext`는 `map`과 유사한 `minusKey` 메서드를 제공하며, 이는 특정 키를 가진 요소를 제거합니다.
+- `minus` 연산자는 `CoroutineContext`에 대해서 연산자의 의미가 명확하지 않기에 오버로드 되지 않았습니다.
