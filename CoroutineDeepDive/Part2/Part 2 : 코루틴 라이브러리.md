@@ -103,7 +103,15 @@ suspend fun main(): Unit = coroutineScope {
 - `EmptyCoroutineContext`는 그 자체로 어떠한 행동도 하지 않으며, 다른 컨텍스트와 결합하면 결합된 다른 컨텍스트는 원래의 컨텍스트와 동일하게 동작됩니다.
 - `EmptyCoroutineContext`는 초기 상태로 사용하거나, 필요에 따라 컨텍스트를 동적으로 확장하고자 할 때 유용합니다.
 
-### ## Subtracting Elements
+### Subtracting Elements
 
 - `CoroutineContext`는 `map`과 유사한 `minusKey` 메서드를 제공하며, 이는 특정 키를 가진 요소를 제거합니다.
 - `minus` 연산자는 `CoroutineContext`에 대해서 연산자의 의미가 명확하지 않기에 오버로드 되지 않았습니다.
+
+### Coroutine context and builders
+
+- 일반적으로 자식 코루틴은 부모 코루틴으로부터 컨텍스트를 상속받으며 이 컨텍스트를 override 하여 사용할 수 있습니다.
+- 보통 코루틴 컨텍스트 계산 시 특정 키에 대해서 여러 컨텍스트가 값이 존재하는 경우 '우선순위'(`child > parent > default`)에 따라 어떤 값을 사용할지 결정합니다. 
+  - `childContext`와 `parentContext`가 동일한 키를 가지고 있으면, `childContext`의 값이 사용됩니다.
+  - `defaultContext`에는 기본 설정들이 존재하며 `ContinuationInterceptor` 값이 없으면 `Dispatchers.Default` 적용되며, 디버그 모드 시 `CoruotineId`를 적용 합니다.
+- `Job`은 코루틴 생명주기를 나타내는 특별한 컨텍스트 요소로, 부모-자식 간의 통신에 사용되는 Mutable한 컨텍스트입니다.
