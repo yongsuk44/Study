@@ -124,3 +124,8 @@ suspend fun main(): Unit = coroutineScope {
 
 - `CoroutineScope`는 `coroutineContext` 속성을 통해 현재 코루틴 컨텍스트에 접근할 수 있습니다.
 - 일반 suspend 함수는 `coroutineContext`에 [직접 접근하는 것이 불가능](suspend%20함수에서%20CoroutineScope%20직접%20접근을%20막은%20이유.md)하므로 `continuation`을 통해 `coroutineContext`에 접근해야 합니다.
+
+### Creating our own context
+
+- Custom `CoroutineContext`를 만들기 위해서는 `CoroutineContext.Element`를 구현하는 클래스를 생성하고 `CoroutineContext.Key<*>` 프로퍼티와 `compainon object Key`를 정의하여 사용하면 됩니다.
+- Custom `CoruotienContext`는 특별하게 따로 정의하지 않는 이상 `CoroutineName`과 유사하게 동작하며 [보통 코루틴 컨텍스트 계산하는 방식](#coroutine-context-and-builders)과 동일하게 적용됩니다.
