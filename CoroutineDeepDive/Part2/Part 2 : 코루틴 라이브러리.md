@@ -4,7 +4,7 @@
 
 - 코루틴 빌더
 - 다양한 코루틴 컨텍스트
-- 코루틴 취소 작동 방식 
+- 코루틴 취소 작동 방식
 - 코루틴 설정 방법
 - 코루틴 테스트 방법
 - 공유 상태에 안전하게 접근하는 방법
@@ -19,7 +19,8 @@ suspend 함수는 서로 `Continuation`을 전달하며 호출 스택을 쌓아�
 ### launch Builder
 
 `launch`는 독립적으로 코루틴을 시작하는데 사용되며, 새로운 스레드를 시작하는 것과 유사한 역할을 합니다.  
-그러나 `Thead`와 `launch`는 일시 중단된 상황에서 다르게 처리됩니다.  
+그러나 `Thead`와 `launch`는 일시 중단된 상황에서 다르게 처리됩니다.
+
 - 스레드 : 스레드 차단 시 계속해서 비용이 발생
 - 코루틴 : 코루틴 정지 시 비용이 거의 발생되지 않음
 
@@ -30,9 +31,11 @@ suspend 함수는 서로 `Continuation`을 전달하며 호출 스택을 쌓아�
 ### runBlocking Builder
 
 `runBlocking`은 코루틴이 중단될 때 시작된 스레드를 차단하는 특별한 빌더입니다.   
-이러한 특징은 `Thread.sleep(1000L)`과 `delay(1000L)`이 동일하게 동작하게 하므로, 메인 함수나 단위 테스트와 같이 프로그램이나 테스트가 너무 일찍 종료되는 것을 방지하고자 할 때 유용합니다.
+이러한 특징은 `Thread.sleep(1000L)`과 `delay(1000L)`이 동일하게 동작하게 하므로, 메인 함수나 단위 테스트와 같이 프로그램이나 테스트가 너무 일찍 종료되는 것을 방지하고자 할 때
+유용합니다.
 
 최근에는 다음과 같은 변화가 있었습니다.
+
 - 메인 함수의 경우, 자체를 `suspend` 함수로 정의하여 `runBlocking`을 대체할 수 있습니다.
 - 단위 테스트의 경우, `runBlocking` 대신 `runTest`를 사용하여 가상 시간에서 코루틴을 작동시킬 수 있습니다.
 
@@ -71,7 +74,7 @@ suspend fun main(): Unit = coroutineScope {
         delay(1000L)
         print("World!")
     }
-    
+
     print("Hello,")
 }
 ```
@@ -88,9 +91,9 @@ suspend fun main(): Unit = coroutineScope {
 
 - `CoroutineContext`는 `map`과 유사한 `Key-Value` 구조와 유사하며, 요소는 `Unique Key`로 식별됩니다.
 - `CoroutineContext`는 `get`, `[]` 메서드와 `Key`를 통해 특정 요소를 찾을 수 있고, 찾는 요소가 없는 경우 `null`을 반환 합니다.
-- Kotlin에서 클래스 이름은 해당 클래스의 `companion object`에 대한 참조로 작동됩니다. (`ctx[CoroutineName] == ctx[CoroutineName.Key]`) 
+- Kotlin에서 클래스 이름은 해당 클래스의 `companion object`에 대한 참조로 작동됩니다. (`ctx[CoroutineName] == ctx[CoroutineName.Key]`)
 - `kotlinx.coroutines` 라이브러리에서 `companion object`를 요소의 키로 사용하는 것이 일반적입니다.
-- 이름이 `Key`인 `companion object`는 특정 클래스(`CoroutineName`) 또는 인터페이스(`Job`)를 가리킬 수 있고, 
+- 이름이 `Key`인 `companion object`는 특정 클래스(`CoroutineName`) 또는 인터페이스(`Job`)를 가리킬 수 있고,
   동일한 Key를 사용하여 여러 클래스(`job`,`SupervisorJob` 등)을 가리킬 수 있습니다.
 
 ### Adding Contexts
@@ -111,7 +114,13 @@ suspend fun main(): Unit = coroutineScope {
 ### Coroutine context and builders
 
 - 일반적으로 자식 코루틴은 부모 코루틴으로부터 컨텍스트를 상속받으며 이 컨텍스트를 override 하여 사용할 수 있습니다.
-- 보통 코루틴 컨텍스트 계산 시 특정 키에 대해서 여러 컨텍스트가 값이 존재하는 경우 '우선순위'(`child > parent > default`)에 따라 어떤 값을 사용할지 결정합니다. 
-  - `childContext`와 `parentContext`가 동일한 키를 가지고 있으면, `childContext`의 값이 사용됩니다.
-  - `defaultContext`에는 기본 설정들이 존재하며 `ContinuationInterceptor` 값이 없으면 `Dispatchers.Default` 적용되며, 디버그 모드 시 `CoruotineId`를 적용 합니다.
+- 보통 코루틴 컨텍스트 계산 시 특정 키에 대해서 여러 컨텍스트가 값이 존재하는 경우 '우선순위'(`child > parent > default`)에 따라 어떤 값을 사용할지 결정합니다.
+    - `childContext`와 `parentContext`가 동일한 키를 가지고 있으면, `childContext`의 값이 사용됩니다.
+    - `defaultContext`에는 기본 설정들이 존재하며 `ContinuationInterceptor` 값이 없으면 `Dispatchers.Default` 적용되며, 디버그 모드
+      시 `CoruotineId`를 적용 합니다.
 - `Job`은 코루틴 생명주기를 나타내는 특별한 컨텍스트 요소로, 부모-자식 간의 통신에 사용되는 Mutable한 컨텍스트입니다.
+
+### Accessing context in a suspending function
+
+- `CoroutineScope`는 `coroutineContext` 속성을 통해 현재 코루틴 컨텍스트에 접근할 수 있습니다.
+- 일반 suspend 함수는 `coroutineContext`에 [직접 접근하는 것이 불가능](suspend%20함수에서%20CoroutineScope%20직접%20접근을%20막은%20이유.md)하므로 `continuation`을 통해 `coroutineContext`에 접근해야 합니다.
