@@ -72,6 +72,19 @@ suspend fun main(): Unit = coroutineScope {
 }
 ```
 
+### Summary
+
+| Coroutine Builder | Description                                     |
+| --- |-------------------------------------------------|
+| launch | 독립적인 코루틴을 시작하며, `Job`을 반환합니다.                   |
+| async | 값을 반환할 때까지 중단되는 병렬 처리에 적합하며, `Deferred`를 반환합니다. |
+| runBlocking | 현재 스레드를 차단하고, 코루틴이 완료될 때까지 대기합니다. |
+
+- 코루틴은 [구조화된 동시성](../Structured%20Concurrency.md)을 위해 작성되며, 부모-자식 관계를 형성합니다.
+- 코루틴은 스레드에 비해 일시 중단되었을 때의 비용이 훨씬 저렴합니다.
+- 모든 코루틴은 `coroutineScope`에서 시작되어야 하며, 이는 `runBlocking` 또는 특정 프레임워크에 의해 제공됩니다.
+- `coroutineScope()`는 일시 정지 함수 내에서 필요한 Scope를 생성하고, 람다 식에서 반환된 값을 반환하는 일시 정지 함수입니다.
+
 ---
 
 ## [Part 2.2 : Coroutine Context](코루틴%20컨텍스트.md)
@@ -128,6 +141,15 @@ suspend fun main(): Unit = coroutineScope {
 - Custom `CoruotienContext`는 특별하게 따로 정의하지 않는 이상 `CoroutineName`과 유사하게
   동작하며 [보통 코루틴 컨텍스트 계산하는 방식](#coroutine-context-and-builders)과 동일하게 적용됩니다.
 
+### Summary
+
+- `CoroutineContext`는 `Job`, `CoroutineName`, `CoroutineDispatcher` 등의 `Element` 요소들의 집합이며 이들은 유니크 키를 가지고 있어 식별과 관리가 가능합니다.
+- `CoroutineContext`는 `Key-Value` 구조로 되어있어 특정 요소를 키로 찾을 수 있습니다.
+- 2개의 `CoroutineContext`를 합쳐 새로운 컨텍스트를 만들 수 있으며, 같은 키를 가진 요소가 존재하면 새 요소가 이전 요소를 대체합니다.
+- `EmptyCoroutineContext`는 아무런 행동도 하지 않으며 다른 컨텍스트와 병합하여도 원래 컨텍스트의 특성을 유지합니다.
+- `CoroutineContext`에서 `minusKey()`를 통해 특정 키를 가진 요소를 제거할 수 있습니다.
+- 자식 코루틴은 부모 코루틴의 컨텍스트를 상속받으며, 여러 컨텍스트에 같은 키에 대해서 값이 존재하면 컨텍스트 우선순위에 따라 값이 적용됩니다.
+
 ---
 
 ## [Part 2.3 : Jobs and awaiting children](Job과%20자식%20코루틴의%20대기.md)
@@ -165,3 +187,12 @@ suspend fun main(): Unit = coroutineScope {
 
 - 위 2가지 메서드의 결과값이 `true`인 경우 `Job`이 완료됨을 의미하며, `false`인 경우 이미 완료된 `Job`임을 의미합니다.
 - `job.complete()` 호출 시 `Job` 내에 실행 중인 모든 자식 코루틴들이 완료될 떄까지 계속 실행하게 됩니다. (추가적으로 `job.join`을 사용하여 `Job`의 완료를 대기할 수 있습니다.)
+
+
+### Summary
+
+- `Job`은 코루틴을 취소하거나 상태를 추적하는 등의 기능을 통해 코루틴을 제어할 수 있습니다.
+- `Job`은 자동으로 부모 코루틴에서 자식 코루틴으로 상속되지 않은 유일한 코루틴 컨텍스트 입니다.
+- `job.join()` : 호출한 코루틴을 일시 중단시키고 지정된 `Job`이 완료될 때까지 대기시킬 수 있습니다.
+- `job.complete()` : `Job`을 완료시키며 모든 자식 코루틴이 끝날때 까지 계속 실행됩니다.
+- `job.completeExceptionally()` : 주어진 예외와 함께 `Job`을 완료시킵니다. 
