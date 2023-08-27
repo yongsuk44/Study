@@ -263,3 +263,198 @@ fun main(): Unit = runBlocking {
 // Test2
 // Done
 ```
+
+---
+
+## Job factory function
+
+`Job()` 팩토리 함수 사용 시 코루틴과 연결되지 않은 `Job` 인스턴스를 생성할 수 있습니다.
+
+`Job()`을 통해 생성된 `Job`은 다른 코루틴들의 부모로 사용될 수 있습니다. 
+단, 모든 자식 코루틴이 끝난 상태에서 `join`을 호출하더라도 이 `Job`은 여전히 `Active` 상태로 남아 있어 종료되지 않는 문제가 발생할 수 있습니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job = Job()
+    
+    launch(job) { // thr new job replaces one from parent
+        delay(1000)
+        println("Text 1")
+    }
+    
+    launch(job) { // thr new job replaces one from parent
+        delay(2000)
+        println("Text 2")
+    }
+    
+    job.join() // Here we will await forever
+    println("Will not be printed")
+}
+
+// 1s delay
+// Text 1
+// 1s delay
+// Text 2
+// runs forever
+```
+
+위와 같은 문제를 해결하기 위해 `Job.children`을 활용하여 모든 자식 코루틴에 `join`을 호출하는 것이 좋습니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job = Job()
+    
+    launch(job) { // thr new job replaces one from parent
+        delay(1000)
+        println("Text 1")
+    }
+    
+    launch(job) { // thr new job replaces one from parent
+        delay(2000)
+        println("Text 2")
+    }
+    
+    job.children.forEach { it.join() }
+}
+
+// 1s delay
+// Text 1
+// 1s delay
+// Text 2
+```
+
+실제로 `Job()`은 `CompletableJob`이라는 하위 인터페이스 타입의 객체를 반환합니다.
+
+```kotlin
+public fun Job(parent: Job? = null): CompletableJob
+```
+
+`CompletableJob`은 `Job`의 기능을 확장해 `complete()`와 `completeExceptionally()` 메서드를 제공합니다.
+
+### CompletableJob - complete(): Boolean
+
+`Job`을 완료시키며, 이 메서드를 호출하면, 모든 자식 코루틴이 모두 끝날 때까지 계속 실행됩니다.  
+그러나 이후에는 이 `Job`에서 새로운 코루틴을 시작할 수 없습니다. 
+
+- 결과값이 `true`라면 이 메서드 호출에 의해 `Job`이 완료되었음을 의미합니다.
+- 결과값이 `false`라면 이 `Job`이 이미 완료되었음을 의미합니다.
+
+```kotlin
+fun main() = runBlocking {
+    val job = Job()
+    
+    launch(job) {
+        repeat(5) { num -> 
+            delay(200)
+            println("Req$num")
+        }
+    }
+    
+    launch {
+        delay(500)
+        job.complete()
+    }
+    
+    job.join()
+    
+    launch(job) { println("Will not be printed") }
+    
+    println("Done")
+}
+
+// Req0
+// Req1
+// Req2
+// Req3
+// Req4
+// Done
+```
+
+### CompletableJob - completeExceptionally(exception: Throwable): Boolean
+
+주어진 예외와 함께 `Job`을 완료시킵니다.  
+이로 인해 모든 자식 코루틴은 즉시 취소되며 `CancellationException`이 주어진 예외를 감싸고 있습니다.
+
+반환 값은 `complete()`와 동일하게, 이 메서드 호출로 인해 `Job`이 완료되었는지 아닌지를 나타냅니다.
+
+```kotlin
+fun main() = runBlocking {
+    val job = Job()
+    
+    launch(job) { 
+        repeat(5) { num -> 
+            delay(200)
+            println("Req$num")
+        }
+    }
+    
+    launch {
+        delay(500)
+        job.complteExceptionally(Error("Some Error"))
+    }
+    
+    job.join()
+    
+    launch(job) { println("Will not be printed") }
+    
+    println("Done")
+}
+
+// Req0
+// Req1
+// Done
+```
+
+`complete()`은 마지막 코루틴을 `Job`에서 시작한 후에 자주 사용됩니다.
+
+`complete()`를 호출하면, `Job` 내에 실행 중인 모든 자식 코루틴들이 완료될 때까지 실행을 계속하게 됩니다.
+또한 `job.join()`을 사용하여 `Job`의 완료를 대기할 수 있습니다.
+
+이렇게 하면 모든 코루틴이 완료된 후에만 프로그램이 종료됩니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job = Job()
+    launch(job) { 
+        delay(1000)
+        println("Text 1")
+    }
+    
+    launch(job) { 
+        delay(2000)
+        println("Text 2")
+    }
+    job.complete()
+    job.join()
+}
+
+// 1s delay
+// Text 1
+// 1s delay
+// Text 2
+```
+
+`Job()`에 부모 `Job`을 인자로 전달할 수 있습니다. 부모 `Job`이 취소되면, 자식 `Job`도 같이 취소됩니다.  
+이를 통해 부모-자식 관계를 활용하여 코루틴의 실행을 조율할 수 있습니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val parentJob = Job()
+    val job = Job(parentJob)
+
+    launch(job) {
+        delay(1000)
+        println("Text 1")
+    }
+
+    launch(job) {
+        delay(2000)
+        println("Text 2")
+    }
+
+    delay(1100)
+    parentJob.cancel()
+    job.children.forEach { it.join() }
+}
+// Text 1
+```
