@@ -132,3 +132,12 @@ suspend fun main(): Unit = coroutineScope {
 - `Job`은 코루틴을 취소하거나, 상태를 추적하는 등의 기능을 제공하는 코루틴 컨텍스트 요소입니다.
 - `Job`은 `NEW`, `ACTIVE`, `COMPLETING`, `CANCELLING`, `CANCELLED`, `COMPLETED` 등을 통해 상태를 나타낼 수 있습니다.
 - `isActive`, `isCompleted`, `isCancelled` 등의 속성을 통해 `Job`의 상태를 확인할 수 있습니다.
+
+### Coroutine builders create their jobs based on their parent job
+
+- 코루틴 빌더는 자체적으로 `Job`을 생성하며 `Job`은 코루틴 컨텍스트이므로 `coroutineContext[Job]` 또는 확장 프로퍼티인 `job`을 통해 접근할 수 있습니다.
+- `Job`은 부모 코루틴에서 자식 코루틴으로 자동으로 상속되지 않은 유일한 코루틴 컨텍스트입니다.
+  - 대신 부모-자식 형성을 위해서 자식 코루틴의 `Job`은 부모 코루틴의 `Job`을 참조하여 관계를 형성 합니다.
+- 자식 코루틴에서 부모 코루틴의 `Job` 컨텍스트가 새로운 `Job`으로 대체될 경우 구조적 동시성 메커니즘이 형성되지 않기에 여러 문제가 발생될 수 있습니다.
+  - 부모 코루틴은 자식 코루틴의 본문이 끝날 때 까지 기다리지 않고 종료될 수 있음
+  - 자식 코루틴에서 취소 및 예외 처리를 상위 코루틴으로 전달할 수 없음

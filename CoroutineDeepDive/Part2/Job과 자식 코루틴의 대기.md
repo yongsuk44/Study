@@ -107,3 +107,97 @@ suspend fun main() = coroutineScope {
 | Cancelling | false    | false       | true        |
 | Cancelled  | false    | true        | true        |
 | Completed  | false    | true        | false       |
+
+---
+
+## Coroutine builders create their jobs based on their parent job
+
+코루틴 라이브러리의 모든 코루틴 빌더는 자체 `Job`을 생성합니다.
+
+대부분의 코루틴 빌더들은 이 `Job`을 반환하므로 다른곳에서도 사용할 수 있으며, 이는 `launch`에서 명확하게 확인할 수 있습니다.
+
+```kotlin
+fun launchTest(): Unit = runBlocking {
+    val job: Job = launch {
+        delay(1000)
+        println("Test")
+    }
+}
+
+fun asyncTest(): Unit = runBlocking {
+    val deferred: Deferred<String> = async {
+        delay(1000)
+        "Test"
+    }
+
+    val job: Job = deferred
+}
+```
+
+`Job`은 코루틴 컨텍스트이므로 `coroutineContext[Job]`을 통해 접근할 수 있으며 
+확장 프로퍼티 `job`을 통해 더 쉽게 `Job`에 접근할 수 있습니다.
+
+```kotlin
+// extension
+val coroutineContext.job: Job
+    get() = get(Job) ?: error("Current context doesn't...")
+
+// usage
+fun main(): Unit = runBlocking {
+    print(coroutineContext.job.isActive) // true
+}
+```
+
+`Job`은 **코루틴에서 코루틴으로 자동으로 상속되지 않은 유일한 코루틴 컨텍스트**입니다.
+
+대신 새로운 코루틴은 자신만의 `Job` 인스턴스를 생성합니다.
+이는 코루틴이 부모 코루틴의 `Job`을 사용하지 않고, 자신만의 `Job`을 생성한다는 것을 의미합니다.
+
+그렇다면 모든 코루틴은 부모-자식 관계가 성립되어야 하는데 부모 코루틴의 `Job`은 어떻게 자식 코루틴 `Job`의 부모가 될까요?
+
+새로운 코루틴이 생성되면 그 코루틴은 부모 코루틴의 `Job`을 '참조'하게 됩니다. 
+이는 상속과는 다르며, 새로운 코루틴은 부모 `Job`을 '부모로서' 참조하는 것입니다.
+
+즉, 새로운 코루틴의 `Job`은 부모 코루틴의 `Job`을 참조하여 부모-자식 관계를 형성한다고 볼 수 있습니다.
+
+```kotlin
+fun main(): Unit = runBlocking {
+    val name = CoroutineName("Some name")
+    val job = Job()
+    
+    launch(name + job) {
+        val childName = coroutineContext[CoroutineName]
+        println(childName == name) // true
+        val childJob = coroutineContext[Job]
+        println(childJob == job) // false
+        println(childJob == job.children.first()) // true
+    }
+}
+```
+
+부모 코루틴은 자신의 모든 자식 코루틴을 참조할 수 있고, 자식 코루틴도 부모 코루틴을 참조할 수 있습니다.  
+이러한 관계는 코루틴 범위 내에서 취소 및 예외 처리를 구현할 수 있도록 합니다.
+
+```kotlin
+fun main(): Unit = runBlocking {
+    val job: Job = launch { delay(1000) }
+    
+    val parentJob: Job = coroutineContext.job // or coroutineContext[Job]!!
+    println(job == parentJob) // false
+    val parentChildren: Sequence<Job> = parentJob.children
+    println(parentChildren.first() == job) // true
+}
+```
+
+부모 `Job` 컨텍스트가 새로운 `Job`으로 대체될 경우 구조적 동시성 메커니즘은 동작되지 않습니다.  
+이러한 경우 부모 코루틴은 자식 코루틴을 기다리지 않고 끝내버립니다.
+
+```kotlin
+fun main(): Unit = runBlocking {
+    launch(Job()) { // the new job replaces one from parent
+        delay(1000)
+        println("Will not be printed")
+    }
+}
+// nothing is printed
+```
