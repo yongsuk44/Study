@@ -201,3 +201,65 @@ fun main(): Unit = runBlocking {
 }
 // nothing is printed
 ```
+
+---
+
+## Waiting for children
+
+`Job`의 중요한 기능 중 하나는 코루틴이 완료될 때까지 기다리는 것이 가능하다는 것입니다. 이를 위해 `join` 메서드를 사용합니다.
+
+`join`은 suspend 함수로 호출한 코루틴을 일시 중단시키고 지정된 `Job`이 완료(`Cancelled` or `Completed` 상태)될 때까지 기다립니다.
+
+```kotlin
+fun main(): Unit = runBlocking {
+    val job1 = launch {
+        delay(1000)
+        println("Job1")
+    }
+    
+    val job2 = launch {
+        delay(2000)
+        println("Job2")
+    }
+    
+    job1.join()
+    job2.join()
+    println("Done")
+}
+// 1s delay
+// Job1
+// 1s delay
+// Job2
+// Done
+```
+
+`Job`은 자식 코루틴을 참조할 수 있는 `children` 프로퍼티를 제공하며, 이를 통해 모든 자식 코루틴이 완료될 때까지 기다릴 수 있습니다.
+
+아래와 같이 부모 코루틴의 `Job`에서 `children`을 가져와 각각에 대해 `join`을 호출할 수 있습니다.
+
+```kotlin
+fun main(): Unit = runBlocking {
+    launch { 
+        delay(1000)
+        println("Test1")
+    }
+    
+    launch { 
+        delay(2000)
+        println("Test2")
+    }
+    
+    val children = coroutineContext[Job]?.children
+    val childrenNum = children?.count()
+    println("Number of children: $childrenNum")
+    children?.forEach { it.join() }
+    println("Done")
+}
+
+// Number of children: 2
+// 1s delay
+// Test1
+// 1s delay
+// Test2
+// Done
+```
