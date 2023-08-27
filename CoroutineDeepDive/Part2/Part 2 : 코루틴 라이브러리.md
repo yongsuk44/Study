@@ -2,13 +2,6 @@
 
 코루틴을 제대로 사용하기 위해 필요한 모든 것을 배우며 아래의 항목들을 정리하는 파트 입니다.
 
-- 코루틴 빌더
-- 다양한 코루틴 컨텍스트
-- 코루틴 취소 작동 방식
-- 코루틴 설정 방법
-- 코루틴 테스트 방법
-- 공유 상태에 안전하게 접근하는 방법
-
 ## [Part 2.1 : Coroutine Builder](코루틴%20빌더.md)
 
 suspend 함수는 서로 `Continuation`을 전달하며 호출 스택을 쌓아야 합니다.
@@ -79,6 +72,21 @@ suspend fun main(): Unit = coroutineScope {
 }
 ```
 
+### Summary
+
+| Coroutine Builder | Description                                     |
+| --- |-------------------------------------------------|
+| launch | 독립적인 코루틴을 시작하며, `Job`을 반환합니다.                   |
+| async | 값을 반환할 때까지 중단되는 병렬 처리에 적합하며, `Deferred`를 반환합니다. |
+| runBlocking | 현재 스레드를 차단하고, 코루틴이 완료될 때까지 대기합니다. |
+
+- 코루틴은 [구조화된 동시성](../Structured%20Concurrency.md)을 위해 작성되며, 부모-자식 관계를 형성합니다.
+- 코루틴은 스레드에 비해 일시 중단되었을 때의 비용이 훨씬 저렴합니다.
+- 모든 코루틴은 `coroutineScope`에서 시작되어야 하며, 이는 `runBlocking` 또는 특정 프레임워크에 의해 제공됩니다.
+- `coroutineScope()`는 일시 정지 함수 내에서 필요한 Scope를 생성하고, 람다 식에서 반환된 값을 반환하는 일시 정지 함수입니다.
+
+---
+
 ## [Part 2.2 : Coroutine Context](코루틴%20컨텍스트.md)
 
 ### CoroutienContext Interface
@@ -123,9 +131,68 @@ suspend fun main(): Unit = coroutineScope {
 ### Accessing context in a suspending function
 
 - `CoroutineScope`는 `coroutineContext` 속성을 통해 현재 코루틴 컨텍스트에 접근할 수 있습니다.
-- 일반 suspend 함수는 `coroutineContext`에 [직접 접근하는 것이 불가능](suspend%20함수에서%20CoroutineScope%20직접%20접근을%20막은%20이유.md)하므로 `continuation`을 통해 `coroutineContext`에 접근해야 합니다.
+- 일반 suspend 함수는 `coroutineContext`에 [직접 접근하는 것이 불가능](suspend%20함수에서%20CoroutineScope%20직접%20접근을%20막은%20이유.md)
+  하므로 `continuation`을 통해 `coroutineContext`에 접근해야 합니다.
 
 ### Creating our own context
 
-- Custom `CoroutineContext`를 만들기 위해서는 `CoroutineContext.Element`를 구현하는 클래스를 생성하고 `CoroutineContext.Key<*>` 프로퍼티와 `compainon object Key`를 정의하여 사용하면 됩니다.
-- Custom `CoruotienContext`는 특별하게 따로 정의하지 않는 이상 `CoroutineName`과 유사하게 동작하며 [보통 코루틴 컨텍스트 계산하는 방식](#coroutine-context-and-builders)과 동일하게 적용됩니다.
+- Custom `CoroutineContext`를 만들기 위해서는 `CoroutineContext.Element`를 구현하는 클래스를 생성하고 `CoroutineContext.Key<*>`
+  프로퍼티와 `compainon object Key`를 정의하여 사용하면 됩니다.
+- Custom `CoruotienContext`는 특별하게 따로 정의하지 않는 이상 `CoroutineName`과 유사하게
+  동작하며 [보통 코루틴 컨텍스트 계산하는 방식](#coroutine-context-and-builders)과 동일하게 적용됩니다.
+
+### Summary
+
+- `CoroutineContext`는 `Job`, `CoroutineName`, `CoroutineDispatcher` 등의 `Element` 요소들의 집합이며 이들은 유니크 키를 가지고 있어 식별과 관리가 가능합니다.
+- `CoroutineContext`는 `Key-Value` 구조로 되어있어 특정 요소를 키로 찾을 수 있습니다.
+- 2개의 `CoroutineContext`를 합쳐 새로운 컨텍스트를 만들 수 있으며, 같은 키를 가진 요소가 존재하면 새 요소가 이전 요소를 대체합니다.
+- `EmptyCoroutineContext`는 아무런 행동도 하지 않으며 다른 컨텍스트와 병합하여도 원래 컨텍스트의 특성을 유지합니다.
+- `CoroutineContext`에서 `minusKey()`를 통해 특정 키를 가진 요소를 제거할 수 있습니다.
+- 자식 코루틴은 부모 코루틴의 컨텍스트를 상속받으며, 여러 컨텍스트에 같은 키에 대해서 값이 존재하면 컨텍스트 우선순위에 따라 값이 적용됩니다.
+
+---
+
+## [Part 2.3 : Jobs and awaiting children](Job과%20자식%20코루틴의%20대기.md)
+
+### What is Job?
+
+- `Job`은 코루틴을 취소하거나, 상태를 추적하는 등의 기능을 제공하는 코루틴 컨텍스트 요소입니다.
+- `Job`은 `NEW`, `ACTIVE`, `COMPLETING`, `CANCELLING`, `CANCELLED`, `COMPLETED` 등을 통해 상태를 나타낼 수 있습니다.
+- `isActive`, `isCompleted`, `isCancelled` 등의 속성을 통해 `Job`의 상태를 확인할 수 있습니다.
+
+### Coroutine builders create their jobs based on their parent job
+
+- 코루틴 빌더는 자체적으로 `Job`을 생성하며 `Job`은 코루틴 컨텍스트이므로 `coroutineContext[Job]` 또는 확장 프로퍼티인 `job`을 통해 접근할 수 있습니다.
+- `Job`은 부모 코루틴에서 자식 코루틴으로 자동으로 상속되지 않은 유일한 코루틴 컨텍스트입니다.
+    - 대신 부모-자식 형성을 위해서 자식 코루틴의 `Job`은 부모 코루틴의 `Job`을 참조하여 관계를 형성 합니다.
+- 자식 코루틴에서 부모 코루틴의 `Job` 컨텍스트가 새로운 `Job`으로 대체될 경우 구조적 동시성 메커니즘이 형성되지 않기에 여러 문제가 발생될 수 있습니다.
+    - 부모 코루틴은 자식 코루틴의 본문이 끝날 때 까지 기다리지 않고 종료될 수 있음
+    - 자식 코루틴에서 취소 및 예외 처리를 상위 코루틴으로 전달할 수 없음
+
+### Waiting for children
+
+- `Job`은 `Job.join()` 메서드를 통해 호출한 코루틴을 일시 중단시키고 지정된 `Job`이 완료(`Cancelled` or `Completed`)될 때 까지 대기할 수 있습니다.
+- `Job`은 `children` 프로퍼티를 통해 자식 코루틴을 참조하여 모든 자식 코루틴이 완료를 확인할 수 있습니다.
+
+### Job factory function
+
+- `Job()` 사용 시 코루틴과 연결되지 않은 `Job` 인스턴스 생성이 가능합니다.
+- `Job()`을 통해 생성된 `Job`은 다른 코루틴의 부모로 사용될 수 있지만, 모든 자식 코루틴에 명시적으로 `join`을 호출하지 않으면 `Active` 상태로 유지되는 문제가 발생할 수 있습니다.
+- `Job()`은 `CompletableJob`의 하위 인터페이스 타입의 객체를 반환하며, 이를 통해 `complete()`, `completeExceptionally()` 메서드를 사용할 수 있습니다.
+
+| method                                              | description                                                                               |
+|-----------------------------------------------------|-------------------------------------------------------------------------------------------|
+| complete(): Boolean                                 | `Job`을 완료시키며 모든 자식 코루틴이 끝날 때까지 계속 실행됩니다. 그러나 모든 코루틴이 완료된 후 이 `Job`에서 새로운 코루틴을 시작할 수 없습니다. |
+| completeExceptionally(exception: Thrwable): Boolean | 주어진 예외와 함께 `Job`을 완료시킵니다. 이로 인해 모든 자식 코루틴은 즉시 취소되며 `CancellationException`이 주어진 예외를 감쌉니다. |
+
+- 위 2가지 메서드의 결과값이 `true`인 경우 `Job`이 완료됨을 의미하며, `false`인 경우 이미 완료된 `Job`임을 의미합니다.
+- `job.complete()` 호출 시 `Job` 내에 실행 중인 모든 자식 코루틴들이 완료될 떄까지 계속 실행하게 됩니다. (추가적으로 `job.join`을 사용하여 `Job`의 완료를 대기할 수 있습니다.)
+
+
+### Summary
+
+- `Job`은 코루틴을 취소하거나 상태를 추적하는 등의 기능을 통해 코루틴을 제어할 수 있습니다.
+- `Job`은 자동으로 부모 코루틴에서 자식 코루틴으로 상속되지 않은 유일한 코루틴 컨텍스트 입니다.
+- `job.join()` : 호출한 코루틴을 일시 중단시키고 지정된 `Job`이 완료될 때까지 대기시킬 수 있습니다.
+- `job.complete()` : `Job`을 완료시키며 모든 자식 코루틴이 끝날때 까지 계속 실행됩니다.
+- `job.completeExceptionally()` : 주어진 예외와 함께 `Job`을 완료시킵니다. 
