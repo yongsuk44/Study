@@ -15,3 +15,4 @@
 ## [Coroutine Deep Dive](https://leanpub.com/coroutines)
 
 - **[1장 Understanding Kotlin Coroutines](CoroutineDeepDive/Part1/)**
+- **[2장 Kotlin Coroutine Library](CoroutineDeepDive/Part2/)**

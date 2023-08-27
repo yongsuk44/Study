@@ -2,13 +2,6 @@
 
 코루틴을 제대로 사용하기 위해 필요한 모든 것을 배우며 아래의 항목들을 정리하는 파트 입니다.
 
-- 코루틴 빌더
-- 다양한 코루틴 컨텍스트
-- 코루틴 취소 작동 방식
-- 코루틴 설정 방법
-- 코루틴 테스트 방법
-- 공유 상태에 안전하게 접근하는 방법
-
 ## [Part 2.1 : Coroutine Builder](코루틴%20빌더.md)
 
 suspend 함수는 서로 `Continuation`을 전달하며 호출 스택을 쌓아야 합니다.
@@ -129,3 +122,7 @@ suspend fun main(): Unit = coroutineScope {
 
 - Custom `CoroutineContext`를 만들기 위해서는 `CoroutineContext.Element`를 구현하는 클래스를 생성하고 `CoroutineContext.Key<*>` 프로퍼티와 `compainon object Key`를 정의하여 사용하면 됩니다.
 - Custom `CoruotienContext`는 특별하게 따로 정의하지 않는 이상 `CoroutineName`과 유사하게 동작하며 [보통 코루틴 컨텍스트 계산하는 방식](#coroutine-context-and-builders)과 동일하게 적용됩니다.
+
+---
+
+## [Part 2.3 : Jobs and awaiting children](Job과%20자식%20코루틴의%20대기.md)
