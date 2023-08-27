@@ -126,3 +126,9 @@ suspend fun main(): Unit = coroutineScope {
 ---
 
 ## [Part 2.3 : Jobs and awaiting children](Job과%20자식%20코루틴의%20대기.md)
+
+### What is Job?
+
+- `Job`은 코루틴을 취소하거나, 상태를 추적하는 등의 기능을 제공하는 코루틴 컨텍스트 요소입니다.
+- `Job`은 `NEW`, `ACTIVE`, `COMPLETING`, `CANCELLING`, `CANCELLED`, `COMPLETED` 등을 통해 상태를 나타낼 수 있습니다.
+- `isActive`, `isCompleted`, `isCancelled` 등의 속성을 통해 `Job`의 상태를 확인할 수 있습니다.
