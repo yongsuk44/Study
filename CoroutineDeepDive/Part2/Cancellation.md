@@ -165,3 +165,72 @@ class ProfileViewModel : ViewModel() {
     }
 }
 ```
+
+---
+
+## How does cancellation work?
+
+`Job`이 취소되면 상태가 `CANCELLING`으로 변경됩니다. 이 상태에서 코루틴이 다음 suspension point에 도달하면 `CancellationException`이 발생합니다.
+
+`CancellationException`은 `try-catch`를 사용하여 잡을 수 있습니다.
+그러나 이 예외를 잡아서 특별한 처리를 하지 않는 한, 보통은 잡은 예외를 다시 던져야 코루틴의 취소 상태가 정상적으로 전파됩니다.
+
+`CancellationException`을 다시 던지는 것은 코루틴의 부모나 상위 작업이 이 코루틴이 취소되었다는 것을 전파하기 위해서 입니다.
+만약 이렇게 처리하지 않으면 코루틴의 취소가 제대로 처리되지 않을 수 있습니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job = Job()
+    
+    launch(job) {
+        try {
+            repeat(1_000) { i -> 
+                delay(200)
+                println("Printing $i")
+            }
+        } catch (e: CancellationException) {
+            println("Cancelled")
+            throw e
+        }
+    }
+    
+    delay(1100)
+    job.cancelAndJoin()
+    println("Cancelled Success")
+    delay(1000)
+}
+
+// Printing 0
+// Printing 1
+// Printing 2
+// Printing 3
+// Printing 4
+// JobCancellationException
+// Cancelled Success
+```
+
+취소된 코루틴은 내부적으로 `CancellationException`이 발생하는 것을 이해할 수 있습니다.  
+이는 코루틴이 강제로 종료되는 것이 아니라 정상적인 예외 처리 흐름을 따르게 하여 리소스를 안전하게 정리할 수 있는 기회를 줍니다.
+
+코루틴이 취소되거나 예외가 발생되더라도 `finally` 블록은 항상 실행됩니다.   
+이 블록에서 파일을 닫거나, 데이터베이스 연결을 종료하는 등의 리소스 해제나 필요한 정리 작업을 수행할 수 있습니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job = Job()
+    
+    launch(job) {
+        try {
+            delay(Random.nextLong(2000))
+            println("Done")
+        } finally {
+            print("Will always be printed")
+        }
+    }
+    delay(1000)
+    job.cancelAndJoin()
+}
+// Will always be printed
+// Done 
+// Will always be printed
+```

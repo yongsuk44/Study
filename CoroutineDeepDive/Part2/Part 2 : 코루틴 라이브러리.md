@@ -215,30 +215,11 @@ suspend fun main(): Unit = coroutineScope {
 
 `cancel`, `join`을 같이 호출하는 `cancelAndJoin` 확장 함수가 존재합니다.
 
+### How does cancellation work
 
+`Job`이 취소되면 `CANCELLING` 상태로 변경되며 이 상태에서 코루틴이 다음 suspension point에 도달하면 `CancellationException`이 발생됩니다.  
+`CancellationException`은 `catch` 블록을 통해 잡을 수 있으며, 이 예외를 다시 던져야 코루틴의 취소 상태가 정상적으로 상위에 전파됩니다. 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+취소된 코루틴은 `CancellationException`이 발생됨을 알 수 있는데 이는 코루틴이 강제로 종료되는 것이 아닌, 정상적인 예외 처리 흐름을 따르게 하여 리소스 정리를 안전하게 정리할 수 있는 기회를 줍니다.
+코루틴이 취소되거나 예외가 발생하더라도 `finally` 블록이 항상 실행되는데 이 블록에서 리소스 해제나 필요한 정리 작업을 수행하면 됩니다.
 
