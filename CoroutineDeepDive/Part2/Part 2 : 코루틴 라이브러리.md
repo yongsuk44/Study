@@ -231,3 +231,18 @@ suspend fun main(): Unit = coroutineScope {
 
 그러나 `withContext(NonCancellable)` 함수를 이용하면, 코루틴이 이미 취소된 상태에서도 데이터베이스 롤백과 같은 일시 정지 함수를 안전하게 사용할 수 있습니다. 
 `withContext`는 실행 컨텍스트를 임시로 변경하며, `NonCancellable`은 취소할 수 없는 `Job`을 제공해 블록 내의 작업을 `ACTIVE` 상태로 유지합니다. 
+
+### invokeOnCompletion
+
+`invokeOnCompletion` 함수는 코루틴 `Job`이 최종 상태에 도달 시 실행할 핸들러를 설정하는데 사용되고 리소스 해제, 다른 코루틴에게 알림을 보내는 등의 작업에 유용합니다.
+
+`invokeOnCompletion`은 예외 파라미터를 전달하는데 이 값을 통해 코루틴이 어떻게 종료되는지 확인할 수 있습니다.
+
+- `null` : 코루틴이 정상적으로 종료
+- `CancellationException` : 코루틴이 취소됨
+- 그 외 예외 : 코루틴이 예외와 함께 종료됨
+
+또한 `invokeOnCompletion` 호출 전 코루틴이 완료된 경우 핸들러가 즉시 실행됩니다.
+
+코루틴이 취소되는 순간 동기적으로 `invokeOnCompletion`을 호출하며 이는 다른 스레드에서도 실행될 수 있습니다.
+즉 실행되는 스레드를 직접 제어할 수 없습니다.

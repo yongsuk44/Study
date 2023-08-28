@@ -308,3 +308,61 @@ suspend fun main(): Unit = coroutineScope {
 // Cleanup done
 // done
 ```
+
+---
+
+## invokeOnCompletion
+
+`invokeOnCompletion` 함수는 코루틴 `Job`이 `COMPLETED` 또는 `CANCELLED`와 같이 최종 상태에 도달했을 때 실행할 코드 블록(Handler)을 설정하는데 사용됩니다.
+이는 리소스를 해제하거나, 다른 코루틴에 알림을 보내는 등의 작업에 유용합니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job = launch {
+        delay(1000)
+    }
+    
+    job.invokeOnCompletion { exception: Throwable? -> 
+        println("Finished")
+    }
+    delay(400)
+    job.cancelAndJoin()
+}
+// Finished
+```
+
+위 예제처럼 `invokeOnCompletion`의 코드 블록(Handler)의 예외를 파라미터로 받을 때 코루틴이 어떻게 종료되었는지 판단할 수 있습니다.
+
+- `null` : 코루틴이 정상적으로 종료
+- `CancellationException` : 코루틴이 취소됨
+- 그 외 예외 : 코루틴이 예외와 함께 종료됨
+
+만약 `invokeOnCompletion` 호출 전에 코루틴이 이미 완료된 경우, 설정한 코드 블록(handler)이 즉시 실행됩니다.
+이는 예기치 않은 상황에서도 코드 블록이 실행되도록 보장됩니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job= launch {
+        delay(Random.nextLong(2400))
+        println("Finished")
+    }
+    delay(800)
+    job.invokeOnCompletion { exception: Throwable? ->
+        println("Will always be printed")
+        println("The exception was: $exception")
+    }
+    delay(800)
+    job.cancelAndJoin()
+}
+// Will always be printed
+// The exception was: kotlinx.coroutines.JobCancellationException
+
+// or
+
+// Finished
+// Will always be printed
+// The exception was: null
+```
+
+`invokeOnCompletion`은 코루틴이 취소되는 순간 동기적으로 호출되며, 이는 다른 스레드에서도 실행될 수 있습니다.
+즉, `invokeOnCompletion`이 실행되는 스레드를 직접 제어할 수 없습니다.
