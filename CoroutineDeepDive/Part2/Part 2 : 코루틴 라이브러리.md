@@ -196,3 +196,38 @@ suspend fun main(): Unit = coroutineScope {
 - `job.join()` : 호출한 코루틴을 일시 중단시키고 지정된 `Job`이 완료될 때까지 대기시킬 수 있습니다.
 - `job.complete()` : `Job`을 완료시키며 모든 자식 코루틴이 끝날때 까지 계속 실행됩니다.
 - `job.completeExceptionally()` : 주어진 예외와 함께 `Job`을 완료시킵니다. 
+
+## [Part 2.2 : Cancellation](Cancellation.md)
+
+### Basic Cancellation
+
+`Job` 인터페이스에는 `cancel()` 메서드를 제공하여 작업을 취소할 수 있는 기능을 제공하며 다음 효과가 발생됩니다.
+
+- 코루틴이 일시 정지되는 지점이 있는 경우 그 지점에서 작업이 종료합니다. (`delay` or `yield`)
+- 자식 작업이 존재하는 경우 그 작업도 취소합니다. (A-B-C 작업 중 B가 취소되면 B,C가 취소되고 A는 아무런 영향을 받지 않음)
+- 작업이 취소되면 `CANCELLING` 상태가 되고, 그 다음 `CANCELLED` 상태가 됩니다. (취소된 작업은 더 이상 새로운 코루틴의 부모로서 사용되지 못함)
+
+`CancellationException` 하위 타입을 `cancel`의 인자로 전달하여 코루틴의 취소 원인을 명확하게 할 수 있습니다.  
+만약 `CacnellationException` 외 타입으로 코루틴 취소 시도 시 코루틴은 취소되지 않습니다.
+ 
+코루틴 취소 후 `join` 호출 시 취소가 완전히 처리된 뒤 다음 작업을 수행할 수 있습니다.
+이렇게 처리되지 않으면 코루틴이 취소되기 전 다른 코드가 실행될 가능성이 있으며, 이로 인해 예기치 못한 결과 혹은 버그가 발생될 수 있습니다.
+
+`cancel`, `join`을 같이 호출하는 `cancelAndJoin` 확장 함수가 존재합니다.
+
+### How does cancellation work
+
+`Job`이 취소되면 `CANCELLING` 상태로 변경되며 이 상태에서 코루틴이 다음 suspension point에 도달하면 `CancellationException`이 발생됩니다.  
+`CancellationException`은 `catch` 블록을 통해 잡을 수 있으며, 이 예외를 다시 던져야 코루틴의 취소 상태가 정상적으로 상위에 전파됩니다. 
+
+취소된 코루틴은 `CancellationException`이 발생됨을 알 수 있는데 이는 코루틴이 강제로 종료되는 것이 아닌, 정상적인 예외 처리 흐름을 따르게 하여 리소스 정리를 안전하게 정리할 수 있는 기회를 줍니다.
+코루틴이 취소되거나 예외가 발생하더라도 `finally` 블록이 항상 실행되는데 이 블록에서 리소스 해제나 필요한 정리 작업을 수행하면 됩니다.
+
+### Just one more call
+
+`CancellationException`이 발생한 후 `finally` 블록에서는 기본적으로 모든 리소스를 정리할 수 있지만, 
+새로운 코루틴을 시작하거나 일시 정지 함수를 호출하는 것은 허용되지 않습니다. 
+이는 해당 `Job`이 이미 `CANCELLING` 상태로 전환되었기 때문입니다.
+
+그러나 `withContext(NonCancellable)` 함수를 이용하면, 코루틴이 이미 취소된 상태에서도 데이터베이스 롤백과 같은 일시 정지 함수를 안전하게 사용할 수 있습니다. 
+`withContext`는 실행 컨텍스트를 임시로 변경하며, `NonCancellable`은 취소할 수 없는 `Job`을 제공해 블록 내의 작업을 `ACTIVE` 상태로 유지합니다. 
