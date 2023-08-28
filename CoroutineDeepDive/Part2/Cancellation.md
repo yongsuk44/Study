@@ -234,3 +234,77 @@ suspend fun main(): Unit = coroutineScope {
 // Done 
 // Will always be printed
 ```
+
+---
+
+## Just one more call
+
+`CancellationException`을 확인하고 코루틴이 완전히 종료되기 전 추가 작업을 수행할 수 있다면 어디까지 할 수 있는지 궁금할 수 있습니다.
+
+이때 코루틴은 모든 리소스를 정리할 수 있을 만큼 오래 실행할 수 있습니다. 그러나, 일시 정지는 더 이상 허용되지 않습니다.  
+왜냐하면 `Job`은 이미 `CANCELLING` 상태에 있으며, 이 상태에서는 새로운 코루틴을 시작하려고 하면 무시될 것이고 일시 정지하려고 하면 `CancellationException`이 발생됩니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job = Job()
+    
+    launch(job) {
+        try {
+            delay(2000)
+            println("Job is done")
+        } finally {
+            println("Finally")
+            
+            launch { // will be ignored 
+                println("Will not be printed")
+            }
+            
+            delay(1000) // here exception is thrown 
+            println("Will not be printed")
+        }
+    }
+    
+    delay(1000)
+    job.cancelAndJoin()
+    println("Cancel done")
+}
+// 1s delay
+// Finally
+// Cancel done
+```
+
+때때로 코루틴이 이미 취소된 상태에서 일시 정지 함수를 사용해야 할 필요가 있습니다.
+예를 들어 데이터베이스의 변경 사항을 롤백하는 등의 상황에서는 이러한 호출이 필요할 수 있습니다.
+
+이런 경우에는 `withContext(NonCancellable)` 함수로 이러한 호출을 감싸는 것이 좋습니다.
+
+`withContext` 함수는 코드 블록의 컨텍스트를 변경합니다.   
+`withContext`내에서 `NonCancellable` 객체를 사용했는데 이 객체는 취소할 수 없는 `Job`입니다.
+따라서 블록 내에서 작업은 `ACTIVE` 상태에 있으며, 원하는 일시 정지 함수를 호출할 수 있습니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job = Job()
+    
+    launch(job) {
+        try {
+            delay(2000)
+            println("coroutine finished")
+        } finally {
+            println("Finally")
+            
+            withContext(NonCancellable) {
+                delay(1000)
+                println("Cleanup done")
+            }
+        }
+    }
+    
+    delay(100)
+    job.cancelAndJoin()
+    println("done")
+}
+// Finally
+// Cleanup done
+// done
+```
