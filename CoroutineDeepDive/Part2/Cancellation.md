@@ -507,3 +507,65 @@ suspend fun main(): Unit = coroutineScope {
 
 `yield()`는 일반적인 최상위 suspension 함수입니다. 따라서 어떤 범위도 필요하지 않으므로 일반 suspension 함수에서 사용할 수 있습니다.
 또한 중단과 재개를 수행하므로 스레드 풀이 있는 디스패처를 사용하는 경우 스레드 변경이 발생되는것과 같이 다른 효과가 발생할 수 있습니다.
+
+---
+
+## suspendCancellableCoroutine
+
+`suspendCancellableCoroutine` 함수는 `suspendCoroutine`과 비슷하게 동작하지만, 
+`continuation`은 `CancellableContinuation<T>`로 래핑되어 몇 가지 추가적인 메서드를 제공합니다.
+
+가장 중요한 메서드는 `invokeOnCancellation`이며, 이를 통해 코루틴이 취소될 때 어떤 작업을 수행해야 하는지를 정의할 수 있습니다.
+
+```kotlin
+suspend fun someTask() = suspendCancellableCoroutine { cont -> 
+    cont.invokeOnCancellation { 
+        // do cleanup
+    }
+    
+    // rest of the implementation
+}
+```
+
+다음은 Retrofit Call을 suspension 함수로 감싸는 예제 입니다.
+
+```kotlin
+suspend fun getOrganizationRepos(
+    organization: String
+): List<Repo> = suspendCancellableCoroutine { continuation -> 
+        val orgReposCall = apiService.getOrganizationRepos(organization)
+        
+        orgReposCall.enqueue(object: Callback<List<Repo>> {
+            override fun onResponse(call: Call<List<Repo>>, response: Response<List<Repo>>) {
+                if (response.isSuccessful) {
+                    val body = response.body()
+                    
+                    if (body != null) continuation.resume(body)
+                    else continuation.resumeWithException(ResponseWithEmptyBody)
+                } else {
+                    continuation.resumeWithException(
+                        ApiException(
+                            response.code(), 
+                            response.message()
+                        )
+                    )
+                }
+            }
+            
+            override fun onFailure(call: Call<List<Repo>>, t: Throwable) {
+                continuation.resumeWithException(t)
+            }
+        })
+        
+        continuation.invokeOnCacnellation { orgReposCall.cancel() }
+    }
+
+class GithubApi {
+    @GET("orgs/{organization}/repo?per_page=100")
+    suspend fun getOrganizationRepos(
+        @Path("organization") organization: String
+    ): List<Repo>
+}
+```
+
+`CancellableContinuation<T>`은 `Job`의 상태를 확인(`isActive`, `isCompleted`, `isCancelled` 프로퍼티 사용)하고 취소 원인과 함께 `continuation`을 취소할 수 있게 해줍니다.

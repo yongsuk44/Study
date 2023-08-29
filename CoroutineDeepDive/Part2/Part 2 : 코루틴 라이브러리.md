@@ -259,3 +259,10 @@ suspension point가 존재하지 않는 코루틴을 취소하는 방법으로�
 
 `yield()`는 일반적인 최상위 suspension 함수이며, 스레드 변경 등 다른 효과를 가질 수 있습니다.
 `ensureActive()`는 특정 `coroutineScope`나 `Job`에서만 호출될 수 있으며, 코루틴이 `ACTIVE` 상태가 아닌 경우에만 예외를 발생시킵니다.
+
+### suspendCancellableCoroutine
+
+`suspendCancellableCoroutine` 함수는 코루틴 내에서 비동기 작업을 수행할 떄 사용됩니다.
+표준 `suspendCoroutine`과 달리 취소 가능성을 고려한 추가적인 메서드들을 제공합니다.
+
+`invokeOnCancellation`은 코루틴이 취소되었을 때 실행될 코드 블록을 정의하는 메서드로 불필요한 리소스 해제와 실행 중인 작업 중단 등을 실행할 수 있습니다.
