@@ -308,3 +308,264 @@ suspend fun main(): Unit = coroutineScope {
 // Cleanup done
 // done
 ```
+
+---
+
+## invokeOnCompletion
+
+`invokeOnCompletion` 함수는 코루틴 `Job`이 `COMPLETED` 또는 `CANCELLED`와 같이 최종 상태에 도달했을 때 실행할 코드 블록(Handler)을 설정하는데 사용됩니다.
+이는 리소스를 해제하거나, 다른 코루틴에 알림을 보내는 등의 작업에 유용합니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job = launch {
+        delay(1000)
+    }
+    
+    job.invokeOnCompletion { exception: Throwable? -> 
+        println("Finished")
+    }
+    delay(400)
+    job.cancelAndJoin()
+}
+// Finished
+```
+
+위 예제처럼 `invokeOnCompletion`의 코드 블록(Handler)의 예외를 파라미터로 받을 때 코루틴이 어떻게 종료되었는지 판단할 수 있습니다.
+
+- `null` : 코루틴이 정상적으로 종료
+- `CancellationException` : 코루틴이 취소됨
+- 그 외 예외 : 코루틴이 예외와 함께 종료됨
+
+만약 `invokeOnCompletion` 호출 전에 코루틴이 이미 완료된 경우, 설정한 코드 블록(handler)이 즉시 실행됩니다.
+이는 예기치 않은 상황에서도 코드 블록이 실행되도록 보장됩니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job= launch {
+        delay(Random.nextLong(2400))
+        println("Finished")
+    }
+    delay(800)
+    job.invokeOnCompletion { exception: Throwable? ->
+        println("Will always be printed")
+        println("The exception was: $exception")
+    }
+    delay(800)
+    job.cancelAndJoin()
+}
+// Will always be printed
+// The exception was: kotlinx.coroutines.JobCancellationException
+
+// or
+
+// Finished
+// Will always be printed
+// The exception was: null
+```
+
+`invokeOnCompletion`은 코루틴이 취소되는 순간 동기적으로 호출되며, 이는 다른 스레드에서도 실행될 수 있습니다.
+즉, `invokeOnCompletion`이 실행되는 스레드를 직접 제어할 수 없습니다.
+
+---
+
+## Stopping the unstoppable
+
+취소는 일반적으로 코루틴의 suspension point에서 발생하며 이러한 point가 없으면 취소가 발생되지 않습니다.
+
+예를 들어 `delay` 대신 `Thread.sleep`을 사용하면 위와 같은 상황을 테스트할 수 있습니다.
+
+실제로 복잡한 계산이나 블로킹 I/O 작업을 하는 경우 코루틴을 적절히 중단하지 않으면 취소가 어려울 수 있습니다.
+
+아래 예시는 코루틴 내부에 suspension point가 없어 취소할 수 없는 상황으로 실행 시간은 3분 이상이지만, 실제로는 1초 후 취소되어야 합니다.
+
+    이러한 상황은 테스트를 위한 환경이니 실제 프로젝트에서는 사용하면 안됩니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job = Job()
+    launch(job) {
+        repeat(1_000) { i ->
+            Thread.sleep(200) // We might have some
+            // complex operations or reading files here
+            println("Printing $i")
+        }
+    }
+    delay(1000)
+    job.cancelAndJoin()
+    println("Cancelled sucess")
+    delay(1000)
+}
+// Printing 0
+// Printing 1
+// Printing 2
+// ... (up to 1000)
+```
+
+위와 같은 상황에서 대처할 수 있는 방법은 여러가지가 있습니다.
+
+첫 번째 방법으로 `yield()`를 가끔 사용하는 것입니다.
+
+`yield()`는 코루틴을 잠깐 중단하고 다시 재개합니다. 이렇게 하면 코루틴이 취소 명령을 수신할 수 있는 suspension point가 생성됩니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job = Job()
+    launch(job) {
+        repeat(1_000) { i ->
+            Thread.sleep(200)
+            yield()
+            println("Printing $i")
+        }
+    }
+    delay(1100)
+    job.cancelAndJoin()
+    println("Cancelled sucess")
+    delay(1000)
+}
+// Printing 0
+// Printing 1
+// Printing 2
+// Printing 3
+// Printing 4
+// Cancelled sucess
+```
+
+`yield()`를 사용하는 것은 좋은 관행으로 특히, 중단되지 않은 CPU-Intensive 또는 Time-Intensive 작업의 블록 사이에 사용하는 것이 좋습니다.
+
+이렇게하면 코루틴이 더 효율적으로 동작하고, 필요한 경우 코루틴을 더 쉽게 취소할 수 있습니다.
+
+```kotlin
+suspend fun cpuIntensiveOperation() = withContext(Dispatchers.Default) {
+    cpuIntensiveOperation1()
+    yield()
+    cpuIntensiveOperation2()
+    yield()
+    cpuIntensiveOperation3()
+}
+```
+
+또 다른 방법으로는 `Job`의 상태를 추적하는 것입니다.
+
+코루틴의 `Job` 상태를 모니터링하려면 `isActive` 속성을 사용하여 현재 코루틴이 `ACTIVE` 상태인지 아닌지를 빠르게 판단할 수 있게 도와줍니다.
+
+```kotlin
+public val CoroutineScope.isActive: Boolean 
+    get() = coroutineContext[Job]?.isActive ?: true
+```
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job = Job()
+    launch(job) {
+        do {
+            Thread.sleep(200)
+            println("Printing")
+        } while(isActive)
+    }
+    delay(1100)
+    job.cancelAndJoin()
+    println("Cancelled sucess")
+}
+
+// Printing
+// Printing
+// Printing
+// Printing
+// Printing
+// Cancelled sucess
+```
+
+또는 `ensureActive()`를 사용하여 `Job`이 `ACTIVE` 상태가 아닌 경우 `CancellationException`을 발생시킬 수 있습니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    val job = Job()
+    launch(job) {
+        repeat(1000) { num ->
+            Thread.sleep(200)
+            ensureActive()
+            println("Printing $num")
+        }
+    }
+    delay(1100)
+    job.cancelAndJoin()
+    println("Cancelled successfully")
+}
+// Printing 0
+// Printing 1
+// Printing 2
+// Printing 3
+// Printing 4
+// Cancelled successfully
+```
+
+`ensureActive()`와 `yield()`의 결과는 유사해 보이지만 실제로는 매우 다릅니다.
+
+`ensureActive()`는 `CoroutineScope`(또는 `CoroutineContext`, `Job`)에서 호출되어야 합니다.
+`Job`이 더 이상 `ACTIVE` 상태가 아닌 경우 예외를 발생시키는 것 외에는 아무런 행동도 하지 않습니다.
+
+`yield()`는 일반적인 최상위 suspension 함수입니다. 따라서 어떤 범위도 필요하지 않으므로 일반 suspension 함수에서 사용할 수 있습니다.
+또한 중단과 재개를 수행하므로 스레드 풀이 있는 디스패처를 사용하는 경우 스레드 변경이 발생되는것과 같이 다른 효과가 발생할 수 있습니다.
+
+---
+
+## suspendCancellableCoroutine
+
+`suspendCancellableCoroutine` 함수는 `suspendCoroutine`과 비슷하게 동작하지만, 
+`continuation`은 `CancellableContinuation<T>`로 래핑되어 몇 가지 추가적인 메서드를 제공합니다.
+
+가장 중요한 메서드는 `invokeOnCancellation`이며, 이를 통해 코루틴이 취소될 때 어떤 작업을 수행해야 하는지를 정의할 수 있습니다.
+
+```kotlin
+suspend fun someTask() = suspendCancellableCoroutine { cont -> 
+    cont.invokeOnCancellation { 
+        // do cleanup
+    }
+    
+    // rest of the implementation
+}
+```
+
+다음은 Retrofit Call을 suspension 함수로 감싸는 예제 입니다.
+
+```kotlin
+suspend fun getOrganizationRepos(
+    organization: String
+): List<Repo> = suspendCancellableCoroutine { continuation -> 
+        val orgReposCall = apiService.getOrganizationRepos(organization)
+        
+        orgReposCall.enqueue(object: Callback<List<Repo>> {
+            override fun onResponse(call: Call<List<Repo>>, response: Response<List<Repo>>) {
+                if (response.isSuccessful) {
+                    val body = response.body()
+                    
+                    if (body != null) continuation.resume(body)
+                    else continuation.resumeWithException(ResponseWithEmptyBody)
+                } else {
+                    continuation.resumeWithException(
+                        ApiException(
+                            response.code(), 
+                            response.message()
+                        )
+                    )
+                }
+            }
+            
+            override fun onFailure(call: Call<List<Repo>>, t: Throwable) {
+                continuation.resumeWithException(t)
+            }
+        })
+        
+        continuation.invokeOnCacnellation { orgReposCall.cancel() }
+    }
+
+class GithubApi {
+    @GET("orgs/{organization}/repo?per_page=100")
+    suspend fun getOrganizationRepos(
+        @Path("organization") organization: String
+    ): List<Repo>
+}
+```
+
+`CancellableContinuation<T>`은 `Job`의 상태를 확인(`isActive`, `isCompleted`, `isCancelled` 프로퍼티 사용)하고 취소 원인과 함께 `continuation`을 취소할 수 있게 해줍니다.
