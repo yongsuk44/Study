@@ -266,3 +266,12 @@ suspension point가 존재하지 않는 코루틴을 취소하는 방법으로�
 표준 `suspendCoroutine`과 달리 취소 가능성을 고려한 추가적인 메서드들을 제공합니다.
 
 `invokeOnCancellation`은 코루틴이 취소되었을 때 실행될 코드 블록을 정의하는 메서드로 불필요한 리소스 해제와 실행 중인 작업 중단 등을 실행할 수 있습니다.
+
+### Summary
+
+- `Job` 인터페이스는 코루틴을 취소할 수 있는 `cancel()`을 제공하며 코루틴이 취소된 경우 자식 `Job`도 함께 취소됩니다.
+- 코루틴이 취소되면 다음 'suspension point'에서 `CancellationException`이 발생되며 `finally` 블록에서 리소스를 정리하는 것이 좋습니다.
+- `withContext(NonCancellable)`을 사용하면 이미 취소된 코루틴에서도 suspension 함수를 호출할 수 있습니다.
+- `invokeOnCompletion` 함수는 '코루틴 종료' 시 어떤 작업을 실행할 지 설정할 수 있으며, 코루틴이 어떤 예외로 종료되는지 확인할 수 있습니다.
+- `suspendCancellableCoroutine` 함수는 코루틴 내 비동기 작업을 수행할 때 사용되며 취소 가능성을 고려한 추가적인 메서드들을 제공합니다.
+  - `invokeOnCancellation` 함수는 '코루틴 취소' 시 어떤 작업을 실행할 지 설정 할 수 있습니다.
