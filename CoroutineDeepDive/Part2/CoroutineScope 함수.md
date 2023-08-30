@@ -135,3 +135,193 @@ fun main() = runBlocking {
 그러나, 예외가 발생하게되면 `async`가 중단되고, 이로 인해 전체 스코프(`runBlocking`)와 프로그램이 종료됩니다.
 
 이러한 이유로, 특정 작업에서 발생하는 에외가 다른 작업에 영향을 미치지 않게 하려면 `coroutineScope`를 사용하는 것이 좋습니다.
+
+---
+
+## coroutineScope
+
+`coroutineScope`는 일시 정지 가능한 코드 블록을 실행하기 위한 새로운 코루틴 스코프를 생성합니다.  
+이 스코프 내에서 시작된 코루틴들을 모두 완료될 때까지 `coroutineScope` 함수는 반환되지 않습니다.
+
+```kotlin
+suspend fun <R> coroutineScope(
+    block: suspend CoroutineScope.() -> R
+): R
+```
+
+`launch`나 `async`는 새로운 코루틴을 생성하고 즉시 다음 코드 라인으로 넘어가지만
+이와 반대로 `coroutineScope`는 해당 블록에서 시작된 모든 코루틴이 완료될 때까지 현재 코루틴을 일시 중단합니다.
+
+이러한 이유로 `coroutineScope`는 병렬 작업을 수행할 때 유용하게 사용될 수 있으며, 코드 복잡성을 줄일 수 있습니다.
+
+```kotlin
+fun main() = runBlocking {
+    val a = coroutineScope {
+        delay(1000)
+        10
+    }
+    println("a is calculated")
+    val b = coroutineScope {
+        delay(1000)
+        20
+    }
+    println(a) // 10
+    println(b) // 20
+}
+// 1s delay
+// a is calculated
+// 1s delay
+// 10
+// 20
+```
+
+`coroutineScope`는 상위 스코프의 `coroutineContext`를 상속받아, 자식 코루틴이 해당 컨텍스트에서 실행됩니다.
+예를 들어 부모 코루틴이 특정 디스패처를 사용하고 있다면, `coroutineScope` 내의 코루틴도 같은 디스패처를 사용하게 됩니다.
+
+또한 `coroutineScope`는 내부에서 생성된 모든 자식 코루틴이 완료되어야지만, 자기 자신을 종료할 수 있습니다.
+
+```kotlin
+suspend fun longTask() = coroutineScope {
+    launch {
+        delay(1000)
+        val name = coroutineContext[CoroutineName]?.name
+        println("[$name] Finished task 1")
+    }
+    
+    launch {
+        delay(2000)
+        val name = coroutineContext[CoroutineName]?.name
+        println("[$name] Finished task 2")
+    }
+}
+
+fun main() = runBlocking(CoroutineName("Parent")) {
+    println("Before")
+    longTask()
+    println("After")
+}
+
+// Before
+// 1s delay
+// [Parent] Finished task 1
+// 1s delay
+// [Parent] Finished task 2
+// After
+```
+
+`coroutineScope`가 속한 부모 코루틴이 취소된다면, `coroutineScope` 내에서 생성된 모든 자식 코루틴들도 취소됩니다.
+
+```kotlin
+suspend fun longTask() = coroutineScope {
+    launch {
+        delay(1000)
+        val name = coroutineContext[CoroutineName]?.name
+        println("[$name] Finished task 1")
+    }
+    
+    launch {
+        delay(2000)
+        val name = coroutineContext[CoroutineName]?.name
+        println("[$name] Finished task 2")
+    }
+}
+
+fun main(): Unit = runBlocking {
+    val job = launch(CoroutineName("Parent")) {
+        longTask()
+    }
+    
+    delay(1500)
+    job.cancel()
+}
+// [Parent] Finished task 1
+```
+
+`coroutineScope` 또는 그 안의 자식 코루틴에서 예외가 발생되면 해당 스코프에 있는 모든 자식 코루틴들이 취소되고 예외를 다시 던집니다.
+이는 부모 코루틴에서 해당 예외를 확인하고 처리할 수 있도록 해줍니다.
+
+```kotlin
+data class Details(val name: String, val followers: Int) 
+data class Tweet(val text: String)
+
+class ApiException(val code: Int, message: String) : Throwable(message)
+
+fun getFollowersNumber(): Int = throw ApiException(500, "Service unavailable")
+
+suspend fun getUserName(): String { 
+    delay(500)
+    return "marcinmoskala"
+}
+
+suspend fun getTweets(): List<Tweet> { 
+    return listOf(Tweet("Hello, world"))
+}
+
+suspend fun getUserDetails(): Details = coroutineScope { 
+    val userName = async { getUserName() }
+    val followersNumber = async { getFollowersNumber() }
+    Details(userName.await(), followersNumber.await())
+}
+
+fun main() = runBlocking<Unit> { 
+    val details = 
+        try { 
+            getUserDetails()
+        } catch (e: ApiException) {
+            null
+        }
+    
+    val tweets = async { getTweets() } 
+    println("User: $details") 
+    println("Tweets: ${tweets.await()}")
+}
+
+// User: null
+// Tweets: [Tweet(text=Hello, world)]
+```
+
+`coroutineScope`는 여러 호출을 동시에 실행하기에 좋습니다.
+
+```kotlin
+suspend fun getUserProfile(): UserProfileData = coroutineScope {
+    val user = async { getUserData() }
+    val notifications = async { getNotifications() }
+    
+    // 1s
+    UserProfileData(
+        user = user.await(), 
+        notifications = notifications.await(),
+    )
+}
+```
+
+`runBlocking`대신 suspension 함수의 main body를 감싸는 데에 `coroutineScope`를 사용하는 것이 자주 사용됩니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    launch {
+        delay(1000)
+        println("World")
+    }
+    println("Hello, ")
+}
+// Hello,
+// 1s delay
+// World
+```
+
+아래 두 함수는 순차적으로 호출하는것과 동시에 호출하는 차이가 있습니다.
+
+```kotlin
+suspend fun produceCurrentUserSeq(): User {
+    val profile = repo.getProfile()
+    val friends = repo.getFriends()
+    return User(profile, friends)
+}
+
+suspend fun produceCurrentUserSym(): User = coroutineScope {
+    val profile = async { repo.getProfile() }
+    val friends = async { repo.getFriends() }
+    User(profile.await(), friends.await())
+}
+```
