@@ -357,3 +357,30 @@ suspend fun main() = supervisorScope {
 // MyException
 // Text2
 ```
+
+---
+
+## CancellationException does not propagate to its parent
+
+예외가 `CancellationException`의 하위 클래스라면, 이 예외는 부모로 전파되지 않고 현재 코루틴만 취소합니다.
+
+```kotlin
+object MyNonPropageatingException: CancellationException()
+
+suspend fun main(): Unit = coroutineScope {
+    launch { // 1
+        launch { // 2 
+            delay(2000)
+            println("Will not be printed")
+        }
+        throw MyNonPropageatingException // 3
+    }
+    
+    launch { // 4
+        delay(2000)
+        println("Will be printed")
+    }
+}
+// 2s delay
+// Will be printed
+```
