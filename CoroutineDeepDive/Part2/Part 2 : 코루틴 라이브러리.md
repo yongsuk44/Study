@@ -275,3 +275,62 @@ suspension point가 존재하지 않는 코루틴을 취소하는 방법으로�
 - `invokeOnCompletion` 함수는 '코루틴 종료' 시 어떤 작업을 실행할 지 설정할 수 있으며, 코루틴이 어떤 예외로 종료되는지 확인할 수 있습니다.
 - `suspendCancellableCoroutine` 함수는 코루틴 내 비동기 작업을 수행할 때 사용되며 취소 가능성을 고려한 추가적인 메서드들을 제공합니다.
   - `invokeOnCancellation` 함수는 '코루틴 취소' 시 어떤 작업을 실행할 지 설정 할 수 있습니다.
+
+---
+
+## [Part 2.4 :Exception handling](Exception%20handling.md)
+
+### Stop breaking my coroutines
+
+`SupervisorJob`은 일반 `Job`과 다르게 자식 코루틴에서 발생된 예외가 부모 코루틴에 영향을 주지 않습니다.  
+즉, 자식 코루틴에서 예외가 발생하더라도 다른 자식 코루틴이나 부모 코루틴이 중단되지 않습니다.
+
+일반적으로 `SupervisorJob`은 아래와 같이 여러 코루틴을 시작하는 `Scope`의 일부로 사용되며 해당 `Scope`에서 시작되는 모든 코루틴은 자동으로 `SupervisorJob`에 의해 관리됩니다.
+
+```kotlin
+val scope = CoroutineScope(SupervisorJob())
+
+scope.launch { ... }
+scope.async { ... }
+```
+
+자주 범하는 실수 중 하나는 `launch`, `async`의 인자로 `SupervisorJob`을 사용하는 것인데,
+이는 오직 하나의 직접적인 자식만을 가지고 있기에 일반 `Job`을 사용하는 것과 같이 예외 처리에 큰 이점을 가질 수 없습니다.  
+이처럼 큰 이점을 가지려면 `SupervisorJob`은 여러 코루틴 빌더의 컨텍스트로 사용하는 것이 더 효과적입니다.
+
+```kotlin
+val job = SupervisorJob()
+
+launch(job) { ... }
+async(job) { ...}
+job.cancelAndJoin()
+```
+
+`supervisorScope`는 예외 전파를 중단하는 또 다른 방법으로 부모 코루틴과의 연결을 유지하면서도 자식 코루틴에서 발생하는 예외를 무시하거나 제어 할 수 있습니다.
+
+`coroutineScope`는 `launch`, `async` 등의 코루틴 빌더와 다르게 부모 코루틴에게 예외를 전파하지 않고 해당 Scope 내에서 예외를 잡을 수 있게 해줍니다.
+코루틴 빌더는 자체적으로 예외를 잡지 않기에, 부모 코루틴에게 예외가 전파될 가능성이 높습니다.
+
+`supervisorScope`는 자식 코루틴의 예외가 부모 코루틴에게 전파되지 않지만,
+`withContext(SupervisorJob())`에서 `SupervisorJob()`을 부모 `Job`으로 만들지만, `withContext`는 단순히 코루틴의 컨텍스트를 변경하는 것이기에 예외 무시 기능이 적용되지 않습니다.
+
+### await
+
+`await`은 `async` 코루틴 빌더와 함께 사용되며 비동기 작업의 결과를 가져오기 위한 메서드입니다.
+다른 코루틴들과 동일하게 비동기 작업에서 예외가 발생되면, 부모 코루틴까지 예외를 전파합니다.
+
+### CancellationException does not propagate to its parent
+
+예외가 `CancellationException`의 하위 클래스라면, 이 예외는 부모로 전파되지 않고 현재 코루틴만 취소합니다.
+
+### Coroutine exception handler
+
+`CoroutineExceptionHandler`는 코루틴에서 예외 처리 시, 모든 예외에 대한 기본 동작을 정의하는데 유용합니다.
+이 핸들러는 예외가 발생하면 정의한 코드 블록이 실행되며, 코루틴 컨텍스트에 추가할 수 있어 `SupervisorJob` 등과 같이 사용할 수 있습니다.
+
+### Summary
+
+- `SupervisorJob`에서 발생된 예외는 부모 코루틴에게 전파되지 않으며, 이로 인해 여러 코루틴 빌더의 컨텍스트로 사용하는 것이 효과적입니다.
+- `suervisorScope` 블록에서 생성된 코루틴들은 예외가 발생해도 부모 코루틴에게 전파되지 않습니다.
+- 예외가 `CancellationException`의 하위 클래스라면, 이 예외는 부모로 전파되지 않고 현재 코루틴만 취소합니다.
+- `CoroutineExceptionHandler`는 코루틴에서 예외 처리 시, 모든 예외에 대한 기본 동작을 정의하는데 유용합니다.
