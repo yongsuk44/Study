@@ -317,3 +317,43 @@ graph TB
     style launch2 stroke:#f66,stroke-width:4px
     linkStyle 6 stroke:red
 ```
+
+---
+
+## Await
+
+`await`은 `async` 코루틴 빌더와 함께 사용되며, 비동기 작업의 결과를 가져오기 위한 메서드입니다.
+
+만약 비동기 작업에서 예외가 발생하면, 일반적으로는 해당 코루틴의 부모 코루틴까지 예외가 전파되어 중단됩니다.  
+이는 자식 코루틴의 실패가 부모 코루틴에 영향을 미치기 때문입니다.
+
+하지만 `SupervisorJob`이나 `supervisorScope` 사용 시 자식 코루틴의 예외를 부모 코루틴으로 전파하지 않을 수 있습니다. 
+이러한 경우에 `await` 호출 시 그 결과나 예외는 호출한 코루틴에서만 처리됩니다.
+
+즉, 부모 코루틴이 중단되지 않아도 `await`는 여전히 해당 코루틴의 결과나 예외를 얻을 수 있는것 입니다.
+
+```kotlin
+class MyException: Throwable()
+
+suspend fun main() = supervisorScope {
+   val str1 = async<String> {
+       delay(1000)
+       throw MyException()
+   }
+    
+    val str2 = async<String> {
+        delay(2000)
+        "Text2"
+    }
+    
+    try {
+        println(str1.await())
+    } catch (e: MyException) {
+        println(e)
+    }
+    
+    println(str2.await())
+}
+// MyException
+// Text2
+```

@@ -313,3 +313,8 @@ job.cancelAndJoin()
 
 `supervisorScope`는 자식 코루틴의 예외가 부모 코루틴에게 전파되지 않지만,
 `withContext(SupervisorJob())`에서 `SupervisorJob()`을 부모 `Job`으로 만들지만, `withContext`는 단순히 코루틴의 컨텍스트를 변경하는 것이기에 예외 무시 기능이 적용되지 않습니다.
+
+### await
+
+`await`은 `async` 코루틴 빌더와 함께 사용되며 비동기 작업의 결과를 가져오기 위한 메서드입니다.
+다른 코루틴들과 동일하게 비동기 작업에서 예외가 발생되면, 부모 코루틴까지 예외를 전파합니다.
