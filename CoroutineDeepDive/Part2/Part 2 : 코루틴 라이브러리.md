@@ -334,3 +334,18 @@ job.cancelAndJoin()
 - `suervisorScope` 블록에서 생성된 코루틴들은 예외가 발생해도 부모 코루틴에게 전파되지 않습니다.
 - 예외가 `CancellationException`의 하위 클래스라면, 이 예외는 부모로 전파되지 않고 현재 코루틴만 취소합니다.
 - `CoroutineExceptionHandler`는 코루틴에서 예외 처리 시, 모든 예외에 대한 기본 동작을 정의하는데 유용합니다.
+
+---
+
+## [Part 2.5 : Coroutine scope functions](CoroutineScope%20함수.md)
+
+### Approaches that were used before coroutine scope functions were introduced
+
+코루틴 빌더(`async`, `launch` 등)을 사용하려면 스코프가 필요하며 이는 `runBlocking`, `coroutineScope` 등을 통해 제공됩니다.
+
+스코프 중 `GlobalScope`도 존재하는데 이 스코프는 다음과 같은 특징을 지닙니다.
+
+- `GlobalScope`는 애플리케이션의 전체 수명 주기 동안 유지되며, 애플리케이션의 수명 주기와 동일하게 실행되기에 부모 코루틴이 취소되더라도 계속 실행됩니다.
+- `GlobalScope`는 `EmptyCoroutineContext`를 얻기에 컨텍스트와 스코프에 대한 값이 없어 일반적인 부모-자식 간 상속이 없습니다. 
+
+이와 같은 특징으로 인해 '리소스 낭비가 발생'할 수 있으며, '컨텍스트에 대한 설정을 직접 해야하고', '유닛테스트가 어려워진다'는 단점이 있습니다.
