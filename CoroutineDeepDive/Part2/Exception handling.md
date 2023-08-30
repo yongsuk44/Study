@@ -384,3 +384,34 @@ suspend fun main(): Unit = coroutineScope {
 // 2s delay
 // Will be printed
 ```
+
+---
+
+## Coroutine exception handler
+
+`CoroutineExceptionHandler`는 코루틴에서 예외 처리 시, 모든 예외에 대한 기본 동작을 정의하는데 유용합니다.
+
+이 핸들러는 코루틴의 컨텍스트에 추가할 수 있으며, 예외가 발생하면 지정된 코드 블록이 실행됩니다.  
+그러나 예외 전파를 멈추지 않기에 아래 예제처럼 `SupervisorJob`과 같이 사용하면 효율적입니다.
+
+```kotlin
+fun main(): Unit = runBlocking {
+    val handler = CoroutineExceptionHandler { ctx, e -> println("Caught $e") }
+    
+    val scope = CoroutineScope(SupervisorJob() + handler)
+    
+    scope.launch { 
+        delay(1000)
+        throw Error("Some error")
+    }
+    
+    scope.launch {
+        delay(2000)
+        println("Will be printed")
+    }
+    
+    delay(3000)
+}
+// Caught java.lang.Error: Some error
+// Will be printed
+```
