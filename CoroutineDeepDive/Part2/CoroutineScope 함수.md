@@ -345,7 +345,7 @@ suspend fun produceCurrentUserSym(): User = coroutineScope {
 | 코루틴 스코프 함수                                                        | 코루틴 빌더                                 |
 |-------------------------------------------------------------------|----------------------------------------|
 | `coroutineScope`, `supervisorScope`, `withContext`, `withTimeout` | `launch`, `async`, `produce`           |
-| suspending 함수                                                     | Extension 함수 or `CoroutineScope`    |
+| suspending 함수                                                     | Extension 함수 or `CoroutineScope`       |
 | suspending 함수의 `continuation`에서 코루틴 컨텍스트를 가져옵니다                   | `CoroutineScope` 수신자에서 코루틴 컨텍스트를 가져옵니다 |
 | 예외는 일반 함수에서처럼 던져집니다                                               | 예외는 `Job`을 통해 부모에게 전파됩니다               |
 | 현재 위치에서 코루틴을 호출합니다.                                               | 비동기 코루틴을 시작합니다                         |
@@ -357,3 +357,59 @@ suspend fun produceCurrentUserSym(): User = coroutineScope {
 
 이로 인해 `runBlocking`은 코루틴 계층 구조의 최상단에 있어야 하며 주로 앱의 진입점이나 테스트 케이스 등에서 사용됩니다.
 코루틴 스코프 함수는 일반적으로 이미 존재하는 코루틴 스코프 내에서 새로운 스코프를 생성하는 용도로 사용됩니다.
+
+---
+
+## withContext
+
+`withContext`는 사용자가 특정 코루틴 컨텍스트를 명시적으로 설정할 수 있습니다.
+이 컨텍스트는 부모 스코프의 컨텍스트를 오버라이드하며, 이로 인해 `withContext`내에서 실행되는 코루틴은 새로운 설정을 따릅니다.
+
+`withContext(EmptyCoroutineContext)`를 사용하면, 부모 스코프의 컨텍스트를 그대로 이어받는 `coroutineScope`와 동일하게 작동됩니다.
+
+```kotlin
+fun CoroutineScope.log(text: String) {
+    val name = this.coroutineContext[CoroutineName]?.name
+    println("[$name] $text")
+}
+
+fun main() = runBlocking(CoroutineName("Parent")) {
+    log("Before")
+
+    withContext(CoroutineName("Child 1")) {
+        delay(1000)
+        log("Hello 1")
+    }
+
+    withContext(CoroutineName("Child 2")) {
+        delay(1000)
+        log("Hello 2")
+    }
+
+    log("After")
+}
+// [Parent] Before
+// (1 sec)
+// [Child 1] Hello 1
+// (1 sec)
+// [Child 2] Hello 2
+// [Parent] After
+```
+
+`withContext`는 코드의 일부분에서 다른 코루틴 스코프를 설정하기 위해 자주 사용되며 보통 `Dispatchers` 컨텍스트와 함께 사용합니다.
+
+```kotlin
+launch(Dispatchers.Main) {
+    view.showProgressBar()
+    withContext(Dispatchers.IO) { fileRepository.saveData(data) }
+    view.hideProgressBar()
+}
+```
+
+`coroutineScope { ... }`와 `async { ... }.await()`는 매우 유사한 방식으로 동작하며,
+비슷하게 `withContext(context) { ... }`와 `async(context) { ... }.await()`도 유사하게 동작합니다.
+
+`async`는 코루틴 스코프가 필요하여 별도로 스코프를 지정해야 하기에 코드가 복잡해질 수 있습니다.
+반면에 `coroutineScope`와 `withContext`는 이미 suspending 함수 내에서 실행되므로 자동으로 현재의 코루틴 스코프를 이어 받습니다.
+
+이 때문에 코드의 가독성과 관리성을 위해서 `async`와 `await()`를 즉시 사용할 떄 특별한 경우가 아니라면 `coroutineScope` or `withContext`를 사용하게 좋습니다.
