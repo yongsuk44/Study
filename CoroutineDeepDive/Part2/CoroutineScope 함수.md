@@ -11,7 +11,7 @@
 suspend fun getUserProfile(): UserProfileData {
     val user = getUserData() // 1s
     val notifications = getNotifications() // 1s
-    
+
     // 2s
     return UserProfileData(
         user = user,
@@ -31,7 +31,7 @@ suspend fun getUserProfile(): UserProfileData {
 
     // 1s
     return UserProfileData(
-        user = user.await(), 
+        user = user.await(),
         notifications = notifications.await(),
     )
 }
@@ -49,14 +49,13 @@ public object GlobalScope : CoroutineScope {
 `GlobalScope` 사용 시 다음과 같은 특징을 지닙니다.
 
 - 부모 코루틴이 취소되더라도 `GlobalScope`에서 실행된 `async` 코루틴은 독립적으로 계속 실행됩니다.
-- 보통 코루틴은 부모 코루틴의 스코프와 컨텍스트를 상속받습니다. 그러나 `GlobalScope` 사용 시 이러한 상속이 발생되지 않습니다. 
+- 보통 코루틴은 부모 코루틴의 스코프와 컨텍스트를 상속받습니다. 그러나 `GlobalScope` 사용 시 이러한 상속이 발생되지 않습니다.
 
 위와 같은 특징은 다음과 같은 결과가 발생됩니다.
 
 - 코루틴이 취소되지 않고 계속 실행되면, 불필요한 메모리와 CPU를 사용하게 되어 시스템 성능에 문제를 줄 수 있습니다.
 - 상속이 발생되지 않으면 항상 Default Dispatcher에서 실행되며 부모 컨텍스트(`Dispatcher`, `Job` 등)를 고려하지 않아 예기치 못한 동작이 발생될 수 있습니다.
 - 일반적으로 UnitTest 도구들도 구조적 동시성 메커니즘을 기반으로 동작하기에 이러한 메커니즘이 없으면 UnitTest가 어려워 집니다.
-
 
 그렇다고 해서 아래와 같이 `CoroutineScope`를 인자로 전달하는 방법은 좋지 않습니다.
 
@@ -65,10 +64,10 @@ public object GlobalScope : CoroutineScope {
 suspend fun getUserProfile(scope: CoroutineScope): UserProfileData {
     val user = scope.async { getUserData() }
     val notifications = scope.async { getNotifications() }
-    
+
     // 1s
     return UserProfileData(
-        user = user.await(), 
+        user = user.await(),
         notifications = notifications.await(),
     )
 }
@@ -79,10 +78,10 @@ suspend fun getUserProfile(scope: CoroutineScope): UserProfileData {
 suspend fun CoroutineScope.getUserProfile(): UserProfileData {
     val user = async { getUserData() }
     val notifications = async { getNotifications() }
-    
+
     // 1s
     return UserProfileData(
-        user = user.await(), 
+        user = user.await(),
         notifications = notifications.await(),
     )
 }
@@ -93,39 +92,39 @@ suspend fun CoroutineScope.getUserProfile(): UserProfileData {
 1. 중첩된 함수 호출을 관리하는 경우에 스코프를 여러 함수에 전달할 시 코드와 스코프 관리가 어려워집니다.
 2. `SupervisorJob`이 아닌 `Job`을 사용하여 `async`를 실행하다가 블록 내부에서 예외가 발생되면 `CoroutineScope` 내의 모든 작업이 중단됩니다.
 3. `CoroutineScope`에 직접 접근하여 `cancel()` 메서드 호출 시 해당 스코프를 어디서든 취소할 수 있습니다.  
-이는 예상치 못한 동작을 초래할 수 있고, 프로그램 안정성 측면에서 좋지 않습니다.
+   이는 예상치 못한 동작을 초래할 수 있고, 프로그램 안정성 측면에서 좋지 않습니다.
 
 ```kotlin
-data class Details(val name: String, val followers: Int) 
+data class Details(val name: String, val followers: Int)
 data class Tweet(val text: String)
 
 fun getFollowersNumber(): Int = throw Error("Service exception")
 
-suspend fun getUserName(): String { 
+suspend fun getUserName(): String {
     delay(500)
     return "marcinmoskala"
 }
 
 suspend fun getTweets(): List<Tweet> {
-    return listOf(Tweet("Hello, world")) 
+    return listOf(Tweet("Hello, world"))
 }
 
 suspend fun CoroutineScope.getUserDetails(): Details {
     val userName = async { getUserName() }
-    val followersNumber = async { getFollowersNumber() } 
+    val followersNumber = async { getFollowersNumber() }
     return Details(userName.await(), followersNumber.await())
 }
 
-fun main() = runBlocking { 
-    val details = 
-        try { 
-            getUserDetails() 
-        } catch (e: Error) { 
+fun main() = runBlocking {
+    val details =
+        try {
+            getUserDetails()
+        } catch (e: Error) {
             null
         }
-    
-    val tweets = async { getTweets() } 
-    println("User: $details") 
+
+    val tweets = async { getTweets() }
+    println("User: $details")
     println("Tweets: ${tweets.await()}")
 }
 // Only Exception...
@@ -187,7 +186,7 @@ suspend fun longTask() = coroutineScope {
         val name = coroutineContext[CoroutineName]?.name
         println("[$name] Finished task 1")
     }
-    
+
     launch {
         delay(2000)
         val name = coroutineContext[CoroutineName]?.name
@@ -218,7 +217,7 @@ suspend fun longTask() = coroutineScope {
         val name = coroutineContext[CoroutineName]?.name
         println("[$name] Finished task 1")
     }
-    
+
     launch {
         delay(2000)
         val name = coroutineContext[CoroutineName]?.name
@@ -230,7 +229,7 @@ fun main(): Unit = runBlocking {
     val job = launch(CoroutineName("Parent")) {
         longTask()
     }
-    
+
     delay(1500)
     job.cancel()
 }
@@ -241,38 +240,38 @@ fun main(): Unit = runBlocking {
 이는 부모 코루틴에서 해당 예외를 확인하고 처리할 수 있도록 해줍니다.
 
 ```kotlin
-data class Details(val name: String, val followers: Int) 
+data class Details(val name: String, val followers: Int)
 data class Tweet(val text: String)
 
 class ApiException(val code: Int, message: String) : Throwable(message)
 
 fun getFollowersNumber(): Int = throw ApiException(500, "Service unavailable")
 
-suspend fun getUserName(): String { 
+suspend fun getUserName(): String {
     delay(500)
     return "marcinmoskala"
 }
 
-suspend fun getTweets(): List<Tweet> { 
+suspend fun getTweets(): List<Tweet> {
     return listOf(Tweet("Hello, world"))
 }
 
-suspend fun getUserDetails(): Details = coroutineScope { 
+suspend fun getUserDetails(): Details = coroutineScope {
     val userName = async { getUserName() }
     val followersNumber = async { getFollowersNumber() }
     Details(userName.await(), followersNumber.await())
 }
 
-fun main() = runBlocking<Unit> { 
-    val details = 
-        try { 
+fun main() = runBlocking<Unit> {
+    val details =
+        try {
             getUserDetails()
         } catch (e: ApiException) {
             null
         }
-    
-    val tweets = async { getTweets() } 
-    println("User: $details") 
+
+    val tweets = async { getTweets() }
+    println("User: $details")
     println("Tweets: ${tweets.await()}")
 }
 
@@ -286,10 +285,10 @@ fun main() = runBlocking<Unit> {
 suspend fun getUserProfile(): UserProfileData = coroutineScope {
     val user = async { getUserData() }
     val notifications = async { getNotifications() }
-    
+
     // 1s
     UserProfileData(
-        user = user.await(), 
+        user = user.await(),
         notifications = notifications.await(),
     )
 }
@@ -325,3 +324,36 @@ suspend fun produceCurrentUserSym(): User = coroutineScope {
     User(profile.await(), friends.await())
 }
 ```
+
+---
+
+## Coroutine scope functions
+
+코루틴 스코프 함수는 suspending 함수 내에서 새로운 코루틴 스코프를 만들거나 기존의 스코프를 변형하는데 사용됩니다.
+이는 코루틴의 실행 컨텍스트를 제어하거나, 오류 처리 방식을 정의하거나, 타임아웃을 설정하는 등 다양한 작업을 가능하게 합니다.
+
+`coroutineScope`와 비슷한 동작을 하는 스코프를 생성하는 여러 함수들이 있습니다.
+
+- `supervisorScope`는 `Job` 대신 `SupervisorJob`을 사용합니다.
+- `withContext`는 코루틴이 다른 디스패처나 다른 컨텍스트에서 수정되어야 할 때 사용되는 `coroutineScope`입니다.
+- `withTimeout`은 코루틴이 정해진 시간에 완료되지 않으면 `TimeoutException`을 발생 시키는 `coroutineScope`입니다.
+
+### 코루틴 스코프 함수와 코루틴 빌더의 차이점
+
+코루틴 스코프 함수와 코루틴 빌더는 종종 혼동되지만, 이 둘을 개념적으로나 실질적으로나 매우 다릅니다.
+
+| 코루틴 스코프 함수                                                        | 코루틴 빌더                                 |
+|-------------------------------------------------------------------|----------------------------------------|
+| `coroutineScope`, `supervisorScope`, `withContext`, `withTimeout` | `launch`, `async`, `produce`           |
+| suspending 함수                                                     | Extension 함수 or `CoroutineScope`    |
+| suspending 함수의 `continuation`에서 코루틴 컨텍스트를 가져옵니다                   | `CoroutineScope` 수신자에서 코루틴 컨텍스트를 가져옵니다 |
+| 예외는 일반 함수에서처럼 던져집니다                                               | 예외는 `Job`을 통해 부모에게 전파됩니다               |
+| 현재 위치에서 코루틴을 호출합니다.                                               | 비동기 코루틴을 시작합니다                         |
+
+`runBlocking`은 코루틴 스코프 함수와 많은 공통점을 가지는 것처럼 보일 수 있지만 큰 차이가 존재합니다.
+
+`runBlocking`은 Blocking 함수로써 호출되면 해당 스레드를 차단하여 그 안에서 실행되는 코루틴이 완료될 때까지 기다립니다.
+반면에 코루틴 스코프 함수는 suspending 함수로 코루틴이 일시 중단되어 다른 작업을 수행할 수 있는 기회를 제공한다는 차이점이 있습니다.
+
+이로 인해 `runBlocking`은 코루틴 계층 구조의 최상단에 있어야 하며 주로 앱의 진입점이나 테스트 케이스 등에서 사용됩니다.
+코루틴 스코프 함수는 일반적으로 이미 존재하는 코루틴 스코프 내에서 새로운 스코프를 생성하는 용도로 사용됩니다.

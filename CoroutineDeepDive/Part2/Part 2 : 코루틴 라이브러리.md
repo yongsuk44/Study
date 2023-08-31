@@ -364,3 +364,13 @@ job.cancelAndJoin()
 - `coroutineScope`가 속한 부모 코루틴이 취소된다면, 생성된 자식 코루틴들도 모두 취소됩니다.
 
 `coroutineScope` 또는 그 안의 자식 코루틴에서 예외가 발생되면 해당 범위의 코루틴들이 모두 취소되고 부모 코루틴에 예외를 던집니다.
+
+### Coroutine Scope functions
+
+코루틴 스코프 함수는 suspending 함수 내에서 새로운 코루틴 스코프를 생성하거나 기존의 스코프를 변형하는데 사용됩니다.
+이러한 코루틴 스코프 함수에는 `coroutineScope`, `superviorScope`, `withContext`, `withTimeout` 등이 있습니다.
+
+코루틴 스코프 함수와 코루틴 빌더는 혼동될 수 있지만 이 둘을 엄연히 [차이점](CoroutineScope%20함수.md#코루틴-스코프-함수와-코루틴-빌더의-차이점)이 존재합니다
+
+코루틴 스코프 함수와 `runBlocking`도 비슷해 보이지만, `runBlocking`은 blocking 함수, 코루틴 스코프 함수는 suspending 함수 입니다.
+이로 인해 서로 다른 목적과 환경에서 사용되므로 명확하게 구분해야 합니다.
