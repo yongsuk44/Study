@@ -649,3 +649,87 @@ suspend fun calculateAnswerOrNull(): User? =
 
 단, 코루틴 스코프 함수를 중첩해서 사용할 때 각 함수의 특성과 영향성을 잘 이해하고 사용해야 합니다.
 예를 들어, `withContext`가 취소 불가능한 작업을 수행하는 경우, `withTimeoutOrNull`의 타임아웃은 효과가 없을 수 있습니다.
+
+---
+
+## Additional operations
+
+아래 예시는 사용자 프로필을 표시한 후 Anayltics에 프로필을 표시했다는 것을 알리는 예시입니다.  
+개발자들은 종종 같은 스코프에서 `launch`를 사용하여 수행합니다.
+
+```kotlin
+class ShowUserDataUseCase(
+    private val repo: UserDataRepository,
+    private val view: UserDataView
+) {
+    suspend fun showUserData() = coroutineScope { 
+        val name = async { repo.getUserName() } 
+        val friends = async { repo.getFriends() }
+        val profile = async { repo.getUserProfile() }
+        val user = User(
+            name = name.await(),
+            friends = friends.await(),
+            profile = profile.await()
+        )
+   
+        view.show(user)
+        launch { repo.notifyProfileShown() }
+    }
+}
+```
+
+이러한 접근 방법은 아래와 같은 문제점이 있습니다.
+
+`coroutineScope` 내에서 `launch`로 코루틴을 시작하면, `coroutineScope` 블록은 내부 코루틴이 모두 완료될 때까지 대기합니다.
+
+만약 아래 코드와 같이 `progressBar`를 표시하고 있다면 `notifyProfileShown()`와 같이 추가 작업이 끝나지 않으면 사용자는 그 작업이 완료될 때까지 업데이트 된 View를 볼 수 없습니다.
+
+```kotlin
+fun onCreate() {
+    viewModelScope.launch {
+        _progressBar.value = true
+        showUserData()
+        _progressBar.value = false
+    }
+}
+```
+
+그 다음 문제로는 취소(Cancellation) 문제 입니다.
+
+코루틴은 기본적으로 예외가 발생되면 다른 작업을 취소하도록 설계되어 있습니다.
+필수적인 작업에 대해서는 이러한 부분이 좋은 방식이지만, 만약 `getUserProfile`에서 예외가 발생되면 `getUserName`과 `getFriends`의 응답이 무용지물이므로 이들을 취소해야 합니다.
+
+그러나 `notifyProfileShown()` 호출이 실패했다고 하여 위 작업들을 취소하는 것은 크게 의미가 없는 행동입니다.
+
+그렇기에 메인 로직에 영향을 미치지 않는 추가적인 작업이 있을 때에는 아래와 같이 별도의 스코프를 생성하여 시작하는 것이 좋습니다. 
+
+      val analyticsScope = CoroutineScope(SupervisorJob())
+
+이처럼 생성된 스코프를 단위 테스트하고 제어하기 위해서는 생성자를 통해 주입하는 것이 좋은 방식입니다.
+
+```kotlin
+class ShowUserDataUseCase(
+    private val repo: UserDataRepository,
+    private val view: UserDataView,
+    private val analyticsScope: CoroutineScope
+) {
+    suspend fun showUserData() = coroutineScope { 
+        val name = async { repo.getUserName() } 
+        val friends = async { repo.getFriends() }
+        val profile = async { repo.getUserProfile() }
+        val user = User(
+            name = name.await(),
+            friends = friends.await(),
+            profile = profile.await()
+        )
+   
+        view.show(user)
+        analyticsScope.launch { repo.notifyProfileShown() }
+    }
+}
+```
+
+위처럼 스코프를 명시적으로 주입하면 해당 클래스가 독립적으로 비동기 작업을 시작할 수 있다는 것이 명확해지기에 다른 개발자나 코드 리뷰어가 이 클래스의 동작을 더 쉽게 이해할 수 있습니다. 
+
+이처럼 스코프를 전달하여 해당 클래스가 독립적인 호출을 시작함을 알 수 있으면 suspending 함수가 시작한 모든 작업을 기다리지 않을 수 있다는 것 알 수 있습니다.  
+또한 스코프가 전달되지 않으면 suspending 함수는 시작한 모든 작업이 완료될 때까지 완료되지 않음을 예상할 수 있습니다.
