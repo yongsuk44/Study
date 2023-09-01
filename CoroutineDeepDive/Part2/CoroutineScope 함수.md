@@ -413,3 +413,106 @@ launch(Dispatchers.Main) {
 반면에 `coroutineScope`와 `withContext`는 이미 suspending 함수 내에서 실행되므로 자동으로 현재의 코루틴 스코프를 이어 받습니다.
 
 이 때문에 코드의 가독성과 관리성을 위해서 `async`와 `await()`를 즉시 사용할 떄 특별한 경우가 아니라면 `coroutineScope` or `withContext`를 사용하게 좋습니다.
+
+---
+
+## supervisorScope
+
+`supervisorScope`는 `coroutineScope`와 매우 유사하게 동작합니다.
+외부 스코프로부터 `CoroutineScope`를 상속받고 지정된 suspend 블록을 실행합니다.
+
+차이점이라면, 컨텍스트의 `Job`을 `SupervisorJob`으로 오버라이드하여 자식 코루틴이 예외를 발생시켜도 다른 코루틴들이 취소되지 않는다는 점 입니다.
+
+```kotlin
+fun main() = runBlocking {
+    println("Before")
+
+    supervisorScope {
+        launch {
+            delay(1000)
+            throw Error()
+        }
+       launch {
+           delay(2000)
+          println("Done")
+       }
+    }
+   
+   println("After")
+}
+// Before
+// 1s delay
+// Exception
+// 1s delay
+// Done
+// After
+```
+
+`supervisorScope`는 여러 독립적인 비동기 작업을 안전하고 효율적으로 관리할 수 있는 좋은 방법입니다.
+
+```kotlin
+suspend fun notifiyAnlaytics(actions: List<UserAction>) = supervisorScope {
+    actions.forEach { action ->
+        launch { notifyAnlaytics(action) }
+    }
+}
+```
+
+`async`로 시작한 코루틴의 결과를 받기 위해 `await()` 호출 시, 해당 코루틴이 예외로 종료되면 이 예외는 `await()`을 통해 다시 던져집니다.
+
+`async`가 예외를 억제하도록 설정해도, 이는 부모 코루틴으로의 전파를 억제할 뿐, 실제로 `await()` 호출 시 예외가 다시 발생됩니다.
+이 예외를 완전히 무시하려면 `await()` 호출을 `try-catch`로 감싸야 합니다.
+
+따라서 `async`와 `await()` 사용 시 에외 처리를 충분히 고려해야 하며, `await()` 호출 주변에 `try-catch`를 사용하는 것이 좋습니다.
+
+```kotlin
+class ArticlesRepositoryComposite(
+    private val articleRepositories: List<ArticleRepository>
+): ArticleRepository {
+    override suspend fun fetchArticles(): List<Article> = 
+        supervisorScope {
+            articleRepositories
+               .map { async { it.fetchArticles() } }
+               .mapNotNull {
+                   try {
+                       it.await()
+                   } catch (e: Exception) { 
+                       e.printStackTrace()
+                       null
+                   }
+               }
+               .flatten()
+               .sortedByDescending { it.publishedAt }
+        }
+}
+```
+
+`withContext(SupervisorJob())`를 사용하여 `supervisorScope`를 대체할 수 없습니다.
+
+`withContext(SupervisorJob())`를 사용하면, `withContext`는 여전히 `Job`을 사용하게되고, `SupervisorJob()`은 그 `Job`의 부모가 됩니다.
+이런 상속 구조로 인해 `withContext`의 자식 코루틴 중 하나가 실패하면, 다른 모든 자식 코루틴들도 실패하게 됩니다.  
+즉, 예외가 발생된 자식 코루틴들은 예외를 `withContext`로 전파되기에 `SupervisorJob()`은 실질적으로 의미가 없게됩니다.
+
+이러한 이유로 `withContext(SupervisorJob())`는 무의미하고 혼동을 줄 수 있으며, 좋은 방법이 아닙니다.
+
+```kotlin
+fun main() = runBlocking {
+    println("Before")
+
+    withContext(SupervisorJob()) {
+        launch {
+            delay(1000)
+            throw Error()
+        }
+       launch {
+           delay(2000)
+          println("Done")
+       }
+    }
+   
+   println("After")
+}
+// Before
+// 1s delay
+// Exception
+```
