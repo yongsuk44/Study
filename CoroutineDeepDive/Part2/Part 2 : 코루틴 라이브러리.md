@@ -407,3 +407,10 @@ job.cancelAndJoin()
 
 `withTimeoutOrNull`은 `withTimeout`과 동일하지만, 시간 초과 시 `TimeoutCancellationException`을 발생시키지 않고 `null`을 반환합니다.
 이로 인해 좀 더 유연한 예외 처리를 할 수 있습니다.
+
+### Connecting coroutine scope functions
+
+코루틴 스코프 함수들은 자체적으로 특정한 기능을 제공하며 이 함수들을 중첩해서 사용하여 여러 기능을 조합해서 사용할 수 있습니다.
+
+단, 각 함수의 특정과 영향성을 잘 이해하고 사용해야 합니다.   
+(`withContext`가 취소 불가능한 작업을 수행하는데 `withTimeout`은 의미 없는 기능이 될 수 있습니다.)

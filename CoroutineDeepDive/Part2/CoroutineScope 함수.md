@@ -630,3 +630,22 @@ suspend fun main() = coroutineScope {
 // 5s delay
 // null
 ```
+
+---
+
+## Connecting coroutine scope functions
+
+코루틴 스코프 함수(`withContext`, `withTimeout`, `supervisorScope`, `coroutineScope` 등)들은 자체적으로 특정한 기능을 제공합니다. 
+그러나 때로는 여러 기능을 조합해야 할 수 있습니다. 이럴 때는 중첩해서 함수들을 사용할 수 있습니다.
+
+예를 들어 타임아웃과 디스패처를 모두 설정하려면 아래와 같이 사용할 수 있습니다.
+
+```kotlin
+suspend fun calculateAnswerOrNull(): User? =
+    withContext(Dispatchers.Default) {
+       withTimeoutOrNull(1000) { calculateAnswer() }
+    }
+```
+
+단, 코루틴 스코프 함수를 중첩해서 사용할 때 각 함수의 특성과 영향성을 잘 이해하고 사용해야 합니다.
+예를 들어, `withContext`가 취소 불가능한 작업을 수행하는 경우, `withTimeoutOrNull`의 타임아웃은 효과가 없을 수 있습니다.
