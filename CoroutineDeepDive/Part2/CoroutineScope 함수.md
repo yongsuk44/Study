@@ -413,3 +413,323 @@ launch(Dispatchers.Main) {
 반면에 `coroutineScope`와 `withContext`는 이미 suspending 함수 내에서 실행되므로 자동으로 현재의 코루틴 스코프를 이어 받습니다.
 
 이 때문에 코드의 가독성과 관리성을 위해서 `async`와 `await()`를 즉시 사용할 떄 특별한 경우가 아니라면 `coroutineScope` or `withContext`를 사용하게 좋습니다.
+
+---
+
+## supervisorScope
+
+`supervisorScope`는 `coroutineScope`와 매우 유사하게 동작합니다.
+외부 스코프로부터 `CoroutineScope`를 상속받고 지정된 suspend 블록을 실행합니다.
+
+차이점이라면, 컨텍스트의 `Job`을 `SupervisorJob`으로 오버라이드하여 자식 코루틴이 예외를 발생시켜도 다른 코루틴들이 취소되지 않는다는 점 입니다.
+
+```kotlin
+fun main() = runBlocking {
+    println("Before")
+
+    supervisorScope {
+        launch {
+            delay(1000)
+            throw Error()
+        }
+        launch {
+            delay(2000)
+            println("Done")
+        }
+    }
+
+    println("After")
+}
+// Before
+// 1s delay
+// Exception
+// 1s delay
+// Done
+// After
+```
+
+`supervisorScope`는 여러 독립적인 비동기 작업을 안전하고 효율적으로 관리할 수 있는 좋은 방법입니다.
+
+```kotlin
+suspend fun notifiyAnlaytics(actions: List<UserAction>) = supervisorScope {
+    actions.forEach { action ->
+        launch { notifyAnlaytics(action) }
+    }
+}
+```
+
+`async`로 시작한 코루틴의 결과를 받기 위해 `await()` 호출 시, 해당 코루틴이 예외로 종료되면 이 예외는 `await()`을 통해 다시 던져집니다.
+
+`async`가 예외를 억제하도록 설정해도, 이는 부모 코루틴으로의 전파를 억제할 뿐, 실제로 `await()` 호출 시 예외가 다시 발생됩니다.
+이 예외를 완전히 무시하려면 `await()` 호출을 `try-catch`로 감싸야 합니다.
+
+따라서 `async`와 `await()` 사용 시 에외 처리를 충분히 고려해야 하며, `await()` 호출 주변에 `try-catch`를 사용하는 것이 좋습니다.
+
+```kotlin
+class ArticlesRepositoryComposite(
+    private val articleRepositories: List<ArticleRepository>
+) : ArticleRepository {
+    override suspend fun fetchArticles(): List<Article> =
+        supervisorScope {
+            articleRepositories
+                .map { async { it.fetchArticles() } }
+                .mapNotNull {
+                    try {
+                        it.await()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        null
+                    }
+                }
+                .flatten()
+                .sortedByDescending { it.publishedAt }
+        }
+}
+```
+
+`withContext(SupervisorJob())`를 사용하여 `supervisorScope`를 대체할 수 없습니다.
+
+`withContext(SupervisorJob())`를 사용하면, `withContext`는 여전히 `Job`을 사용하게되고, `SupervisorJob()`은 그 `Job`의 부모가 됩니다.
+이런 상속 구조로 인해 `withContext`의 자식 코루틴 중 하나가 실패하면, 다른 모든 자식 코루틴들도 실패하게 됩니다.  
+즉, 예외가 발생된 자식 코루틴들은 예외를 `withContext`로 전파되기에 `SupervisorJob()`은 실질적으로 의미가 없게됩니다.
+
+이러한 이유로 `withContext(SupervisorJob())`는 무의미하고 혼동을 줄 수 있으며, 좋은 방법이 아닙니다.
+
+```kotlin
+fun main() = runBlocking {
+    println("Before")
+
+    withContext(SupervisorJob()) {
+        launch {
+            delay(1000)
+            throw Error()
+        }
+        launch {
+            delay(2000)
+            println("Done")
+        }
+    }
+
+    println("After")
+}
+// Before
+// 1s delay
+// Exception
+```
+
+---
+
+## withTimeout
+
+`withTimeout`은 작업에 최대 실행 시간을 부여하는 역할을 하며, 시간이 지나면 작업을 강제 종료 시킵니다.
+
+`withTimeout`에서 설정된 시간을 초과하게 되면 `TimeoutCancellationException`이 발생됩니다.  
+(이 예외는 코루틴이 취소되었을 때 나타내는 `CancellationException`의 하위 타입입니다.)
+
+`withTimeout`이 성공적으로 완료된 경우 블록 내에서 반환된 값을 반환합니다.
+
+`withTimeout`은 특정 작업에 시간 제한을 두고 싶을 떄 유용하며 느린 네트워크 요청, 복잡한 계산 등에 시간 초과를 적용할 수 있어 앱의 반응성 유지에 도움이 됩니다.
+
+```kotlin
+suspend fun test(): Int = withTimeout(1500) {
+    delay(1000)
+    println("Still thinking")
+    delay(1000)
+    println("Done")
+    42
+}
+
+suspend fun main() = coroutineScope {
+    try {
+        test()
+    } catch (e: TimeoutCancellationException) {
+        println("Too long")
+    }
+
+    delay(1000) // Extra timeout does not help, `test` body was cancelled
+}
+// 1s dealy
+// Still thinking
+// Too long
+```
+
+`withTimeout`은 테스트에 유용하며 어떤 함수(네트워크 호출, 복잡한 알고리즘 등)가 설정된 시간 보다 더 오래 걸리는지 또는 덜 걸리는지 테스트할 수 있습니다.
+
+`runTest` 안에서 사용되면 가상의 시간에서 동작하게 됩니다. 또한 `runBlocking` 내부에서도 사용되어 특정 함수의 실행 시간을 제한할 수 있습니다.
+
+```kotlin
+class Test {
+    @Test
+    fun testTime2() = runTest {
+        withTimeout(1000) {
+            // something that should take less than 1s
+            delay(900) // virtual time 
+        }
+    }
+
+    @Test(expected = TimeoutCancellationException::class)
+    fun testTime1() = runTest {
+        withTimeout(1000) {
+            // something that should take less than 1s
+            delay(1100) // virtual time
+        }
+    }
+
+    @Test
+    fun testTime3() = runBlocking {
+        withTimeout(1000) {
+            // normal test, that should not take too long
+            delay(900) // really waiting 0.9s
+        }
+    }
+}
+```
+
+`TimeoutCancellationException`은 코루틴이 타임아웃에 도달했을 때 발생되는 특별한 형태의 `CancellationException` 입니다.
+이 예외가 코루틴 빌더 내에서 발생되면, 해당 코루틴만 취소되고, 부모 코루틴에는 영향을 미치지 않습니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    launch { // 1
+        launch { // 2, cancelled by it's parent
+            delay(2000)
+            println("Will not be printed")
+        }
+        withTimeout(1000) { // we cancel launch
+            delay(1500)
+        }
+    }
+    launch { // 3
+        delay(2000)
+        println("Done")
+    }
+}
+// (2 sec)
+// Done
+```
+
+`withTimeoutOrNull`는 함수 본문의 시간이 초과되면, 본문을 취소하고 `null`을 반환합니다.
+`null`을 반환하므로, 이후 로직에서 이를 체크하여 적절한 조치(시간 초과 메시지 등)를 할 수 있습니다.
+
+`withTimeoutOrNull`는 네트워크 호출, 데이터베이스 쿼리, I/O 작업 등에서 유용하며 이러한 작업들을 안전하게 처리할 수 있습니다.
+
+```kotlin
+suspend fun fetchUser(): User {
+    // Runs forever
+    while (true) {
+        yield()
+    }
+}
+
+suspend fun getUserOrNull(): User? = withTimeoutOrNull(5000) { fetchUser() }
+
+suspend fun main() = coroutineScope {
+    val user = getUserOrNull()
+    println(user)
+}
+// 5s delay
+// null
+```
+
+---
+
+## Connecting coroutine scope functions
+
+코루틴 스코프 함수(`withContext`, `withTimeout`, `supervisorScope`, `coroutineScope` 등)들은 자체적으로 특정한 기능을 제공합니다. 
+그러나 때로는 여러 기능을 조합해야 할 수 있습니다. 이럴 때는 중첩해서 함수들을 사용할 수 있습니다.
+
+예를 들어 타임아웃과 디스패처를 모두 설정하려면 아래와 같이 사용할 수 있습니다.
+
+```kotlin
+suspend fun calculateAnswerOrNull(): User? =
+    withContext(Dispatchers.Default) {
+       withTimeoutOrNull(1000) { calculateAnswer() }
+    }
+```
+
+단, 코루틴 스코프 함수를 중첩해서 사용할 때 각 함수의 특성과 영향성을 잘 이해하고 사용해야 합니다.
+예를 들어, `withContext`가 취소 불가능한 작업을 수행하는 경우, `withTimeoutOrNull`의 타임아웃은 효과가 없을 수 있습니다.
+
+---
+
+## Additional operations
+
+아래 예시는 사용자 프로필을 표시한 후 Anayltics에 프로필을 표시했다는 것을 알리는 예시입니다.  
+개발자들은 종종 같은 스코프에서 `launch`를 사용하여 수행합니다.
+
+```kotlin
+class ShowUserDataUseCase(
+    private val repo: UserDataRepository,
+    private val view: UserDataView
+) {
+    suspend fun showUserData() = coroutineScope { 
+        val name = async { repo.getUserName() } 
+        val friends = async { repo.getFriends() }
+        val profile = async { repo.getUserProfile() }
+        val user = User(
+            name = name.await(),
+            friends = friends.await(),
+            profile = profile.await()
+        )
+   
+        view.show(user)
+        launch { repo.notifyProfileShown() }
+    }
+}
+```
+
+이러한 접근 방법은 아래와 같은 문제점이 있습니다.
+
+`coroutineScope` 내에서 `launch`로 코루틴을 시작하면, `coroutineScope` 블록은 내부 코루틴이 모두 완료될 때까지 대기합니다.
+
+만약 아래 코드와 같이 `progressBar`를 표시하고 있다면 `notifyProfileShown()`와 같이 추가 작업이 끝나지 않으면 사용자는 그 작업이 완료될 때까지 업데이트 된 View를 볼 수 없습니다.
+
+```kotlin
+fun onCreate() {
+    viewModelScope.launch {
+        _progressBar.value = true
+        showUserData()
+        _progressBar.value = false
+    }
+}
+```
+
+그 다음 문제로는 취소(Cancellation) 문제 입니다.
+
+코루틴은 기본적으로 예외가 발생되면 다른 작업을 취소하도록 설계되어 있습니다.
+필수적인 작업에 대해서는 이러한 부분이 좋은 방식이지만, 만약 `getUserProfile`에서 예외가 발생되면 `getUserName`과 `getFriends`의 응답이 무용지물이므로 이들을 취소해야 합니다.
+
+그러나 `notifyProfileShown()` 호출이 실패했다고 하여 위 작업들을 취소하는 것은 크게 의미가 없는 행동입니다.
+
+그렇기에 메인 로직에 영향을 미치지 않는 추가적인 작업이 있을 때에는 아래와 같이 별도의 스코프를 생성하여 시작하는 것이 좋습니다. 
+
+      val analyticsScope = CoroutineScope(SupervisorJob())
+
+이처럼 생성된 스코프를 단위 테스트하고 제어하기 위해서는 생성자를 통해 주입하는 것이 좋은 방식입니다.
+
+```kotlin
+class ShowUserDataUseCase(
+    private val repo: UserDataRepository,
+    private val view: UserDataView,
+    private val analyticsScope: CoroutineScope
+) {
+    suspend fun showUserData() = coroutineScope { 
+        val name = async { repo.getUserName() } 
+        val friends = async { repo.getFriends() }
+        val profile = async { repo.getUserProfile() }
+        val user = User(
+            name = name.await(),
+            friends = friends.await(),
+            profile = profile.await()
+        )
+   
+        view.show(user)
+        analyticsScope.launch { repo.notifyProfileShown() }
+    }
+}
+```
+
+위처럼 스코프를 명시적으로 주입하면 해당 클래스가 독립적으로 비동기 작업을 시작할 수 있다는 것이 명확해지기에 다른 개발자나 코드 리뷰어가 이 클래스의 동작을 더 쉽게 이해할 수 있습니다. 
+
+이처럼 스코프를 전달하여 해당 클래스가 독립적인 호출을 시작함을 알 수 있으면 suspending 함수가 시작한 모든 작업을 기다리지 않을 수 있다는 것 알 수 있습니다.  
+또한 스코프가 전달되지 않으면 suspending 함수는 시작한 모든 작업이 완료될 때까지 완료되지 않음을 예상할 수 있습니다.

@@ -384,3 +384,58 @@ job.cancelAndJoin()
 `withContext`는 코드 중간에 다른 코루틴 스코프를 설정하기 위해 `Dispatchers` 컨텍스트와 함께 자주 사용됩니다.
 
 코드의 가독성과 관리성을 위해서 `async`와 `await()`를 즉시 사용할 떄 특별한 경우가 아니라면 `coroutineScope` or `withContext`를 사용하게 좋습니다.
+
+### supervisorScope
+
+`coroutineScope`와 유사하지만, 컨텍스트의 `Job`을 `SupervisorJob`으로 오버라이드하여 자식 코루틴이 예외를 발생시켜도 다른 코루틴들을 취소 시키지 않습니다.
+이 때문에 여러 독립적인 비동기 작업을 안전하고 효율적으로 관리하는 데 주로 사용됩니다.
+
+`supervisorScope` 내부에서 `async`와 `await()`를 사용하여 코루틴의 결과를 얻는 중 예외가 발생되면 `await()` 기준으로 예외가 전파되기에,
+이를 고려하여 `await()` 호출 주변에 `try-catch`와 같은 예외 처리 코드를 작성해야 합니다.
+
+`withContext(SupervisorJob())` 사용 시, `SupervisorJob()`은 `withContext`의 `Job`에 부모로 사용되게 됩니다.
+이 떄문에 `withContext`의 자식 코루틴에서 예외가 발생하게 되면 `withContext`로 전파되기에 `SupervisorJob()`은 크게 의미가 없습니다.
+
+### withTimeout
+
+`withTimeout`은 작업에 최대 실행 시간을 부여하고 다음과 같이 처리됩니다.
+
+- 시간이 초과되면 `TimeoutCancellationException`을 발생시켜 작업을 강제로 종료시킵니다.
+- 성공적으로 완료된 경우 블록에서 반환된 값을 얻습니다.
+
+주로 네트워크 요청, 복잡한 알고리즘 등의 처리 시간에 민감한 곳에 사용될 수 있으며, 이는 테스트에 유용하게 사용될 수 있습니다.
+
+`withTimeoutOrNull`은 `withTimeout`과 동일하지만, 시간 초과 시 `TimeoutCancellationException`을 발생시키지 않고 `null`을 반환합니다.
+이로 인해 좀 더 유연한 예외 처리를 할 수 있습니다.
+
+### Connecting coroutine scope functions
+
+코루틴 스코프 함수들은 자체적으로 특정한 기능을 제공하며 이 함수들을 중첩해서 사용하여 여러 기능을 조합해서 사용할 수 있습니다.
+
+단, 각 함수의 특정과 영향성을 잘 이해하고 사용해야 합니다.   
+(`withContext`가 취소 불가능한 작업을 수행하는데 `withTimeout`은 의미 없는 기능이 될 수 있습니다.)
+
+### Additional operations
+
+기본적으로 suspending 함수는 내부 코루틴 작업이 모두 완료될 때까지 완료되지 않습니다.
+이때 같은 코루틴 스코프에서 별도의 추가 작업(Analytics 호출 등)과 같은 작업이 포함되어 있는 경우에
+추가 작업에서 예외가 발생되면 메인 로직이 취소 되기에 좋은 방식이 아닙니다.
+
+이 때문에 명시적으로 스코프를 주입하여 사용하는 것이 좋습니다.
+명시적으로 스코프를 주입하면 해당 로직이 독립적으로 비동기 작업을 할 수 있음이 명확해지고, 해당 코루틴 작업의 흐름을 쉽게 파악할 수 있어 디버깅이 간단해집니다. 
+
+### Summary
+
+- 코루틴 스코프 함수를 통해 코루틴 빌더들을 사용할 수 있으며, 코루틴 스코프 함수 중 `GlobalScope`는 다음과 같은 특징을 지닙니다.
+  - Application Lifecycle을 가지며 Application 종료될 떄까지 해당 스코프에서 실행된 코루틴 작업이 실행 됩니다.
+  - `EmptyCoroutineScope`를 통해 생성되므로 컨텍스트와 스코프에 대한 값이 없습니다.
+- `coroutineScope`는 '일시 정지 가능한 코드 블록'을 실행하기 위한 새로운 코루틴 스코프를 생성하며 다음 특징을 지닙니다.
+  - 상위 스코프의 컨텍스트를 상속받아 자식 코루틴에게 전달합니다.
+  - 자식 코루틴이 완료되어야지만, 자신도 종료할 수 있습니다.
+  - 부모 코루틴이 취소되면 자기 자신을 포함한 모든 자식 코루틴도 취소됩니다.
+- 코루틴 스코프 함수에는 `coroutineScope`, `withContext`, `superviorScope`, `withTimeout` 등이 있습니다.
+  - `withContext` : `Dispatchers`의 변경과 같이 코루틴 컨텍스트의 변경이 필요한 경우 사용됩니다.
+  - `supervisorScope` : `SupervisorJob`을 사용하여 자식 코루틴의 예외를 전파하지 않는 독립적인 비동기 작업에 사용됩니다.
+  - `withTimeout` : 특정 작업에 시간 제한을 두고 싶을 때 사용됩니다.
+- 코루틴 스코프 함수들은 중첩해서 여러 기능을 조합해서 사용할 수 있습니다.
+- 코루틴 내부에서 메인 로직과 추가 작업을 같이 실행 시, 별도의 스코프를 생성하여 클래스에 명시적으로 주입한 뒤 별도의 스코프로 추가 작업을 실행하는 것이 메인 로직에 영향을 주지 않기에 권장됩니다.
