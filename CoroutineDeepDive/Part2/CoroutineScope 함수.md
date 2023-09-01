@@ -432,13 +432,13 @@ fun main() = runBlocking {
             delay(1000)
             throw Error()
         }
-       launch {
-           delay(2000)
-          println("Done")
-       }
+        launch {
+            delay(2000)
+            println("Done")
+        }
     }
-   
-   println("After")
+
+    println("After")
 }
 // Before
 // 1s delay
@@ -468,21 +468,21 @@ suspend fun notifiyAnlaytics(actions: List<UserAction>) = supervisorScope {
 ```kotlin
 class ArticlesRepositoryComposite(
     private val articleRepositories: List<ArticleRepository>
-): ArticleRepository {
-    override suspend fun fetchArticles(): List<Article> = 
+) : ArticleRepository {
+    override suspend fun fetchArticles(): List<Article> =
         supervisorScope {
             articleRepositories
-               .map { async { it.fetchArticles() } }
-               .mapNotNull {
-                   try {
-                       it.await()
-                   } catch (e: Exception) { 
-                       e.printStackTrace()
-                       null
-                   }
-               }
-               .flatten()
-               .sortedByDescending { it.publishedAt }
+                .map { async { it.fetchArticles() } }
+                .mapNotNull {
+                    try {
+                        it.await()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        null
+                    }
+                }
+                .flatten()
+                .sortedByDescending { it.publishedAt }
         }
 }
 ```
@@ -504,15 +504,129 @@ fun main() = runBlocking {
             delay(1000)
             throw Error()
         }
-       launch {
-           delay(2000)
-          println("Done")
-       }
+        launch {
+            delay(2000)
+            println("Done")
+        }
     }
-   
-   println("After")
+
+    println("After")
 }
 // Before
 // 1s delay
 // Exception
+```
+
+---
+
+## withTimeout
+
+`withTimeout`은 작업에 최대 실행 시간을 부여하는 역할을 하며, 시간이 지나면 작업을 강제 종료 시킵니다.
+
+`withTimeout`에서 설정된 시간을 초과하게 되면 `TimeoutCancellationException`이 발생됩니다.  
+(이 예외는 코루틴이 취소되었을 때 나타내는 `CancellationException`의 하위 타입입니다.)
+
+`withTimeout`이 성공적으로 완료된 경우 블록 내에서 반환된 값을 반환합니다.
+
+`withTimeout`은 특정 작업에 시간 제한을 두고 싶을 떄 유용하며 느린 네트워크 요청, 복잡한 계산 등에 시간 초과를 적용할 수 있어 앱의 반응성 유지에 도움이 됩니다.
+
+```kotlin
+suspend fun test(): Int = withTimeout(1500) {
+    delay(1000)
+    println("Still thinking")
+    delay(1000)
+    println("Done")
+    42
+}
+
+suspend fun main() = coroutineScope {
+    try {
+        test()
+    } catch (e: TimeoutCancellationException) {
+        println("Too long")
+    }
+
+    delay(1000) // Extra timeout does not help, `test` body was cancelled
+}
+// 1s dealy
+// Still thinking
+// Too long
+```
+
+`withTimeout`은 테스트에 유용하며 어떤 함수(네트워크 호출, 복잡한 알고리즘 등)가 설정된 시간 보다 더 오래 걸리는지 또는 덜 걸리는지 테스트할 수 있습니다.
+
+`runTest` 안에서 사용되면 가상의 시간에서 동작하게 됩니다. 또한 `runBlocking` 내부에서도 사용되어 특정 함수의 실행 시간을 제한할 수 있습니다.
+
+```kotlin
+class Test {
+    @Test
+    fun testTime2() = runTest {
+        withTimeout(1000) {
+            // something that should take less than 1s
+            delay(900) // virtual time 
+        }
+    }
+
+    @Test(expected = TimeoutCancellationException::class)
+    fun testTime1() = runTest {
+        withTimeout(1000) {
+            // something that should take less than 1s
+            delay(1100) // virtual time
+        }
+    }
+
+    @Test
+    fun testTime3() = runBlocking {
+        withTimeout(1000) {
+            // normal test, that should not take too long
+            delay(900) // really waiting 0.9s
+        }
+    }
+}
+```
+
+`TimeoutCancellationException`은 코루틴이 타임아웃에 도달했을 때 발생되는 특별한 형태의 `CancellationException` 입니다.
+이 예외가 코루틴 빌더 내에서 발생되면, 해당 코루틴만 취소되고, 부모 코루틴에는 영향을 미치지 않습니다.
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    launch { // 1
+        launch { // 2, cancelled by it's parent
+            delay(2000)
+            println("Will not be printed")
+        }
+        withTimeout(1000) { // we cancel launch
+            delay(1500)
+        }
+    }
+    launch { // 3
+        delay(2000)
+        println("Done")
+    }
+}
+// (2 sec)
+// Done
+```
+
+`withTimeoutOrNull`는 함수 본문의 시간이 초과되면, 본문을 취소하고 `null`을 반환합니다.
+`null`을 반환하므로, 이후 로직에서 이를 체크하여 적절한 조치(시간 초과 메시지 등)를 할 수 있습니다.
+
+`withTimeoutOrNull`는 네트워크 호출, 데이터베이스 쿼리, I/O 작업 등에서 유용하며 이러한 작업들을 안전하게 처리할 수 있습니다.
+
+```kotlin
+suspend fun fetchUser(): User {
+    // Runs forever
+    while (true) {
+        yield()
+    }
+}
+
+suspend fun getUserOrNull(): User? = withTimeoutOrNull(5000) { fetchUser() }
+
+suspend fun main() = coroutineScope {
+    val user = getUserOrNull()
+    println(user)
+}
+// 5s delay
+// null
 ```
