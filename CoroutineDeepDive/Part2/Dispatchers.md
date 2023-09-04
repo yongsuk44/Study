@@ -52,3 +52,50 @@ suspend fun main() = coroutineScope {
 `private val dispatcher = Dispatchers.Default.limitedParallelism(5)`
 
 이 메커니즘은 `Dispatchers.IO`를 제한하기 위한 것이지만, `Dispatchers.Default`를 제한하는 것도 가능합니다.
+
+---
+
+## Main dispatcher
+
+안드로이드에서 메인 스레드는 UI 업데이트를 담당합니다. 
+메인 스레드는 시간이 오래 걸리는 작업을 실행하면 앱이 멈춘 것처럼 보이므로, 긴 작업을 할 때는 다른 디스패처를 사용해야 합니다.
+
+`Dispatchers.Main`는 UI 업데이트와 같은 작업을 메인 스레드에서 안전하게 수행할 수 있도록 도와줍니다.  
+단, `Dispatchers.Main`을 사용하려면 관련된 아티팩트나 라이브러리가 프로젝트에 포함되어 있어야 하며 그렇지 않으면 사용할 수 없습니다.
+
+프론트엔드 라이브러리는 일반적으로 유닛 테스트에서 사용되지 않으므로, 여기서는 `Dispatchers.Main`이 정의되지 않습니다.
+`Dispatchers.Main`을 사용하려면 `kotlinx-coroutines-test`에서 `Dispatchers.setMain(dispatcher)`를 사용하여 디스패처를 설정해야 합니다.
+
+```kotlin
+class SomeTest {
+    private val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+    
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(dispatcher)
+    }
+    
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+        dispatcher.close()
+    }
+    
+    @Test
+    fun testSomeUI() = runBlocking {
+        launch(Dispatchers.Main) {
+            // ...
+        }
+    }
+}
+```
+
+안드로이드에서는 일반적으로 `Dispatchers.Main`를 기본 디스패처로 사용합니다.
+
+만약 블로킹 대신 suspending 기능을 가진 라이브러리를 사용하고 복잡한 계산을 하지 않는다면, 실제로는 `Dispatchers.Main`만 사용하여도 충분할 수 있습니다.
+그러나 CPU 집약적인 작업을 수행한다면, 이러한 작업은 `Dispatchers.Default`에서 실행되어야 합니다.
+
+위 2가지 디스패처만으로도 많은 앱에서는 충분하지만, 큰 파일을 읽는 것과 같이 긴 I/O 작업을 수행하는 등 스레드를 블로킹해야 하는 상황이 있을 수 있습니다.
+
+메인 스레드를 블로킹하는 경우 앱이 멈춰버릴 수 있고 Default 디스패처를 블로킹하면 스레드 풀의 모든 스레드를 블로킹하는 위험이 있으며 어떠한 계산도 수행할 수 없게 됩니다.
+이러한 상황에 대비하여 `Dispatchers.IO`가 사용됩니다.

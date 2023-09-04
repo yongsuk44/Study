@@ -458,3 +458,8 @@ job.cancelAndJoin()
 비용이 많이 드는 연산에서 디스패처에 `limitedParallelism`를 적용하면 사용할 수 있는 스레드 수를 제한할 수 있습니다.
 
 이 메커니즘은 `Dispatchers.IO`에서 사용하는 것을 주된 목적으로 만들어졌지만, 다른 디스패처에서도 사용할 수 있습니다.
+
+### Main Dispatcher
+
+`Dispatchers.Main`은 UI 업데이트와 같이 메인 스레드에서 처리해야 할 작업을 안전하게 수행하도록 도와줍니다.
+안드로이드 플랫폼에서는 일반적으로 `Dispatchers.Main`을 기본 디스패처로 사용합니다.
