@@ -285,3 +285,20 @@ class DiscUserRepository(
     }
 }
 ```
+
+---
+
+## Dispatcher with a fixed pool of threads
+
+Java의 `Executors` 클래스를 사용하여 고정된 풀 또는 캐시된 풀을 생성할 수 있습니다.  
+이러한 풀은 `ExecutorService` 또는 `Executor` 인터페이스로 구현하며, `asCoroutienDispatcher` 함수를 사용하여 디스패처로 변환할 수 있습니다.
+
+```kotlin
+val NUMBER_OF_THREADS = 20 
+val dispatcher = Executors.newFixedThreadPool(NUMBER_OF_THREADS).asCoroutineDispatcher()
+```
+
+`ExecutorService.asCoroutineDispatcher()`로 생성한 디스패처는 `close` 함수로 종료해야 하며, 그렇지 않으면 스레드 누수가 발생될 수 있습니다.
+또한 고정된 스레드 풀을 생성하게 되면, 미사용 스레드를 계속 유지해야 하므로 효율성이 떨어질 수 있습니다.
+
+이러한 문제로인해 코루틴에서 제공하는 디스패처들을 사용하거나, 필요한 경우에만 세밀한 제어를 위해 `ExecutorService`를 사용하는 것이 좋습니다.
