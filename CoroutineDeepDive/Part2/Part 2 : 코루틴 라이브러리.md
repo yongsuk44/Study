@@ -475,3 +475,61 @@ job.cancelAndJoin()
 두 디스패처는 독립적인 스레드 제한을 가지므로 하나가 다른 하나의 리소스를 차지하지 않습니다.
 
 너무 많은 스레드가 블로킹 상태에 빠지는 것을 방지하기 위해 `limitedParallelism`을 사용하여 동시에 실행할 수 있는 코루틴의 수를 제한합니다.
+
+### IO dispatcher with a custom pool of threads
+
+`Dispatchers.IO`에서 `limitedParallelism` 사용 시 독립적인 스레드 풀을 가진 새로운 디스패처를 생성할 수 있으며, 이 스레드 풀은 64개로 제한되지 않고 원하는 만큼 스레드 수를 제한할 수 있습니다.
+
+```mermaid
+graph LR
+    subgraph Infinite Thread Pool
+        subgraph "Dispatchers.IO.limitedParallelism(n)"
+        end
+        subgraph Dispatchers.IO 
+        end
+    end
+```
+
+각 디스패처들은 결국 동일한 스레드 풀을 공유하기에 스레드의 재사용과 최적화가 가능합니다.
+
+스레드를 많이 블로킹할 가능성이 있는 클래스는 위와 같이 독립적인 제한을 가진 자체 디스패처를 설정하는 것이 좋습니다.
+이러한 독립적인 제한을 가진 디스패처는 다른 디스패처와 무관하므로 동일한 스레드 풀에서 스레드를 경쟁 하는 문제를 줄일 수 있습니다.
+
+### Dispatcher with a fixed pool of threads
+
+Java의 `Executors`를 사용하여 고정된 풀, 캐사된 풀을 생성할 수 있습니다.
+또한 이러한 풀을 `asCoroutineDispatcher`르 사용하여 디스패처로 변환할 수 있습니다.
+
+그러나 위와 같이 생성된 디스패처는 `close`로 종료시켜야 합니다. 그렇지 않으면 스레드 누수가 발생됩니다.
+또한 고정된 스레드 풀은 미사용 스레드를 계속 유지해야 하므로 효율성이 떨어질 수 있습니다.
+
+이러한 문제로 코루틴에서 제공하는 기본 디스패처를 사용하거나, 필요한 경우에만 `Executor`를 사용하는 것이 좋습니다.
+
+### Dispatcher limited to a single thread
+
+다중 스레드 디스패처 사용 시 공유 상태(shared state)를 수정(하나의 변수를 변경하는 등)하면 경쟁 상태(race condition)가 발생하게 될 수 있습니다.
+
+이를 해결하기 위한 방법 중 하나는 단일 스레드 디스패처 구현하여 추가적인 동기화 메커니즘을 넣지 않고 경쟁 상태를 피하는 것입니다.
+
+아래는 단일 스레드 디스패처 구현 방법입니다.
+```kotlin
+Dispatchers.Default.limitedParallelism(1)
+Dispatchers.IO.limitedParallelism(1)
+```
+
+단, 단일 스레드 디스패처 구현 시 스레드가 블로킹 되면 호출들이 순차적으로 처리되기에 성능이 저하될 수 있습니다.
+
+### Unconfined dispatcher
+
+`Dispatchers.Unconfined`는 어떠한 스레드 변경도 하지 않으며 별도의 스레드 풀을 사용하지 않습니다.  
+즉, 시작된 스레드 혹은 재개된 스레드에서 실행됩니다. 이에 따라 스레드 관리에 대한 부담이 없으며 특별한 경우 유용하게 사용될 수 있습니다.
+
+모든 코루틴 범위에 `Dispatchers.Unconfined`를 사용하면 동일한 스레드에서 실행되어 연산의 순서를 쉽게 제어하고 복잡한 동기화나 타이밍 이슈를 피할 수 있기에 테스트 환경에서 유용하게 사용될 수 있습니다.   
+단, `runTest`를 사용한다면 이러한 트릭은 의미가 없습니다.
+
+### Immediate main dispatching
+
+`withContext`를 호출할 때 마다 일시 중단과 재개라는 프로세스를 거치며 그에 따른 일정한 비용이 발생되며, 동일한 스레드로 디스패칭 되는것이면 이는 더욱이 불필요한 비용입니다. 
+
+이에 따라 메인 디스패처에서는 `Dispatchers.Main.immediate`를 지원하여 불필요한 디스패칭을 방지하여 비용을 절약할 수 있습니다.  
+이는 현재 메인 디스패처만 사용할 수 있습니다.
