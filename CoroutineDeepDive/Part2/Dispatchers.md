@@ -8,9 +8,10 @@
 
 ## Default dispatcher
 
-디스패처를 지정하지 않으면 기본적으로 `Dispatchers.Default`가 선택됩니다.  
+디스패처를 지정하지 않으면 기본적으로 `Dispatchers.Default`가 선택됩니다.
 
 `Dispatchers.Default`는 다음과 같은 특징을 가지고 있습니다.
+
 - 복잡한 수학저 계산이나 대규모 데이터의 정렬과 같은 CPU 집약적인 작업을 수행하기 위해 최적화 되어 있습니다.
 - CPU 자원을 최대한 효율적으로 활용하기 위해 스레드 풀의 크기는 실행 환경의 CPU 코어 수에 따라 결정됩니다.
 - 블로킹 연산을 수행할 경우, 스레드가 대기 상태에 빠져 자원을 낭비할 수 있으므로 블로킹 연산에 적합하지 않습니다.
@@ -20,7 +21,7 @@ suspend fun main() = coroutineScope {
     repeat(1000) {
         launch {  // or launch(Dispatchers.Default)
             List(1000) { Random.nextLong() }.maxOrNull()
-            
+
             val threadName = Thread.currentThread().name
             println("Running on thread: $threadName")
         }
@@ -37,8 +38,8 @@ suspend fun main() = coroutineScope {
 // ...
 ```
 
-`runBlocking`은 다른 디스패처가 설정되지 않은 경우 자체 디스패처를 설정합니다. 
-따라서 `runBlocking` 내부에서는 자동으로 `Dispatchers.Default`가 선택되지 않습니다. 
+`runBlocking`은 다른 디스패처가 설정되지 않은 경우 자체 디스패처를 설정합니다.
+따라서 `runBlocking` 내부에서는 자동으로 `Dispatchers.Default`가 선택되지 않습니다.
 
 만약 위의 예제에서 `corotineScope` 대신 `runBlocking`을 사용했다면 모든 코루틴이 메인 스레드에서 실행 됩니다.
 
@@ -57,7 +58,7 @@ suspend fun main() = coroutineScope {
 
 ## Main dispatcher
 
-안드로이드에서 메인 스레드는 UI 업데이트를 담당합니다. 
+안드로이드에서 메인 스레드는 UI 업데이트를 담당합니다.
 메인 스레드는 시간이 오래 걸리는 작업을 실행하면 앱이 멈춘 것처럼 보이므로, 긴 작업을 할 때는 다른 디스패처를 사용해야 합니다.
 
 `Dispatchers.Main`는 UI 업데이트와 같은 작업을 메인 스레드에서 안전하게 수행할 수 있도록 도와줍니다.  
@@ -69,18 +70,18 @@ suspend fun main() = coroutineScope {
 ```kotlin
 class SomeTest {
     private val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
-    
+
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
     }
-    
+
     @After
     fun tearDown() {
         Dispatchers.resetMain()
         dispatcher.close()
     }
-    
+
     @Test
     fun testSomeUI() = runBlocking {
         launch(Dispatchers.Main) {
@@ -115,10 +116,10 @@ class SomeTest {
 
 ```kotlin
 suspend fun main() {
-    val time = measureTimeMillis { 
+    val time = measureTimeMillis {
         coroutineScope {
             repeat(50) {
-                launch(Dispatchers.IO) { 
+                launch(Dispatchers.IO) {
                     Thread.sleep(1000)
                 }
             }
@@ -131,16 +132,17 @@ suspend fun main() {
 무제한 스레드 풀은 처음에는 비어있지만, 더 많은 스레드가 필요하면 생성되어 사용되지 않을 때까지 활성 상태를 유지합니다.  
 이러한 스레드 풀은 너무 많은 스레드가 활성화 되어있는 경우 성능은 천천히지만, 무한히 저하되고, 결국에는 메모리 부족 오류를 발생 시킬 수 있습니다.
 
-이러한 이유로 인해 한번에 사용할 수 있는 스레드 수가 제한된 디스패처를 생성하는 것이 좋습니다.  
+이러한 이유로 인해 한번에 사용할 수 있는 스레드 수가 제한된 디스패처를 생성하는 것이 좋습니다.
+
 - `Dispatchers.Default`는 CPU 집약적 작업을 최적하기 위해 CPU 코어 수에 따라 스레드 수가 제한됩니다.
 - `Dispatchers.IO`는 일반적으로 최대 64개의 스레드로 제한됩니다.
 
 ```kotlin
 suspend fun main() = coroutineScope {
     repeat(1000) {
-        launch(Dispatchers.IO) { 
+        launch(Dispatchers.IO) {
             Thread.sleep(200)
-            
+
             val threadName = Thread.currentThread().name
             println("Running on thread: $threadName")
         }
@@ -155,7 +157,7 @@ suspend fun main() = coroutineScope {
 `Dispatchers.Default`와 `Dispatchers.IO`는 동일한 스레드 풀을 공유합니다.
 이는 중요한 최적화로써 스레드는 재사용되며, 대부분의 경우 재디스패칭이 필요하지 않습니다.
 
-예를 들어 `Dispatchers.Default`에서 실행 중인 코드가 `withContext(Dispatcher.IO) { ... }`에 도달한다면, 대부분의 경우 동일한 스레드에서 계속 실행됩니다.  
+예를 들어 `Dispatchers.Default`에서 실행 중인 코드가 `withContext(Dispatcher.IO) { ... }`에 도달한다면, 대부분의 경우 동일한 스레드에서 계속 실행됩니다.
 
 그러나, `Default`와 `IO`는 각자 독립적인 스레드 제한을 가지고 있기에, 하나의 디스패처에서 너무 많은 스레드를 사용하더라도 다른 디스패처가 스레드를 사용하지 못하게 하는 일은 없습니다.
 
@@ -183,7 +185,7 @@ suspend fun main() = coroutineScope {
 ```kotlin
 class DiscUserRepository(
     private val discReader: DiscReader
-): UserRepository {
+) : UserRepository {
     override suspend fun getUser(): UserData = withContext(Dispatchers.IO) {
         UserData(discReader.read("userName"))
     }
@@ -249,14 +251,14 @@ Dispatchers.IO.limitedParallelism(x) = pool.limitedParallelism(x)
 ```mermaid
 graph TB
     subgraph Infinite Thread Pool
-        subgraph "Dispatchers.IO.limitedParallelism(n)" 
-            
+        subgraph "Dispatchers.IO.limitedParallelism(n)"
+
         end
-        
-        subgraph Dispatchers.IO 
-            
+
+        subgraph Dispatchers.IO
+
         end
-        
+
         subgraph Dispatchers.Default
             C("Dispatchers.Default.limitedParallelism(n)")
         end
@@ -272,14 +274,14 @@ graph TB
 
 이 제한을 너무 많은 스레드로 제한하면 자원 낭비가 되고, 너무 적은 스레드로 하면 성능을 저하 시킬 수 있기에 상황과 필요에 따라 결정해야 합니다.
 
-중요한 것은 이러한 자체 디스패처의 제한은 `Dispatchers.IO` 혹은 다른 디스패처의 제한과 무관하므로 서비스 간 스레드 경쟁 문제를 줄일 수 있습니다. 
+중요한 것은 이러한 자체 디스패처의 제한은 `Dispatchers.IO` 혹은 다른 디스패처의 제한과 무관하므로 서비스 간 스레드 경쟁 문제를 줄일 수 있습니다.
 
 ```kotlin
 class DiscUserRepository(
     private val discReader: DiscReader
-): UserRepository {
+) : UserRepository {
     private val dispatcher = Dispatchers.IO.limitedParallelism(5)
-    
+
     override suspend fun getUser(): UserData = withContext(dispatcher) {
         UserData(discReader.read("userName"))
     }
@@ -294,7 +296,7 @@ Java의 `Executors` 클래스를 사용하여 고정된 풀 또는 캐시된 풀
 이러한 풀은 `ExecutorService` 또는 `Executor` 인터페이스로 구현하며, `asCoroutienDispatcher` 함수를 사용하여 디스패처로 변환할 수 있습니다.
 
 ```kotlin
-val NUMBER_OF_THREADS = 20 
+val NUMBER_OF_THREADS = 20
 val dispatcher = Executors.newFixedThreadPool(NUMBER_OF_THREADS).asCoroutineDispatcher()
 ```
 
@@ -316,7 +318,7 @@ val dispatcher = Executors.newFixedThreadPool(NUMBER_OF_THREADS).asCoroutineDisp
 var i = 0
 
 suspend fun main() = coroutineScope {
-    repeat(10000) { 
+    repeat(10000) {
         launch(Dispatchers.IO) { // or Default
             i++
         }
@@ -329,7 +331,7 @@ suspend fun main() = coroutineScope {
 이러한 문제는 경쟁 상태(Race Condition)로 알려져 있습니다.
 
 이를 해결하기 위한 방법 중 하나는 단일 스레드 디스패처를 사용하여 처리하는 방법이 있습니다.  
-이처럼 단일 스레드를 사용하면 추가적인 동기화 메커니즘이 필요하지 않습니다. 
+이처럼 단일 스레드를 사용하면 추가적인 동기화 메커니즘이 필요하지 않습니다.
 
 이를 구현하는 전통적인 방법은 `Executors`를 사용하여 해당 디스패처를 생성하는 것입니다.
 
@@ -342,16 +344,17 @@ val dispatcher Executores.newSingleThreadExecutor().asCoroutineDispatcher()
 
 `Executor`를 통한 단일 스레드 디스패처 구현의 문제점은 더 이상 사용되지 않을 때 종료해야하는 추가적인 관리가 필요하다는 점이 있습니다.
 
-이러한 해결책으로 `Dispatchers.Default` 또는 `Dispatchers.IO`를 사용하되 `limitedParallelism`을 통해 병렬성을 1로 제한하여 별도의 스레드 관리를 하지 않는 방법이 있습니다.
+이러한 해결책으로 `Dispatchers.Default` 또는 `Dispatchers.IO`를 사용하되 `limitedParallelism`을 통해 병렬성을 1로 제한하여 별도의 스레드 관리를 하지 않는 방법이
+있습니다.
 
 ```kotlin
 var i = 0
 
 suspend fun main() = coroutineScope {
     val dispatcher = Dispatchers.Default.limitedParallelism(1)
-    
-    repeat(10000) { 
-        launch(dispatcher) { 
+
+    repeat(10000) {
+        launch(dispatcher) {
             i++
         }
     }
@@ -365,18 +368,60 @@ suspend fun main() = coroutineScope {
 ```kotlin
 suspend fun main() = coroutineScope {
     val dispatcher = Dispatchers.Default.limitedParallelism(1)
-    
+
     val job = Job()
-    
+
     repeat(5) {
         launch(dispatcher + job) {
             Thread.sleep(1000)
         }
     }
-    
+
     job.complete()
     val time = measureTimeMillis { job.join() }
     println("Took $time") // Took 5006
 
 }
 ```
+
+---
+
+## Unconfined dispatcher
+
+`Dispatchers.Unconfined`는 이전의 디스패처들과 다르게 어떠한 스레드도 변경하지 않으며, 별도의 스레드 풀을 사용하지 않습니다.
+`Dispatchers.Unconfined`는 시작된 스레드나 재개된 스레드에서 실행됩니다.
+
+따라서 스레드 관리에 대한 부담이 없으며, 특별한 경우에 유용하게 사용될 수 있습니다.
+
+```kotlin
+suspend fun main() = withContext(newSingleThreadContext("Thread Name 1")) {
+    var continuation: Continuation<Unit>? = null
+
+    launch(newSingleThreadContext("Thread Name 2")) {
+        delay(1000)
+        continuation?.resume(Unit)
+    }
+
+    launch(Dispachers.Unconfined) {
+        println(Thread.currentThread().name) // Thread Name 1
+
+        suspendCancellableCoroutine<Unit> {
+            continuation = it
+        }
+
+        println(Thread.currentThread().name) // Thread Name 2
+        delay(1000)
+        println(Thread.currentThread().name) // kotlinx.coroutines.DefaultExecutor used by dealy
+    }
+}
+```
+
+`Dispatchers.Unconfined`는 Unit-Test에서 유용하게 사용될 수 있습니다.
+
+모든 코루틴 범위에서 이 디스패처를 사용하면, 모든 로직은 동일한 스레드에서 실행됩니다.  
+이로 인해 연산의 순서를 더 쉽게 제어할 수 있으므로, 복잡한 동기화나 타이밍 이슈를 피할 수 있습니다.  
+그러나 `runTest` 사용한다면 이러한 트릭은 필요하지 않습니다.
+
+`Dispatchers.Unconfined`는 스레드 전환 없이 실행되므로 성능 측면에서 가장 효율적입니다.
+하지만 이러한 특성으로 인해 무분별하게 사용하는 것은 좋지 않습니다. 만약 메인 스레드에서 블로킹 호출을 하게 되는 경우 앱 전체가 멈출 위험이 있습니다.
+따라서 이 디스패처는 매우 특별한 경우 혹은 테스팅 환경에서만 주로 사용되어야 하며, 일반적입 앱 개발에서는 다른 디스패처를 고려하는 것이 좋습니다.
