@@ -504,3 +504,17 @@ Java의 `Executors`를 사용하여 고정된 풀, 캐사된 풀을 생성할 �
 또한 고정된 스레드 풀은 미사용 스레드를 계속 유지해야 하므로 효율성이 떨어질 수 있습니다.
 
 이러한 문제로 코루틴에서 제공하는 기본 디스패처를 사용하거나, 필요한 경우에만 `Executor`를 사용하는 것이 좋습니다.
+
+### Dispatcher limited to a single thread
+
+다중 스레드 디스패처 사용 시 공유 상태(shared state)를 수정(하나의 변수를 변경하는 등)하면 경쟁 상태(race condition)가 발생하게 될 수 있습니다.
+
+이를 해결하기 위한 방법 중 하나는 단일 스레드 디스패처 구현하여 추가적인 동기화 메커니즘을 넣지 않고 경쟁 상태를 피하는 것입니다.
+
+아래는 단일 스레드 디스패처 구현 방법입니다.
+```kotlin
+Dispatchers.Default.limitedParallelism(1)
+Dispatchers.IO.limitedParallelism(1)
+```
+
+단, 단일 스레드 디스패처 구현 시 스레드가 블로킹 되면 호출들이 순차적으로 처리되기에 성능이 저하될 수 있습니다.

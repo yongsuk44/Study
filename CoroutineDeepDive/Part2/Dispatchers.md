@@ -302,3 +302,81 @@ val dispatcher = Executors.newFixedThreadPool(NUMBER_OF_THREADS).asCoroutineDisp
 또한 고정된 스레드 풀을 생성하게 되면, 미사용 스레드를 계속 유지해야 하므로 효율성이 떨어질 수 있습니다.
 
 이러한 문제로인해 코루틴에서 제공하는 디스패처들을 사용하거나, 필요한 경우에만 세밀한 제어를 위해 `ExecutorService`를 사용하는 것이 좋습니다.
+
+---
+
+## Dispatcher limited to a single thread
+
+다중 스레드 디스패처를 사용할 때는 공유 상태(shared state) 문제를 신중히 고려해야 합니다.
+
+아래의 예제를 보면, 10000개의 코루틴이 변수 `i`의 값을 1씩 증가시키지만, 실제로는 10000이 아닌 작은 숫자가 출력됩니다.
+이는 여러 스레드가 동시에 `i`를 수정하기 때문에 발생하는 공유 상태 문제입니다.
+
+```kotlin
+var i = 0
+
+suspend fun main() = coroutineScope {
+    repeat(10000) { 
+        launch(Dispatchers.IO) { // or Default
+            i++
+        }
+    }
+    delay(1000)
+    println(i) // ~9930
+}
+```
+
+이러한 문제는 경쟁 상태(Race Condition)로 알려져 있습니다.
+
+이를 해결하기 위한 방법 중 하나는 단일 스레드 디스패처를 사용하여 처리하는 방법이 있습니다.  
+이처럼 단일 스레드를 사용하면 추가적인 동기화 메커니즘이 필요하지 않습니다. 
+
+이를 구현하는 전통적인 방법은 `Executors`를 사용하여 해당 디스패처를 생성하는 것입니다.
+
+```kotlin
+val dispatcher Executores.newSingleThreadExecutor().asCoroutineDispatcher()
+
+// previsouly:
+// val dispacher = newSingleThreadContext("name")
+```
+
+`Executor`를 통한 단일 스레드 디스패처 구현의 문제점은 더 이상 사용되지 않을 때 종료해야하는 추가적인 관리가 필요하다는 점이 있습니다.
+
+이러한 해결책으로 `Dispatchers.Default` 또는 `Dispatchers.IO`를 사용하되 `limitedParallelism`을 통해 병렬성을 1로 제한하여 별도의 스레드 관리를 하지 않는 방법이 있습니다.
+
+```kotlin
+var i = 0
+
+suspend fun main() = coroutineScope {
+    val dispatcher = Dispatchers.Default.limitedParallelism(1)
+    
+    repeat(10000) { 
+        launch(dispatcher) { 
+            i++
+        }
+    }
+    delay(1000)
+    println(i) // ~10000
+}
+```
+
+단일 스레드의 문제점으로는 스레드가 블로킹되면 호출들이 순차적으로 처리될 수 밖에 없기에 성능이 저하될 수 있습니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    val dispatcher = Dispatchers.Default.limitedParallelism(1)
+    
+    val job = Job()
+    
+    repeat(5) {
+        launch(dispatcher + job) {
+            Thread.sleep(1000)
+        }
+    }
+    
+    job.complete()
+    val time = measureTimeMillis { job.join() }
+    println("Took $time") // Took 5006
+
+}
+```
