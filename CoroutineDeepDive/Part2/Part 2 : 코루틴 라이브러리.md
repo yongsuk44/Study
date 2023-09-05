@@ -526,3 +526,10 @@ Dispatchers.IO.limitedParallelism(1)
 
 모든 코루틴 범위에 `Dispatchers.Unconfined`를 사용하면 동일한 스레드에서 실행되어 연산의 순서를 쉽게 제어하고 복잡한 동기화나 타이밍 이슈를 피할 수 있기에 테스트 환경에서 유용하게 사용될 수 있습니다.   
 단, `runTest`를 사용한다면 이러한 트릭은 의미가 없습니다.
+
+### Immediate main dispatching
+
+`withContext`를 호출할 때 마다 일시 중단과 재개라는 프로세스를 거치며 그에 따른 일정한 비용이 발생되며, 동일한 스레드로 디스패칭 되는것이면 이는 더욱이 불필요한 비용입니다. 
+
+이에 따라 메인 디스패처에서는 `Dispatchers.Main.immediate`를 지원하여 불필요한 디스패칭을 방지하여 비용을 절약할 수 있습니다.  
+이는 현재 메인 디스패처만 사용할 수 있습니다.

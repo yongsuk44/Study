@@ -425,3 +425,32 @@ suspend fun main() = withContext(newSingleThreadContext("Thread Name 1")) {
 `Dispatchers.Unconfined`는 스레드 전환 없이 실행되므로 성능 측면에서 가장 효율적입니다.
 하지만 이러한 특성으로 인해 무분별하게 사용하는 것은 좋지 않습니다. 만약 메인 스레드에서 블로킹 호출을 하게 되는 경우 앱 전체가 멈출 위험이 있습니다.
 따라서 이 디스패처는 매우 특별한 경우 혹은 테스팅 환경에서만 주로 사용되어야 하며, 일반적입 앱 개발에서는 다른 디스패처를 고려하는 것이 좋습니다.
+
+---
+
+## Immediate main dispatching
+
+`withContext`를 호출할 때마다 일시 중단과 재개라는 프로세스를 거치게 되어 그에 따른 일정한 비용이 발생됩니다.
+만약 이미 실행 중인 스레드에서 동일한 디스패처를 사용하려고 한다면, 더욱이 이러한 비용은 불필요 합니다.
+
+```kotlin
+suspend fun showUser(user: User) = withContext(Dispatchers.Main) {
+    userNameElement.text = user.name
+    // ...
+}
+```
+
+또한 메인 스레드의 대기열이 길다면 사용자 데이터가 약간의 지연과 함께 표시될 수 있어 사용성에 좋지 않을 수 있습니다.  
+이처럼 같은 스레드에서 여러번 디스패칭되는 것을 피하고자 할때 `Dispachers.Main.immediate`를 사용하는 것이 유용합니다.
+
+`Dispachers.Main.immediate`는 현재 스레드가 이미 해당 스레드라면 디스패칭을 건너뛰고 즉시 실행됩니다.  
+이로 인해 UI 반응성이 좋아지며, 불필요한 CPU 리소스 사용을 줄일 수 있습니다.
+
+```kotlin
+suspend fun showUser(user: User) = withContext(Dispatchers.Main.immediate) {
+    userNameElement.text = user.name
+// ...
+}
+```
+
+이러한 최적화는 현재 `Dispatchers.Main`에서만 사용할 수 있습니다.
