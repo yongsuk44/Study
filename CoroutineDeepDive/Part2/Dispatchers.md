@@ -192,3 +192,96 @@ class DiscUserRepository(
 
 너무 많은 스레드가 블로킹 상태가 되버리면, 다른 중요한 작업들이 대기 상태에 놓이게 될 수 있습니다.  
 이를 해결하기 위해서 `limitedParallelism`을 사용하여 특정 디스패처에서 동시에 실행될 수 있는 코루틴의 수를 제한할 수 있습니다.
+
+---
+
+## IO dispatcher with a custom pool of threads
+
+`Dispatchers.IO`는 `limitedParallelism` 함수에 대해 특별한 동작이 정의되어 있습니다.
+
+`Dispatchers.IO`에서 `limitedParallelism`을 사용하면 독립적인 스레드 풀을 가진 새로운 디스패처를 생성할 수 있습니다.
+또한 이 스레드 풀은 64개로 제한되지 않고 원하는 만큼 스레드 수를 제한할 수 있습니다.
+
+아래 예시는 1초 동안 스레드를 차단하는 코루틴 100개를 시작한다고 가정합니다.  
+이 코루틴들을 `Dispatchers.IO`에서 실행하면 작업을 완료하는데 2초가 걸리는 반면,  
+`limitedParallelism`을 100개의 스레드로 설정한 `Dispatchers.IO`에서 실행하면 1초만에 완료됩니다.
+
+두 디스패처의 한계는 독립적이기에 두 디스패처의 실행 시간을 동시에 측정할 수 있습니다.
+
+```kotlin
+suspend fun printCoroutinesTime(dispatcher: CoroutineDispatcher) {
+    val test = measureTimeMillis {
+        coroutineScope {
+            repeat(100) {
+                launch(dispatcher) {
+                    Thread.sleep(1000)
+                }
+            }
+        }
+    }
+    println("$dispatcher took: $test")
+}
+
+suspend fun main(): Unit = coroutineScope {
+    launch {
+        printCoroutinesTime(Dispatchers.IO)
+        // Dispatchers.IO took: 2074
+    }
+
+    launch {
+        val dispatcher = Dispatchers.IO.limitedParallelism(100)
+        printCoroutinesTime(dispatcher)
+        // LimitedDispatcher@XXX took: 1082
+    }
+}
+```
+
+개념적으로 다음과 같은 방법으로 상상해볼 수 있습니다.
+
+```kotlin
+// Dispatcher with an unlimited pool of threads
+private val pool = ...
+
+Dispatchers.IO = pool.limitedParallelism(64)
+Dispatchers.IO.limitedParallelism(x) = pool.limitedParallelism(x)
+```
+
+```mermaid
+graph TB
+    subgraph Infinite Thread Pool
+        subgraph "Dispatchers.IO.limitedParallelism(n)" 
+            
+        end
+        
+        subgraph Dispatchers.IO 
+            
+        end
+        
+        subgraph Dispatchers.Default
+            C("Dispatchers.Default.limitedParallelism(n)")
+        end
+    end
+```
+
+위 처럼 `limitedParallelism`을 `Dispatchers.Default`에 적용하면 기존 `Dispatchers.Default`의 스레드 제한에 추가적인 제한을 설정하는것인
+반면에 `Dispatchers.IO`에 `limitedParallelism`을 적용하면 기본 `Dispatchers.IO`와는 별도로 동작하는 새로운 디스패처가 생성됩니다.
+
+위와 같은 디스패처들은 결국 동일한 스레드 풀을 공유하기에 스레드 재사용과 최적화가 가능하게 됩니다.
+
+스레드를 많이 블로킹할 가능성이 있는 클래스는 독립적인 제한을 가진 자체 디스패처를 설정하는 것이 좋습니다.
+
+이 제한을 너무 많은 스레드로 제한하면 자원 낭비가 되고, 너무 적은 스레드로 하면 성능을 저하 시킬 수 있기에 상황과 필요에 따라 결정해야 합니다.
+
+중요한 것은 이러한 자체 디스패처의 제한은 `Dispatchers.IO` 혹은 다른 디스패처의 제한과 무관하므로 서비스 간 스레드 경쟁 문제를 줄일 수 있습니다. 
+
+```kotlin
+class DiscUserRepository(
+    private val discReader: DiscReader
+): UserRepository {
+    private val dispatcher = Dispatchers.IO.limitedParallelism(5)
+    
+    override suspend fun getUser(): UserData = withContext(dispatcher) {
+        UserData(discReader.read("userName"))
+    }
+}
+```

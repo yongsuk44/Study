@@ -475,3 +475,22 @@ job.cancelAndJoin()
 두 디스패처는 독립적인 스레드 제한을 가지므로 하나가 다른 하나의 리소스를 차지하지 않습니다.
 
 너무 많은 스레드가 블로킹 상태에 빠지는 것을 방지하기 위해 `limitedParallelism`을 사용하여 동시에 실행할 수 있는 코루틴의 수를 제한합니다.
+
+### IO dispatcher with a custom pool of threads
+
+`Dispatchers.IO`에서 `limitedParallelism` 사용 시 독립적인 스레드 풀을 가진 새로운 디스패처를 생성할 수 있으며, 이 스레드 풀은 64개로 제한되지 않고 원하는 만큼 스레드 수를 제한할 수 있습니다.
+
+```mermaid
+graph LR
+    subgraph Infinite Thread Pool
+        subgraph "Dispatchers.IO.limitedParallelism(n)"
+        end
+        subgraph Dispatchers.IO 
+        end
+    end
+```
+
+각 디스패처들은 결국 동일한 스레드 풀을 공유하기에 스레드의 재사용과 최적화가 가능합니다.
+
+스레드를 많이 블로킹할 가능성이 있는 클래스는 위와 같이 독립적인 제한을 가진 자체 디스패처를 설정하는 것이 좋습니다.
+이러한 독립적인 제한을 가진 디스패처는 다른 디스패처와 무관하므로 동일한 스레드 풀에서 스레드를 경쟁 하는 문제를 줄일 수 있습니다.
