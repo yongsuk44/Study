@@ -568,3 +568,14 @@ Dispatchers.IO.limitedParallelism(1)
 - `Dispatchers.IO.limitedParallelism` 사용 시 `Dispatchers.IO`와 독립적인 스레드 풀을 생성할 수 있습니다.
 - Java의 `Executor`를 생성하여 `asCoroutineDispatcher`를 통해 디스패처로 변환할 수 있습니다. 단, `close`로 꼭 정리해줘야 합니다.
 - `ContinuationInterceptor` : 코루틴 일시 중단 시 생성되는 `Continuation`을 특정 스레드 풀에서 실행되는 `DispatchedContinuation`으로 래핑할 수 있어 테스트 시 디스패처를 주입하는 용도로 사용합니다.
+
+------------------------------------------------------------------------------
+
+## [Part 2.7 : Constructing a coroutine scope](CoroutineScope%20구성.md)
+
+### CoroutineScope factory function
+
+`CoroutineScope`는 단일 프로퍼티 `coroutineContext`를 가진 인터페이스입니다.
+
+대부분 프로퍼티로 코루틴 스코프 객체를 사용하여 코루틴 빌더를 호출하는 방식을 사용하거나
+`CoroutineScope` 팩토리 함수를 사용합니다.
