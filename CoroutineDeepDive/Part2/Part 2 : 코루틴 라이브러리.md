@@ -552,3 +552,19 @@ Dispatchers.IO.limitedParallelism(1)
 - Blocking 작업 시 여러 스레드를 사용하면 작업을 분산하기에 효율적으로 처리할 수 있습니다.
 - CPU 집약적인 작업 시 `IO` 대신 `Default`를 사용하는 것이 효율적이며, `IO`의 경우 너무 많은 스레드가 활성화되어 Context switching에 소비되는 시간때문에 성능이 떨어질 수 있습니다.
 - 메모리를 많이 사용하는 작업 시 스레드 수를 늘려도 큰 성능 향상을 기대하기 어렵습니다.
+
+### Summary
+
+| Dispachers Type | Description |
+| --- | --- |
+| `Dispatchers.Default` | CPU 연산이 많이 필요한 작업에 최적화 되어 있으며 CPU 코어 수만큼 스레드가 제한됩니다. |
+| `Dispatchers.Main` | UI 업데이트와 같이 메인 스레드에서만 가능한 작업에 사용됩니다. |
+| `Dispatchers.IO` | 파일 I/O, 네트워크 호출 등과 같은 블로킹 작업에 사용되며 최대 64개의 스레드로 제한됩니다. |
+| `Dispachers.Unconfined` | 어떤 스레드도 변경하지 않고 별도의 스레드 풀을 가지지 않아 테스트 환경에서 유용합니다. 그러나 테스트 시 `runTest`를 많이 활용합니다. |
+| `Dispatchers.Main.immediate` | 메인 스레드에서 불필요한 디스패칭을 방지하여 비용을 절약할 수 있습니다. |
+
+- 스레드 풀에서 `Default`와 `IO`는 각각 독립적인 스레드 제한을 가지고 있습니다.
+- 디스패처에 `limitedParallelism` 사용 시 스레드 수를 제한할 수 있습니다. 주로 스레드를 많이 사용하는 `Dispatchers.IO`에 사용됩니다.
+- `Dispatchers.IO.limitedParallelism` 사용 시 `Dispatchers.IO`와 독립적인 스레드 풀을 생성할 수 있습니다.
+- Java의 `Executor`를 생성하여 `asCoroutineDispatcher`를 통해 디스패처로 변환할 수 있습니다. 단, `close`로 꼭 정리해줘야 합니다.
+- `ContinuationInterceptor` : 코루틴 일시 중단 시 생성되는 `Continuation`을 특정 스레드 풀에서 실행되는 `DispatchedContinuation`으로 래핑할 수 있어 테스트 시 디스패처를 주입하는 용도로 사용합니다.
