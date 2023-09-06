@@ -542,4 +542,13 @@ Dispatchers.IO.limitedParallelism(1)
 - `releaseInterceptedContinuation` : `continuation`이 종료될 때 호출됩니다.
 
 `ContinuationInterceptor.interceptContinuation`를 통해 `Continuation`을 특정 스레드 풀에서 실행되는 `DispatchedContinuation`으로 래핑할 수 있으며,
-이를 통해 비동기 작업 테스트 시 실제 코드에서 처리되는 디스패처를 테스트 디스패처로 교환할 수 있습니다. 
+이를 통해 비동기 작업 테스트 시 실제 코드에서 처리되는 디스패처를 테스트 디스패처로 교환할 수 있습니다.
+
+### Performance of dispatchers against different tasks
+
+디스패처 성능을 비교하기 위한 벤치마크 결과 다음과 같은 점을 얻을 수 있습니다.
+
+- 단순한 suspend 작업 시 여러 스레드를 사용하더라도 성능 향상을 기대하기 어렵습니다.
+- Blocking 작업 시 여러 스레드를 사용하면 작업을 분산하기에 효율적으로 처리할 수 있습니다.
+- CPU 집약적인 작업 시 `IO` 대신 `Default`를 사용하는 것이 효율적이며, `IO`의 경우 너무 많은 스레드가 활성화되어 Context switching에 소비되는 시간때문에 성능이 떨어질 수 있습니다.
+- 메모리를 많이 사용하는 작업 시 스레드 수를 늘려도 큰 성능 향상을 기대하기 어렵습니다.
