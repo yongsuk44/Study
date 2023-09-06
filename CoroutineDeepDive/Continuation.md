@@ -44,3 +44,31 @@ internal expect class SafeContinuation<in T> : Continuation<T> {
 }
 
 ```
+
+---------------------------------------------------------------------------------
+
+## Mechanism of continuation interception
+
+Continuation Interception 메커니즘은 코루틴의 실행 흐름을 관리하는 데 사용되는 기능입니다.
+
+이 메커니즘은 코루틴이 일시 중단되고 재개될 때 어떠한 일이 발생할 지를 결정합니다.
+
+### Component
+
+- Continuation : 코루틴이 일시 중단된 후 다시 시작할 위치와 상태 정보를 가집니다.
+- Interceptor : Continuation을 가로채어 특별한 동작을 추가하거나 변경할 수 있습니다.
+
+### Method
+
+- `interceptContinuation` : 코루틴이 일시 중단될 때 호출되며, 일시 중단된 `Continuation`을 수정할 수 있습니다.
+- `releaseInterceptedContinuation` : 일시 중단된 코루틴이 끝났을 때 호출되며, 필요한 정리 작업이 있으면 이 메서드에서 수행할 수 있습니다.
+
+### Flow
+
+1. 코루틴 일시 중단 시 `Continuation` 객체 생성
+2. `ContinuationInterceptor`의 `interceptContinuation` 메서드가 이 `Continuation` 객체를 받아서 필요한 작업 수행
+3. 코루틴이 재개될 준비가 되면 `Intercepted Continuation`이 실행
+4. 코루틴의 실행이 종료되면 `releaseInterceptedContinuation` 메서드가 호출되어 정리 작업 수행
+
+
+이러한 메커니즘을 통해 코루틴의 디스패치, 코루틴 컨텍스트의 관리, 코루틴의 일시 중단과 재개 등이 유연하게 처리될 수 잇습니다.
