@@ -454,3 +454,55 @@ suspend fun showUser(user: User) = withContext(Dispatchers.Main.immediate) {
 ```
 
 이러한 최적화는 현재 `Dispatchers.Main`에서만 사용할 수 있습니다.
+
+---
+
+## Continuation interceptor
+
+디스패칭은 [continuation Interception 메커니즘](../Continuation.md#mechanism-of-continuation-interception) 기반으로 실행됩니다.
+
+`ContinuationInterceptor` 코루틴 컨텍스트가 존재하며 이 컨텍스트는 다음 2가지 메서드를 지원합니다.
+
+- `interceptContinuation` : 코루틴이 일시 중단될 때 `continuation`을 수정하는 데 사용됩니다.
+- `releaseInterceptedContinuation` : `continuation`이 종료될 때 호출됩니다.
+
+```kotlin
+public interface ContinationInterceptor: CoroutineContext.Elemnt {
+    
+    companion object key: CoroutineContext.Key<ContinationInterceptor>
+    
+    fun interceptContinuation(contination: Continuation<T>): Continuation<T>
+    fun releaseInterceptedContinuation(continuation: Continuation<*>) { }
+    
+    // ...
+}
+```
+
+디스패처는 `interceptContinuation()`을 사용하여 `Continuation`을 특정 스레드 풀에서 실행되는 `DispatchedContinuation`으로 래핑할 수 있습니다.
+
+만약 비동기 작업을 테스트할 때 실제 작업을 처리하는 디스패처가 같은 컨텍스트를 공유하게 되면 키 충돌이 발생될 수 있습니다.
+이 때문에 테스트 환경에서는 실제 환경의 디스패처를 테스트 디스패처로 교체해야지만 테스트 시 동일한 로직과 동작을 기대할 수 있게됩니다.
+
+```kotlin
+class DiscUserRepository(
+    private val discReader: DiscReader,
+    private val dispatcher: CoroutineContext = Dispatchers.IO
+) : UserRepository {
+    override suspend fun getUser(): UserData = withContext(dispatcher) {
+        UserData(discReader.read("userName"))
+    }
+}
+
+class UserReaderTests {
+    @Test
+    fun `some test`() = runTest {
+        // given
+        val discReader = FakeDiscReader()
+        val repo = DiscUserRepository(
+            discReader, 
+            this.coroutineContext[ContiunationInterceptor]!!
+        )
+        // ...
+    }
+}
+```

@@ -533,3 +533,13 @@ Dispatchers.IO.limitedParallelism(1)
 
 이에 따라 메인 디스패처에서는 `Dispatchers.Main.immediate`를 지원하여 불필요한 디스패칭을 방지하여 비용을 절약할 수 있습니다.  
 이는 현재 메인 디스패처만 사용할 수 있습니다.
+
+### Continuation interceptor
+
+`ContinuationInterceptor` 코루틴 컨텍스트는 다음 2가지 메서드를 지원합니다.
+
+- `interceptContinuation` : 코루틴이 일시 중단될 때 `continuation`을 수정하는 데 사용됩니다.
+- `releaseInterceptedContinuation` : `continuation`이 종료될 때 호출됩니다.
+
+`ContinuationInterceptor.interceptContinuation`를 통해 `Continuation`을 특정 스레드 풀에서 실행되는 `DispatchedContinuation`으로 래핑할 수 있으며,
+이를 통해 비동기 작업 테스트 시 실제 코드에서 처리되는 디스패처를 테스트 디스패처로 교환할 수 있습니다. 
