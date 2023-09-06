@@ -454,3 +454,76 @@ suspend fun showUser(user: User) = withContext(Dispatchers.Main.immediate) {
 ```
 
 이러한 최적화는 현재 `Dispatchers.Main`에서만 사용할 수 있습니다.
+
+---
+
+## Continuation interceptor
+
+디스패칭은 [continuation Interception 메커니즘](../Continuation.md#mechanism-of-continuation-interception) 기반으로 실행됩니다.
+
+`ContinuationInterceptor` 코루틴 컨텍스트가 존재하며 이 컨텍스트는 다음 2가지 메서드를 지원합니다.
+
+- `interceptContinuation` : 코루틴이 일시 중단될 때 `continuation`을 수정하는 데 사용됩니다.
+- `releaseInterceptedContinuation` : `continuation`이 종료될 때 호출됩니다.
+
+```kotlin
+public interface ContinationInterceptor : CoroutineContext.Elemnt {
+
+    companion object key : CoroutineContext.Key<ContinationInterceptor>
+
+    fun interceptContinuation(contination: Continuation<T>): Continuation<T>
+    fun releaseInterceptedContinuation(continuation: Continuation<*>) {}
+
+    // ...
+}
+```
+
+디스패처는 `interceptContinuation()`을 사용하여 `Continuation`을 특정 스레드 풀에서 실행되는 `DispatchedContinuation`으로 래핑할 수 있습니다.
+
+만약 비동기 작업을 테스트할 때 실제 작업을 처리하는 디스패처가 같은 컨텍스트를 공유하게 되면 키 충돌이 발생될 수 있습니다.
+이 때문에 테스트 환경에서는 실제 환경의 디스패처를 테스트 디스패처로 교체해야지만 테스트 시 동일한 로직과 동작을 기대할 수 있게됩니다.
+
+```kotlin
+class DiscUserRepository(
+    private val discReader: DiscReader,
+    private val dispatcher: CoroutineContext = Dispatchers.IO
+) : UserRepository {
+    override suspend fun getUser(): UserData = withContext(dispatcher) {
+        UserData(discReader.read("userName"))
+    }
+}
+
+class UserReaderTests {
+    @Test
+    fun `some test`() = runTest {
+        // given
+        val discReader = FakeDiscReader()
+        val repo = DiscUserRepository(
+            discReader,
+            this.coroutineContext[ContiunationInterceptor]!!
+        )
+        // ...
+    }
+}
+```
+
+---
+
+## Performance of dispatchers against different tasks
+
+디스패처들의 성능을 다양한 작업에 비교하기 위해 아래는 동일한 작업을 100개의 독립적인 코루틴을 실행하며 1s 일시 정지, 1s 블로킹, CPU 집약적 작업, 메모리 집약적 작업의 벤치마크를 수행한 결과입니다.
+(밀리초 단위의 평균 실행 시간을 보여줍니다.)
+
+| ---                | Suspending | Blocking | CPU-intensive | Memory-intensive |
+|--------------------|------------|----------|---------------|------------------|
+| Single Thread      | 1 002      | 100 003  | 39 103        | 94 358           |
+| Default (8 Thread) | 1 002      | 13_003   | 8 437         | 21 461           |
+| IO (64 Thread)     | 1 002      | 2 003    | 9 893         | 20 776           |
+| 100 Threads        | 1 002      | 1 003    | 16 379        | 21 004           |
+
+위 결과로 인해 다음과 같이 몇가지 중요한 점을 볼 수 있습니다.
+
+1. 코루틴이 단순히 suspend 작업 처리 시 병렬성이 크게 중요하지 않습니다. 즉, 여러 스레드를 사용하더라도 성능 향상을 기대하기 어렵습니다.
+2. blocking 작업 시 여러 스레드를 사용하면 작업이 빨리 완료되는 경향이 있습니다. 이는 blocking 작업이 스레드를 오래 점유하게 되므로, 다양한 스레드에서 작업을 분산하는 것이 효율적입니다.
+3. CPU 집약적 작업 시 `Default`를 사용하는 것이 가장 효율적입니다. 스레드 간의 전환(context swtiching)에 소비되는 시간 때문에 스레드 수가 많으면 오히려 성능이 떨어질 수 있습니다. `IO`는 I/O Blocking 작업에 최적화되어 있으므로 CPU 집약적인 작업에는 적절하지 않습니다.
+4. 메모리를 많이 사용하는 작업에서는 스레드 수를 늘려도 크게 성능이 향상되지 않습니다. 하지만 약간의 개선을 기대할 수 있습니다.
