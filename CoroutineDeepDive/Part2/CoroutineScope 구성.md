@@ -198,3 +198,62 @@ abstract class BaseViewModel : ViewModel() {
     }
 }
 ```
+
+--- 
+
+## viewModelScope and lifecycleScope
+
+안드로이드에서는 스코프를 직접 정의하는 대신 다음 2가지를 사용할 수 있습니다.
+- `viewModelScope`
+- `lifecycleScope`
+
+이들의 작동 방식은 `Dispatchers.Main`과 `SupervisorJob`을 사용하고, `ViewModel`이나 `LifecycleOwner`가 소멸될 때 코루틴의 `Job`을 취소합니다.
+
+```kotlin
+// Implementation from lifecycle-viewmodel-ktx version 2.4.0
+public val ViewModel.viewModelScope: CoroutineScope 
+    get() {
+        val scope: CoroutineScope? = this.getTag(JOB_KEY)
+        
+        if (scope != null) { 
+            return scope
+        } 
+        
+        return setTagIfAbsent(JOB_KEY, ClosableCoroutineScope(SupervisorJob() + Dispatchers.Main.immediate))
+    }
+
+internal class ClosableCoroutineScope(
+    context: CoroutineContext
+): Closeable, CoroutineScope {
+    
+    override val coroutineContext: CoroutineContext = context
+    
+    override fun close() { 
+        coroutineContext.cancel()
+    }
+}
+```
+
+`viewModelScope`와 `lifecycleScope`는 스코프에 특별한 컨텍스트(`CoroutineExceptionHandler` 등)이 필요하지 않은 경우에 권장됩니다.
+
+```kotlin
+class ArticlesListViewModel(
+    private val produceArticlesUseCase: ProduceArticlesUseCase
+) : ViewModel() {
+    
+    private val _progressBarVisible = MutableStateFlow(false)
+    val progressBarVisible: StateFlow<Boolean> = _progressBarVisible
+
+    private val _articlesListState = MutableStateFlow<ArticlesListState>(Initial)
+    val articlesListState: StateFlow<ArticlesListState> = _articlesListState
+
+    fun onCreate() {
+        viewModelScope.launch {
+            _progressBarVisible.value = true
+            val articles = produceArticlesUseCase.produce()
+            _articlesListState.value = ArticlesLoaded(articles)
+            _progressBarVisible.value = false
+        }
+    }
+}
+```

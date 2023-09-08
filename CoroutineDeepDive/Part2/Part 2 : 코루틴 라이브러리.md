@@ -597,4 +597,13 @@ Dispatchers.IO.limitedParallelism(1)
 
 이와 같이 코루틴의 취소는 `Job`을 사용할 수 있지만, 좀 더 유연한 방식으로 코루틴을 관리하려면 `SupervisorJob` 컨텍스트를 스코프에 추가하여 사용할 수 있습니다.
 
-코루틴에서 처리되지 않은 예외에 대해서 기본적인 예외 처리 방식을 정의하려면 `CoroutineExceptionHandler`를 사용할 수 있으며 이 핸들러는 코루틴 컨텍스트의 일부로 추가될 수 있습니다. 
+코루틴에서 처리되지 않은 예외에 대해서 기본적인 예외 처리 방식을 정의하려면 `CoroutineExceptionHandler`를 사용할 수 있으며 이 핸들러는 코루틴 컨텍스트의 일부로 추가될 수 있습니다.
+
+### viewModelScope and lifecycleScope
+
+안드로이드 플랫폼에서는 스코프를 직접 정의하는 대신 `viewModelScope`와 `lifecycleScope`를 많이 사용합니다.
+
+이들은 `Disptchers.Main`과 `SupervisorJob`을 사용하고 `ViewModel` 혹은 `LifecycleOwner`가 소멸되면 자동으로 코루틴을 취소합니다.
+
+위 2가지 스코프를 사용하면 코루틴의 생명주기 관리에 대해서 신경을 쓰지 않아도 괜찮기에 코드를 간결하고 안정적으로 만들 수 있습니다.
+그러나, 특별한 컨텍스트 설정이 필요한 경우(`CoroutineExceptionHandler`와 같이) 제한적일 수 있습니다.
