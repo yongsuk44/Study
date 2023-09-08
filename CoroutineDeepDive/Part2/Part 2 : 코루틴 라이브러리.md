@@ -619,3 +619,9 @@ private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
 
 val analyticsScope = CoroutineScope(SupervisorJob() + exceptionHandler)
 ```
+
+### Summary
+
+- 코루틴의 생명주기를 관리하기 위해 `CoroutineScope`를 사용합니다.
+- 코루틴 예외 발생 시 공통적으로 처리를 위해 `CoroutineExceptionHandler`를 선언하여 코루틴 컨텍스트에 추가하여 사용할 수 있습니다.
+- 안드로이드에서는 `viewModelScope`와 `lifecycleScope`를 사용하여 해당 생명주기에 맞춰 코루틴을 관리할 수 있습니다.
