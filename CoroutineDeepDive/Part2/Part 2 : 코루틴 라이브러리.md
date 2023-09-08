@@ -607,3 +607,15 @@ Dispatchers.IO.limitedParallelism(1)
 
 위 2가지 스코프를 사용하면 코루틴의 생명주기 관리에 대해서 신경을 쓰지 않아도 괜찮기에 코드를 간결하고 안정적으로 만들 수 있습니다.
 그러나, 특별한 컨텍스트 설정이 필요한 경우(`CoroutineExceptionHandler`와 같이) 제한적일 수 있습니다.
+
+### Constructing a scope for additional calls
+
+`Analytics`, `Crashlytics` 등 추가 작업을 위해서 별도의 스코프를 생성하여 생성자 또는 인자로 주입하여 사용하는 것이 좋습니다.
+
+```kotlin
+private val exceptionHandler = CoroutineExceptionHandler { _, throwable -> 
+    FirebaseCrashlytics.getInstance().recordException(throwable)
+}
+
+val analyticsScope = CoroutineScope(SupervisorJob() + exceptionHandler)
+```

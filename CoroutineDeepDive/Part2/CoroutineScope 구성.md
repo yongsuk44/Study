@@ -257,3 +257,26 @@ class ArticlesListViewModel(
     }
 }
 ```
+
+---
+
+## Constructing a scope for additional calls
+
+Analytics 사용자 데이터 수집과 같은 추가적인 작업을 위해서 별도의 코루틴 스코프를 생성할 수 있습니다.
+이러한 코루틴 스코프는 생성자 또는 함수의 파라미터로 주입(Injection)됩니다.
+
+만약 이러한 스코프를 suspending 함수를 호출하는데 사용한다면, `SupervisorScope`만으로도 충분합니다.
+
+```kotlin 
+val analyticsScope = CoroutineScope(SupervisorJob())
+```
+
+모든 예외는 로그에서만 표시될 것이므로, 모니터링 시스템에 보내고 싶은 경우 `CoroutineExceptionHandler`를 사용하면 됩니다.
+
+```kotlin
+private val exceptionHandler = CoroutineExceptionHandler { _, throwable -> 
+    FirebaseCrashlytics.getInstance().recordException(throwable)
+}
+
+val analyticsScope = CoroutineScope(SupervisorJob() + exceptionHandler)
+```
