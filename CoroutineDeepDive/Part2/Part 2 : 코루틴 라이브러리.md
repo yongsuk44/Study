@@ -422,21 +422,21 @@ job.cancelAndJoin()
 추가 작업에서 예외가 발생되면 메인 로직이 취소 되기에 좋은 방식이 아닙니다.
 
 이 때문에 명시적으로 스코프를 주입하여 사용하는 것이 좋습니다.
-명시적으로 스코프를 주입하면 해당 로직이 독립적으로 비동기 작업을 할 수 있음이 명확해지고, 해당 코루틴 작업의 흐름을 쉽게 파악할 수 있어 디버깅이 간단해집니다. 
+명시적으로 스코프를 주입하면 해당 로직이 독립적으로 비동기 작업을 할 수 있음이 명확해지고, 해당 코루틴 작업의 흐름을 쉽게 파악할 수 있어 디버깅이 간단해집니다.
 
 ### Summary
 
 - 코루틴 스코프 함수를 통해 코루틴 빌더들을 사용할 수 있으며, 코루틴 스코프 함수 중 `GlobalScope`는 다음과 같은 특징을 지닙니다.
-  - Application Lifecycle을 가지며 Application 종료될 떄까지 해당 스코프에서 실행된 코루틴 작업이 실행 됩니다.
-  - `EmptyCoroutineScope`를 통해 생성되므로 컨텍스트와 스코프에 대한 값이 없습니다.
+    - Application Lifecycle을 가지며 Application 종료될 떄까지 해당 스코프에서 실행된 코루틴 작업이 실행 됩니다.
+    - `EmptyCoroutineScope`를 통해 생성되므로 컨텍스트와 스코프에 대한 값이 없습니다.
 - `coroutineScope`는 '일시 정지 가능한 코드 블록'을 실행하기 위한 새로운 코루틴 스코프를 생성하며 다음 특징을 지닙니다.
-  - 상위 스코프의 컨텍스트를 상속받아 자식 코루틴에게 전달합니다.
-  - 자식 코루틴이 완료되어야지만, 자신도 종료할 수 있습니다.
-  - 부모 코루틴이 취소되면 자기 자신을 포함한 모든 자식 코루틴도 취소됩니다.
+    - 상위 스코프의 컨텍스트를 상속받아 자식 코루틴에게 전달합니다.
+    - 자식 코루틴이 완료되어야지만, 자신도 종료할 수 있습니다.
+    - 부모 코루틴이 취소되면 자기 자신을 포함한 모든 자식 코루틴도 취소됩니다.
 - 코루틴 스코프 함수에는 `coroutineScope`, `withContext`, `superviorScope`, `withTimeout` 등이 있습니다.
-  - `withContext` : `Dispatchers`의 변경과 같이 코루틴 컨텍스트의 변경이 필요한 경우 사용됩니다.
-  - `supervisorScope` : `SupervisorJob`을 사용하여 자식 코루틴의 예외를 전파하지 않는 독립적인 비동기 작업에 사용됩니다.
-  - `withTimeout` : 특정 작업에 시간 제한을 두고 싶을 때 사용됩니다.
+    - `withContext` : `Dispatchers`의 변경과 같이 코루틴 컨텍스트의 변경이 필요한 경우 사용됩니다.
+    - `supervisorScope` : `SupervisorJob`을 사용하여 자식 코루틴의 예외를 전파하지 않는 독립적인 비동기 작업에 사용됩니다.
+    - `withTimeout` : 특정 작업에 시간 제한을 두고 싶을 때 사용됩니다.
 - 코루틴 스코프 함수들은 중첩해서 여러 기능을 조합해서 사용할 수 있습니다.
 - 코루틴 내부에서 메인 로직과 추가 작업을 같이 실행 시, 별도의 스코프를 생성하여 클래스에 명시적으로 주입한 뒤 별도의 스코프로 추가 작업을 실행하는 것이 메인 로직에 영향을 주지 않기에 권장됩니다.
 
@@ -471,21 +471,22 @@ job.cancelAndJoin()
 스레드 풀에 제한이 없어 너무 많은 스레드가 활성화되는 경우 성능 저하와 메모리 부족의 위험이 있기에 디스패처를 사용합니다.
 `Dispatchers.Default`는 CPU 코어 수 만큼, `Dispatchers.IO`는 최대 64개로 제한됩니다.
 
-`Dispatchers.Default`와 `Dispatchers.IO`는 동일한 스레드 풀을 공유하여 스레드를 효율적으로 재사용합니다. 
+`Dispatchers.Default`와 `Dispatchers.IO`는 동일한 스레드 풀을 공유하여 스레드를 효율적으로 재사용합니다.
 두 디스패처는 독립적인 스레드 제한을 가지므로 하나가 다른 하나의 리소스를 차지하지 않습니다.
 
 너무 많은 스레드가 블로킹 상태에 빠지는 것을 방지하기 위해 `limitedParallelism`을 사용하여 동시에 실행할 수 있는 코루틴의 수를 제한합니다.
 
 ### IO dispatcher with a custom pool of threads
 
-`Dispatchers.IO`에서 `limitedParallelism` 사용 시 독립적인 스레드 풀을 가진 새로운 디스패처를 생성할 수 있으며, 이 스레드 풀은 64개로 제한되지 않고 원하는 만큼 스레드 수를 제한할 수 있습니다.
+`Dispatchers.IO`에서 `limitedParallelism` 사용 시 독립적인 스레드 풀을 가진 새로운 디스패처를 생성할 수 있으며, 이 스레드 풀은 64개로 제한되지 않고 원하는 만큼 스레드 수를 제한할
+수 있습니다.
 
 ```mermaid
 graph LR
     subgraph Infinite Thread Pool
         subgraph "Dispatchers.IO.limitedParallelism(n)"
         end
-        subgraph Dispatchers.IO 
+        subgraph Dispatchers.IO
         end
     end
 ```
@@ -512,6 +513,7 @@ Java의 `Executors`를 사용하여 고정된 풀, 캐사된 풀을 생성할 �
 이를 해결하기 위한 방법 중 하나는 단일 스레드 디스패처 구현하여 추가적인 동기화 메커니즘을 넣지 않고 경쟁 상태를 피하는 것입니다.
 
 아래는 단일 스레드 디스패처 구현 방법입니다.
+
 ```kotlin
 Dispatchers.Default.limitedParallelism(1)
 Dispatchers.IO.limitedParallelism(1)
@@ -524,12 +526,13 @@ Dispatchers.IO.limitedParallelism(1)
 `Dispatchers.Unconfined`는 어떠한 스레드 변경도 하지 않으며 별도의 스레드 풀을 사용하지 않습니다.  
 즉, 시작된 스레드 혹은 재개된 스레드에서 실행됩니다. 이에 따라 스레드 관리에 대한 부담이 없으며 특별한 경우 유용하게 사용될 수 있습니다.
 
-모든 코루틴 범위에 `Dispatchers.Unconfined`를 사용하면 동일한 스레드에서 실행되어 연산의 순서를 쉽게 제어하고 복잡한 동기화나 타이밍 이슈를 피할 수 있기에 테스트 환경에서 유용하게 사용될 수 있습니다.   
+모든 코루틴 범위에 `Dispatchers.Unconfined`를 사용하면 동일한 스레드에서 실행되어 연산의 순서를 쉽게 제어하고 복잡한 동기화나 타이밍 이슈를 피할 수 있기에 테스트 환경에서 유용하게 사용될 수
+있습니다.   
 단, `runTest`를 사용한다면 이러한 트릭은 의미가 없습니다.
 
 ### Immediate main dispatching
 
-`withContext`를 호출할 때 마다 일시 중단과 재개라는 프로세스를 거치며 그에 따른 일정한 비용이 발생되며, 동일한 스레드로 디스패칭 되는것이면 이는 더욱이 불필요한 비용입니다. 
+`withContext`를 호출할 때 마다 일시 중단과 재개라는 프로세스를 거치며 그에 따른 일정한 비용이 발생되며, 동일한 스레드로 디스패칭 되는것이면 이는 더욱이 불필요한 비용입니다.
 
 이에 따라 메인 디스패처에서는 `Dispatchers.Main.immediate`를 지원하여 불필요한 디스패칭을 방지하여 비용을 절약할 수 있습니다.  
 이는 현재 메인 디스패처만 사용할 수 있습니다.
@@ -541,7 +544,8 @@ Dispatchers.IO.limitedParallelism(1)
 - `interceptContinuation` : 코루틴이 일시 중단될 때 `continuation`을 수정하는 데 사용됩니다.
 - `releaseInterceptedContinuation` : `continuation`이 종료될 때 호출됩니다.
 
-`ContinuationInterceptor.interceptContinuation`를 통해 `Continuation`을 특정 스레드 풀에서 실행되는 `DispatchedContinuation`으로 래핑할 수 있으며,
+`ContinuationInterceptor.interceptContinuation`를 통해 `Continuation`을 특정 스레드 풀에서 실행되는 `DispatchedContinuation`으로 래핑할 수
+있으며,
 이를 통해 비동기 작업 테스트 시 실제 코드에서 처리되는 디스패처를 테스트 디스패처로 교환할 수 있습니다.
 
 ### Performance of dispatchers against different tasks
@@ -550,21 +554,74 @@ Dispatchers.IO.limitedParallelism(1)
 
 - 단순한 suspend 작업 시 여러 스레드를 사용하더라도 성능 향상을 기대하기 어렵습니다.
 - Blocking 작업 시 여러 스레드를 사용하면 작업을 분산하기에 효율적으로 처리할 수 있습니다.
-- CPU 집약적인 작업 시 `IO` 대신 `Default`를 사용하는 것이 효율적이며, `IO`의 경우 너무 많은 스레드가 활성화되어 Context switching에 소비되는 시간때문에 성능이 떨어질 수 있습니다.
+- CPU 집약적인 작업 시 `IO` 대신 `Default`를 사용하는 것이 효율적이며, `IO`의 경우 너무 많은 스레드가 활성화되어 Context switching에 소비되는 시간때문에 성능이 떨어질 수
+  있습니다.
 - 메모리를 많이 사용하는 작업 시 스레드 수를 늘려도 큰 성능 향상을 기대하기 어렵습니다.
 
 ### Summary
 
-| Dispachers Type | Description |
-| --- | --- |
-| `Dispatchers.Default` | CPU 연산이 많이 필요한 작업에 최적화 되어 있으며 CPU 코어 수만큼 스레드가 제한됩니다. |
-| `Dispatchers.Main` | UI 업데이트와 같이 메인 스레드에서만 가능한 작업에 사용됩니다. |
-| `Dispatchers.IO` | 파일 I/O, 네트워크 호출 등과 같은 블로킹 작업에 사용되며 최대 64개의 스레드로 제한됩니다. |
-| `Dispachers.Unconfined` | 어떤 스레드도 변경하지 않고 별도의 스레드 풀을 가지지 않아 테스트 환경에서 유용합니다. 그러나 테스트 시 `runTest`를 많이 활용합니다. |
-| `Dispatchers.Main.immediate` | 메인 스레드에서 불필요한 디스패칭을 방지하여 비용을 절약할 수 있습니다. |
+| Dispachers Type              | Description                                                                      |
+|------------------------------|----------------------------------------------------------------------------------|
+| `Dispatchers.Default`        | CPU 연산이 많이 필요한 작업에 최적화 되어 있으며 CPU 코어 수만큼 스레드가 제한됩니다.                             |
+| `Dispatchers.Main`           | UI 업데이트와 같이 메인 스레드에서만 가능한 작업에 사용됩니다.                                             |
+| `Dispatchers.IO`             | 파일 I/O, 네트워크 호출 등과 같은 블로킹 작업에 사용되며 최대 64개의 스레드로 제한됩니다.                           |
+| `Dispachers.Unconfined`      | 어떤 스레드도 변경하지 않고 별도의 스레드 풀을 가지지 않아 테스트 환경에서 유용합니다. 그러나 테스트 시 `runTest`를 많이 활용합니다. |
+| `Dispatchers.Main.immediate` | 메인 스레드에서 불필요한 디스패칭을 방지하여 비용을 절약할 수 있습니다.                                         |
 
 - 스레드 풀에서 `Default`와 `IO`는 각각 독립적인 스레드 제한을 가지고 있습니다.
 - 디스패처에 `limitedParallelism` 사용 시 스레드 수를 제한할 수 있습니다. 주로 스레드를 많이 사용하는 `Dispatchers.IO`에 사용됩니다.
 - `Dispatchers.IO.limitedParallelism` 사용 시 `Dispatchers.IO`와 독립적인 스레드 풀을 생성할 수 있습니다.
 - Java의 `Executor`를 생성하여 `asCoroutineDispatcher`를 통해 디스패처로 변환할 수 있습니다. 단, `close`로 꼭 정리해줘야 합니다.
-- `ContinuationInterceptor` : 코루틴 일시 중단 시 생성되는 `Continuation`을 특정 스레드 풀에서 실행되는 `DispatchedContinuation`으로 래핑할 수 있어 테스트 시 디스패처를 주입하는 용도로 사용합니다.
+- `ContinuationInterceptor` : 코루틴 일시 중단 시 생성되는 `Continuation`을 특정 스레드 풀에서 실행되는 `DispatchedContinuation`으로 래핑할 수 있어 테스트 시
+  디스패처를 주입하는 용도로 사용합니다.
+
+------------------------------------------------------------------------------
+
+## [Part 2.7 : Constructing a coroutine scope](CoroutineScope%20구성.md)
+
+### CoroutineScope factory function
+
+`CoroutineScope`는 단일 프로퍼티 `coroutineContext`를 가진 인터페이스입니다.
+
+대부분 프로퍼티로 코루틴 스코프 객체를 사용하여 코루틴 빌더를 호출하는 방식을 사용하거나
+`CoroutineScope` 팩토리 함수를 사용합니다.
+
+### Constructing a scope on Android
+
+안드로이드 플랫폼에서는 코루틴의 시작을 `Fragment`, `Activity`, `ViewModel`, `Presenter` 등에서 시작될 수 있지만,
+디자인 패턴을 많이 사용하는 요즘에는 `ViewModel` 혹은 `Presenter`에서 많이 시작되도록 하고 있습니다.
+
+이 때 공통적으로 사용될 코루틴 스코프를 생성하고 관리하는 것은 중복된 코드를 줄이고 동일한 생명주기로 관리하도록 할 수 있어 좋은 방법이 될 수 있습니다.
+
+코루틴들을 생성하였으면, 사용자가 화면을 벗어나거나, `ViewModel`이 정리되는 등의 상황에서 모든 코루틴들을 취소하게 만들어주어야 합니다.
+
+이와 같이 코루틴의 취소는 `Job`을 사용할 수 있지만, 좀 더 유연한 방식으로 코루틴을 관리하려면 `SupervisorJob` 컨텍스트를 스코프에 추가하여 사용할 수 있습니다.
+
+코루틴에서 처리되지 않은 예외에 대해서 기본적인 예외 처리 방식을 정의하려면 `CoroutineExceptionHandler`를 사용할 수 있으며 이 핸들러는 코루틴 컨텍스트의 일부로 추가될 수 있습니다.
+
+### viewModelScope and lifecycleScope
+
+안드로이드 플랫폼에서는 스코프를 직접 정의하는 대신 `viewModelScope`와 `lifecycleScope`를 많이 사용합니다.
+
+이들은 `Disptchers.Main`과 `SupervisorJob`을 사용하고 `ViewModel` 혹은 `LifecycleOwner`가 소멸되면 자동으로 코루틴을 취소합니다.
+
+위 2가지 스코프를 사용하면 코루틴의 생명주기 관리에 대해서 신경을 쓰지 않아도 괜찮기에 코드를 간결하고 안정적으로 만들 수 있습니다.
+그러나, 특별한 컨텍스트 설정이 필요한 경우(`CoroutineExceptionHandler`와 같이) 제한적일 수 있습니다.
+
+### Constructing a scope for additional calls
+
+`Analytics`, `Crashlytics` 등 추가 작업을 위해서 별도의 스코프를 생성하여 생성자 또는 인자로 주입하여 사용하는 것이 좋습니다.
+
+```kotlin
+private val exceptionHandler = CoroutineExceptionHandler { _, throwable -> 
+    FirebaseCrashlytics.getInstance().recordException(throwable)
+}
+
+val analyticsScope = CoroutineScope(SupervisorJob() + exceptionHandler)
+```
+
+### Summary
+
+- 코루틴의 생명주기를 관리하기 위해 `CoroutineScope`를 사용합니다.
+- 코루틴 예외 발생 시 공통적으로 처리를 위해 `CoroutineExceptionHandler`를 선언하여 코루틴 컨텍스트에 추가하여 사용할 수 있습니다.
+- 안드로이드에서는 `viewModelScope`와 `lifecycleScope`를 사용하여 해당 생명주기에 맞춰 코루틴을 관리할 수 있습니다.
