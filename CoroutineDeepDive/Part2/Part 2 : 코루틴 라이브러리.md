@@ -2,6 +2,18 @@
 
 코루틴을 제대로 사용하기 위해 필요한 모든 것을 배우며 아래의 항목들을 정리하는 파트 입니다.
 
+## 목차 
+- [Coroutine Builder](#part-21--coroutine-builder)
+- [CoroutineContext](#part-22--coroutine-context)
+- [Job and awaiting children](#part-23--jobs-and-awaiting-children)
+- [Cancellation](#part-24--cancellation)
+- [Exception handling](#part-25--exception-handling)
+- [Coroutine scope functions](#part-26--coroutine-scope-functions)
+- [Dispatchers](#part-27--dispatchers)
+- [Construncting a coroutine scope](#part-28--constructing-a-coroutine-scope)
+- [The problem with shared state](#part-29--the-problem-with-shared-state)
+
+
 ## [Part 2.1 : Coroutine Builder](코루틴%20빌더.md)
 
 suspend 함수는 서로 `Continuation`을 전달하며 호출 스택을 쌓아야 합니다.
@@ -197,7 +209,7 @@ suspend fun main(): Unit = coroutineScope {
 - `job.complete()` : `Job`을 완료시키며 모든 자식 코루틴이 끝날때 까지 계속 실행됩니다.
 - `job.completeExceptionally()` : 주어진 예외와 함께 `Job`을 완료시킵니다.
 
-## [Part 2.2 : Cancellation](Cancellation.md)
+## [Part 2.4 : Cancellation](Cancellation.md)
 
 ### Basic Cancellation
 
@@ -279,7 +291,7 @@ suspension point가 존재하지 않는 코루틴을 취소하는 방법으로�
 
 ---
 
-## [Part 2.4 :Exception handling](Exception%20handling.md)
+## [Part 2.5 :Exception handling](Exception%20handling.md)
 
 ### Stop breaking my coroutines
 
@@ -339,7 +351,7 @@ job.cancelAndJoin()
 
 ---
 
-## [Part 2.5 : Coroutine scope functions](CoroutineScope%20함수.md)
+## [Part 2.6 : Coroutine scope functions](CoroutineScope%20함수.md)
 
 ### Approaches that were used before coroutine scope functions were introduced
 
@@ -442,7 +454,7 @@ job.cancelAndJoin()
 
 ---
 
-## [Part 2.6 : Dispatchers](Dispatchers.md)
+## [Part 2.7 : Dispatchers](Dispatchers.md)
 
 ### Default dispatcher
 
@@ -577,7 +589,7 @@ Dispatchers.IO.limitedParallelism(1)
 
 ------------------------------------------------------------------------------
 
-## [Part 2.7 : Constructing a coroutine scope](CoroutineScope%20구성.md)
+## [Part 2.8 : Constructing a coroutine scope](CoroutineScope%20구성.md)
 
 ### CoroutineScope factory function
 
@@ -628,7 +640,7 @@ val analyticsScope = CoroutineScope(SupervisorJob() + exceptionHandler)
 
 ------------------------------------------------------------------------------------------------
 
-## [Part 2.8 : The problem with shared state](SharedState%20문제점.md)
+## [Part 2.9 : The problem with shared state](SharedState%20문제점.md)
 
 여러 스레드에서 상태를 공유하거나 변경 가능한 상태를 공유 상태(shared state)라고 합니다.
 
