@@ -117,8 +117,6 @@ fun main() = runBlocking {
 
 ## Atomics
 
-There is another Java solution that can help us in some simple cases. Java has a set of atomic values. All their operations are fast and guaranteed to be “thread-safe”. They are called atomic. Their oper- ations are implemented at a low level without locks, so this solution is efficient and appropriate for us. There are different atomic values we can use. For our case, we can use AtomicInteger.
-
 `Atomics`은 간단한 경우에 동시성 문제를 해결하는 또 다른 Java의 솔루션 중 하나 입니다.
 
 `atomic` 연산은 동시에 여러 스레드가 동일한 데이터에 접근할 때 연산이 중간에 방해를 받지 않고 한번에 완료되므로 다른 스레드가 동시에 값을 변경할 수 없습니다.
@@ -173,7 +171,7 @@ class UserDownloader(
 
 `atomic`은 주로 간단한 변수나 참조를 안전하게 만들기 위한 목적이며, 복잡한 데이터 구조나 여러 변수가 상호작용해야 하는 경우에는 제한적입니다.
 
-따라서 `atomic`의 사용은 특정 상황에서 유용할 수 있지만, 모든 동시성 문제에 대한 일반적인 해결책ㄷ으로 볼 수 없습니다.
+따라서 `atomic`의 사용은 특정 상황에서 유용할 수 있지만, 모든 동시성 문제에 대한 일반적인 해결책으로 볼 수 없습니다.
 
 ------------------------------------------------------------
 
@@ -195,13 +193,11 @@ fun main() = runBlocking {
 }
 ```
 
-In practice, this approach can be used in two ways. The first approach is known as coarse-grained thread confinement. This is an easy approach whereby we just wrap the whole function with withContext, with a dispatcher limited to a single thread. This solution is easy and eliminates conflicts, but the problem is that we lose the multithreading capabilities of the whole function. Let’s take a look at the example below. api.fetchUser(id) could be started concurrently on many threads, but its body will be running on a dispatcher that is limited to a single thread. As a result, this function execution could slow down when we invoke functions that are blocking or CPU-intensive.
-
 디스패처에 단일 스레드로 제한하여 사용하는 방법은 두 가지 방식으로 사용될 수 있습니다.
 
 ### coarse-garined thread confinement 방식
 
-이 접근법은 전체함수 또는 큰 코드 블록을 단일 스레드 디스패처로 감싸 공튜 상태에 대한 충돌을 쉽게 제거합니다.  
+이 접근법은 전체함수 또는 큰 코드 블록을 단일 스레드 디스패처로 감싸 공유 상태에 대한 충돌을 쉽게 제거합니다.  
 그러나 전체 함수의 멀티 스레딩 기능을 잃게 됩니다. 
 
 예를 들어 `api.fetchUser(id)` 같은 네트워크 호출이나 CPU 집약적인 연산이 있는 경우, 단일 스레드에서는 순차적으로 실행되기에 전체 성능이 저하됩니다.
