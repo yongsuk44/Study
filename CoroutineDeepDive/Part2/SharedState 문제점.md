@@ -418,7 +418,7 @@ class MongoUserRepository(
     // ...
 ) : UserRepository {
     private val mutex = Mutex()
-    
+
     override suspend fun updateUser(
         userId: String,
         userUpdate: UserUpdate
@@ -427,17 +427,61 @@ class MongoUserRepository(
         deleteUser(userId) // Deadlock!
         addUser(currentUser.updated(userUpdate)) // Deadlock!
     }
-    
+
     override suspend fun getUser(userId: String): User = mutex.withLock {
         // ...
     }
-    
+
     override suspend fun deleteUser(userId: String): Unit = mutex.withLock {
         // ...
     }
-    
+
     override suspend fun addUser(user: User): User = mutex.withLock {
         // ...
     }
+}
+```
+
+---
+
+## Semaphore
+
+- `Mutex` : 단일 잠금만을 제공하여 1번에 하나의 코루틴만 해당 리소스에 접근을 허용합니다. 
+- `Semaphore` : 허가 개수에 따라 그 수 만큼의 코루틴이 동시에 리소스에 접근을 허용합니다.
+
+`Mutex`는 `lock`, `unlock`, `withLock`과 같은 함수를 사용하여 잠금과 해제를 관리합니다.
+반면 `Semaphore`는 `acquire`, `release`, `withPermit`과 같은 함수를 사용하여 허가를 얻고 반환합니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    val semaphore = Semaphore(2)
+    repeat(5) {
+        launch {
+            semaphore.withPermit {
+                delay(1000)
+                println("$it ")
+            }
+        }
+    }
+}
+// 0 1
+// 1s delay
+// 2 3
+// 1s delay
+// 4
+```
+
+`Semaphore`가 여러 허가를 관리할 수 있다고 하여도, 이것은 공유 상태에 대한 문제를 해결하진 않습니다.  
+그러나 동시 요청의 수를 제한하는 데 사용될 수 있으므로 속도 제한을 구현하여 서비스의 안전성을 유지하는 데 도움이 됩니다.
+
+```kotlin
+class LimitedNetworkUserRepository(
+    private val api: UserApi
+) {
+    // We limit to 10 concurrent requests
+    private val semaphore = Semaphore(10)
+
+    suspend fun requestUser(userId: String) =
+        semaphore.withPermit { api.requestUser(userId) }
 }
 ```

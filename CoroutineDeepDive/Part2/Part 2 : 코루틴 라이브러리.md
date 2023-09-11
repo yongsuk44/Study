@@ -677,3 +677,10 @@ val analyticsScope = CoroutineScope(SupervisorJob() + exceptionHandler)
 
 - 코루틴에서 `lock`을 2번 지나려고하면 해당 블록이 데드락에 빠질 수 있습니다.
 - 코루틴이 중단되었을 때에도 잠금이 해제되지 않기에 다른 코루틴이 작업을 이어갈 수 없어 동시성 제어 시 비효율적일 수 있습니다.
+
+### Semaphore
+
+`Mutex`와 다르게 허가 개수에 따라 그 수 만큼의 코루틴이 동시에 리소스에 대한 접근을 허용할 수 있으며,
+`acquire`, `release`, `withPermit`과 같은 함수를 사용하여 허가를 얻고 반환합니다.
+
+`Semaphore`는 공유 상태에 대한 해결 보다는 동시 요청의 수를 제한하는 데 사용되어 서비스의 안전성을 유지하는데 도움이 됩니다.
