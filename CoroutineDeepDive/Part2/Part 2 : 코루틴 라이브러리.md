@@ -2,6 +2,19 @@
 
 코루틴을 제대로 사용하기 위해 필요한 모든 것을 배우며 아래의 항목들을 정리하는 파트 입니다.
 
+## 목차
+
+- [Coroutine Builder](#part-21--coroutine-builder)
+- [CoroutineContext](#part-22--coroutine-context)
+- [Job and awaiting children](#part-23--jobs-and-awaiting-children)
+- [Cancellation](#part-24--cancellation)
+- [Exception handling](#part-25--exception-handling)
+- [Coroutine scope functions](#part-26--coroutine-scope-functions)
+- [Dispatchers](#part-27--dispatchers)
+- [Construncting a coroutine scope](#part-28--constructing-a-coroutine-scope)
+- [The problem with shared state](#part-29--the-problem-with-shared-state)
+- [Testing Kotlin coroutines](#part-210--testing-kotlin-coroutines)
+
 ## [Part 2.1 : Coroutine Builder](코루틴%20빌더.md)
 
 suspend 함수는 서로 `Continuation`을 전달하며 호출 스택을 쌓아야 합니다.
@@ -197,7 +210,7 @@ suspend fun main(): Unit = coroutineScope {
 - `job.complete()` : `Job`을 완료시키며 모든 자식 코루틴이 끝날때 까지 계속 실행됩니다.
 - `job.completeExceptionally()` : 주어진 예외와 함께 `Job`을 완료시킵니다.
 
-## [Part 2.2 : Cancellation](Cancellation.md)
+## [Part 2.4 : Cancellation](Cancellation.md)
 
 ### Basic Cancellation
 
@@ -279,7 +292,7 @@ suspension point가 존재하지 않는 코루틴을 취소하는 방법으로�
 
 ---
 
-## [Part 2.4 :Exception handling](Exception%20handling.md)
+## [Part 2.5 :Exception handling](Exception%20handling.md)
 
 ### Stop breaking my coroutines
 
@@ -339,7 +352,7 @@ job.cancelAndJoin()
 
 ---
 
-## [Part 2.5 : Coroutine scope functions](CoroutineScope%20함수.md)
+## [Part 2.6 : Coroutine scope functions](CoroutineScope%20함수.md)
 
 ### Approaches that were used before coroutine scope functions were introduced
 
@@ -442,7 +455,7 @@ job.cancelAndJoin()
 
 ---
 
-## [Part 2.6 : Dispatchers](Dispatchers.md)
+## [Part 2.7 : Dispatchers](Dispatchers.md)
 
 ### Default dispatcher
 
@@ -577,7 +590,7 @@ Dispatchers.IO.limitedParallelism(1)
 
 ------------------------------------------------------------------------------
 
-## [Part 2.7 : Constructing a coroutine scope](CoroutineScope%20구성.md)
+## [Part 2.8 : Constructing a coroutine scope](CoroutineScope%20구성.md)
 
 ### CoroutineScope factory function
 
@@ -613,7 +626,7 @@ Dispatchers.IO.limitedParallelism(1)
 `Analytics`, `Crashlytics` 등 추가 작업을 위해서 별도의 스코프를 생성하여 생성자 또는 인자로 주입하여 사용하는 것이 좋습니다.
 
 ```kotlin
-private val exceptionHandler = CoroutineExceptionHandler { _, throwable -> 
+private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
     FirebaseCrashlytics.getInstance().recordException(throwable)
 }
 
@@ -628,7 +641,7 @@ val analyticsScope = CoroutineScope(SupervisorJob() + exceptionHandler)
 
 ------------------------------------------------------------------------------------------------
 
-## [Part 2.8 : The problem with shared state](SharedState%20문제점.md)
+## [Part 2.9 : The problem with shared state](SharedState%20문제점.md)
 
 여러 스레드에서 상태를 공유하거나 변경 가능한 상태를 공유 상태(shared state)라고 합니다.
 
@@ -647,7 +660,7 @@ val analyticsScope = CoroutineScope(SupervisorJob() + exceptionHandler)
 여러 스레드가 동일한 데이터에 접근할 때 연산이 중간에 방해 받지 않고 한번에 완료되므로 다른 스레드가 동시에 값을 변경할 수 없어 동시성 문제를 해결할 수 있습니다.
 또한 저수준에서 구현되므로 성능에 큰 이점을 가집니다.
 
-그러나, `Atomic`은 주로 간단한 변수나 참조를 안전하게 만들기 위한 목적으로 사용되며, 
+그러나, `Atomic`은 주로 간단한 변수나 참조를 안전하게 만들기 위한 목적으로 사용되며,
 복잡한 데이터 구조나 여러 변수가 상호작용해야 하는 경우에는 제한적입니다.
 
 ---
@@ -656,7 +669,7 @@ val analyticsScope = CoroutineScope(SupervisorJob() + exceptionHandler)
 
 ### A dispatcher limited to a single thread
 
-'coarse-garined thread confinement' 방식은 단일 스레드 디스패처를 사용하여 공유 상태를 한 스레드에 제한합니다. 
+'coarse-garined thread confinement' 방식은 단일 스레드 디스패처를 사용하여 공유 상태를 한 스레드에 제한합니다.
 그러나 전체 함수의 멀티 스레딩 기능을 잃을 수 있습니다.
 
 'fine-grained thread confinement' 방식은 상태를 변경하는 코드를 `withContext`로 감싸서 단일 스레드 디스패처로 제한합니다.  
@@ -668,9 +681,10 @@ val analyticsScope = CoroutineScope(SupervisorJob() + exceptionHandler)
 여러 코루틴이 동시에 특정 리소스에 접근하는 것을 막기 위해 사용되며, 리소스가 변경되는 도중 다른 코루틴이 그 상태를 변경할 수 없게되므로 데이터 일관성을 유지할 수 있습니다.
 
 `Mutex`의 `lock`을 호출한 코루틴이 `unlock`을 호출하기 전까지 리소스에 대한 접근 권한을 갖게되며, 리소스에 다른 코루틴이 접근 시 대기열에 쌓이게 됩니다.  
-해당 리소스에 `unlcok`이 호출되면 대기열에 있는 코루틴 중 하나가 리소스에 접근할 수 있게 됩니다. 
+해당 리소스에 `unlcok`이 호출되면 대기열에 있는 코루틴 중 하나가 리소스에 접근할 수 있게 됩니다.
 
-`lock`과 `unlock` 사이에 예외나 조기 리턴이 발생하는 경우 데드락이 발생할 수 있기에, 내부적으로 `try-finally`를 사용하여 `lock`을 관리하는 `withLock`을 사용하여 안전하게 사용할 수 있습니다.
+`lock`과 `unlock` 사이에 예외나 조기 리턴이 발생하는 경우 데드락이 발생할 수 있기에, 내부적으로 `try-finally`를 사용하여 `lock`을 관리하는 `withLock`을 사용하여 안전하게 사용할
+수 있습니다.
 
 `Mutex`는 스레드를 차단하는 것이 아닌, 코루틴을 일시 중지시키는 점이 중요합니다.  
 이로 인해 `Mutex` 사용 시 다음과 같은 점을 주의해야 합니다.
@@ -691,7 +705,7 @@ val analyticsScope = CoroutineScope(SupervisorJob() + exceptionHandler)
 
 #### Java 동시성 문제 해결
 
-Java에서는 `synchronized`, `Atomics`를 사용하여 동시성 문제를 해결할 수 있습니다.  
+Java에서는 `synchronized`, `Atomics`를 사용하여 동시성 문제를 해결할 수 있습니다.
 
 그러나, `synchronized`는 메인 스레드나 스레드 풀을 제한할 경우 여러 문제가 발생될 수 있으며,
 `atomic`은 복잡한 데이터 구조나 여러 변수가 상호작용해야 하는 경우에는 제한적입니다.
@@ -705,5 +719,31 @@ Java에서는 `synchronized`, `Atomics`를 사용하여 동시성 문제를 해�
 `Mutex`는 스레드를 제한하는 것이 아닌, 코루틴을 제한하는 방식으로 운용되며 `lock`, `unlock`을 통해 해당 리소스에 대한 접근을 제한하며 해제할 수 있습니다.
 또한 `lock` 진행 중 예상치 못한 예외나 조기 리턴과 같은 상황을 고려하여 `withLock`를 통해 안전하게 사용합니다.
 
-`Semaphore`는 리소스에 대한 접근을 허가하는 코루틴의 수를 지정하여 사용할 수 있으며, 
+`Semaphore`는 리소스에 대한 접근을 허가하는 코루틴의 수를 지정하여 사용할 수 있으며,
 이는 동시성 문제 해결보다는 동시 요청의 수를 제한하여 서비스 안전성을 유지하는데 도움이 됩니다.
+
+---------------------------------------------------------------
+
+## [Part 2.10 : Testing Kotlin coroutines](Coroutine%20테스트.md)
+
+### Testing time dependencies
+
+단위 테스트 중 함수에 실행 시간이 각각 다른 경우 실제 함수 대신 `Fake Class`와 `delay`를 사용하여 데이터 로딩 시나리오를 시뮬레이션 할 수 있습니다.
+그러나 단위 테스트에서 많은 시간을 소비하는 것은 좋지 않기에, `StandardTestDispatcher`를 사용하면 테스트 중 코루틴의 가상 시간을 조작할 수 있습니다.
+
+이처럼 가상 시간을 조작하여 오래 걸리는 작업을 테스트할 떄도 거의 즉시 완료할 수 있습니다.
+
+### TestCoroutineScheduler and StandardTestDispatcher
+
+단위 테스트에서 `TestCoroutineScheduler`와 `StandardTestDispatcher` 사용 시 실제 시간이 아닌 가상 시간을 사용하여 실제 앱이나 서비스에서 발생할 수 있는 여러 시나리오를
+빠르게 재현하고 검증할 수 있습니다.
+
+`TestCoroutineScheduler`는 다음과 같은 메서드를 지원합니다.
+
+- `advanceUntilIdle` : 가상 시간을 진행시키고, 해당 시간 동안 실제 시간에 호출되었을 모든 작업을 호출합니다.
+- `advanceTimeBy` : `ms` 단위를 인자로 보내 지정한 시간 까지의 모든 코루틴 작업을 재개합니다.
+- `runCurrent` : 현재 시점에 예정된 작업들을 실행합니다.
+
+가상 시간과 실제 시간은 완전히 독립적으로 스레드를 일시 정지시켜도 `StandardTestDispatcher` 기반 코루틴에는 영향을 주지 않습니다.
+
+`TestScope`를 사용하면 내부적으로 `StandardTestDispatcher`가 사용되기에 위 3가지 메서드를 사용할 수 있습니다.
