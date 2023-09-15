@@ -747,3 +747,17 @@ Java에서는 `synchronized`, `Atomics`를 사용하여 동시성 문제를 해�
 가상 시간과 실제 시간은 완전히 독립적으로 스레드를 일시 정지시켜도 `StandardTestDispatcher` 기반 코루틴에는 영향을 주지 않습니다.
 
 `TestScope`를 사용하면 내부적으로 `StandardTestDispatcher`가 사용되기에 위 3가지 메서드를 사용할 수 있습니다.
+
+### runTest
+
+`runTest` 사용 시 코루틴 로직 테스트 시 실제로 시간을 기다리지 않고 코루틴의 로직을 빠르게 테스트 할 수 있습니다.
+이는 `TestScope`와 함께 제공되는 가상 시간 관리 기능 덕분에 가능합니다.
+
+```kotlin
+@Test
+fun test1() = runTest {
+    assertEquals(0, currentTime)
+    delay(1000)
+    assertEquals(1000, currentTime)
+}
+```
