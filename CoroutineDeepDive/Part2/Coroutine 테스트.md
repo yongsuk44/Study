@@ -308,3 +308,199 @@ fun main() {
 
 `StandardTestDispatcher`는 Android 개발 환경 중 ViewModel, Presenter, Fragment 등 컴포넌트를 테스트할 때 효과적으로 사용될 수 있습니다.
 그러나, 복잡한 코루틴 로직을 테스트할 때에는 `runTest`를 사용하는 것이 더 효과적입니다.
+
+---
+
+## runTest
+
+`runTest` 함수는 코루틴 단위 테스트를 간편하게 해주는 함수로써, 이 함수 사용 시 코루틴 로직을 테스트할 때 실제로 시간을 기다리지 않고 코루틴의 로직을 빠르게 테스트할 수 있습니다.
+
+이는 `TestScope`와 함께 제공되는 가상 시간 관리 기능 덕분에 가능합니다. 
+테스트 중 `currentTime`을 체크함으로써 특정 코루틴 로직이 얼마나 시간이 걸리는지, 언제 특정 작업이 실행되는지 확인할 수 있습니다.
+
+```kotlin
+class SimpleTest {
+    
+    @Test
+    fun test1() = runTest {
+        assertEquals(0, currentTime)
+        delay(1000)
+        assertEquals(1000, currentTime)
+    }
+    
+    @Test
+    fun test2() = runTest {
+        assertEquals(0, currentTime)
+        coroutineScope {
+            launch { delay(1000) }
+            launch { delay(1500) }
+            launch { delay(2000) }
+        }
+        assertEquals(2000, currentTime)
+    }
+}
+```
+
+아래 예제는 `runTest`의 강력함을 보여줍니다. 
+
+만약 실제 환경에서 이러한 테스트를 수행한다면, `fetchUserData()`에서 각 함수 호출마다 실제로 1초씩 기다려야할 것입니다.
+그러나 `runTest` 사용 시 실제로 시간을 기다리지 않고도 시간에 따른 로직의 실행 순서나 시가능ㄹ 정확하게 확인할 수 있습니다.
+
+```kotlin
+@Test
+fun `should produce user sequentially`() = runTest {
+    // given
+    val repo = FakeDelayedUserDataRepository()
+    val useCase = ProduceUserUseCase(repo)
+    
+    // when
+    useCase.produceCurrentUserSeq()
+    
+    // then
+    assertEquals(2000, currentTime)
+}
+
+@Test
+fun `should produce user simultaneously`() = runTest {
+    // given
+    val repo = FakeDelayedUserDataRepository()
+    val useCase = ProduceUserUseCase(repo)
+    
+    // when
+    useCase.produceCurrentUserSym()
+    
+    // then
+    assertEquals(1000, currentTime)
+}
+
+class FetchUserUseCase(
+    private val repo: UserDataRepository
+) {
+    suspend fun fetchUserData(): User = coroutineScope {
+        val name = async { repo.getName() }
+        val friends = async { repo.getFriends() }
+        val profile = async { repo.getProfile() }
+        
+        User(
+            name = name.await(),
+            friends = friends.await(),
+            profile = profile.await()
+        )
+    }
+}
+
+class FetchUserDataTest {
+    
+    @Test
+    fun `should load data concurrently`() = runTest {
+        // given
+        val repo = FakeDelayedUserDataRepository()
+        val useCase = FetchUserUseCase(repo)
+        
+        // when
+        useCase.fetchUserData()
+        
+        // then
+        assertEquals(1000, currentTime)
+    }
+    
+    @Test
+    fun `should construct user`() = runTest {
+        // given
+        val repo = FakeUserDataRepository()
+        val useCase = FetchUserUseCase(repo)
+        
+        // when
+        val result = useCase.fetchUserData()
+        
+        // then
+        val exceptedUser = User(
+            name = "Ben",
+            friends = listOf(Friend("some-friend-id-1")),
+            profile = Profile("Example description")
+        )
+        
+        assertEquals(exceptedUser, result)
+    }
+}
+
+class FakeUserDataRepository: UserDataRepository {
+    override suspend fun getName(): String {
+        delay(1000)
+        return "Ben"
+    } 
+    override suspend fun getFriends(): List<Friend> {
+        delay(1000)
+        return listOf(Friend("some-friend-id-1"))
+    }
+    override suspend fun getProfile(): Profile {
+        delay(1000)
+        return Profile("Example description")
+    }
+}
+
+interface UserDataRepository {
+    suspend fun getName(): String
+    suspend fun getFriends(): List<Friend>
+    suspend fun getProfile(): Profile
+}
+
+data class User(
+    val name: String,
+    val friends: List<Friend>,
+    val profile: Profile
+)
+
+data class Friend(val id: String)
+data class Profile(val description: String)
+```
+
+---------------------------------------------------------------
+
+## Background scope
+
+`runTest`는 테스트 내에서 코루틴을 실행하기 위한 스코프를 제공합니다.  
+이 스코프에서 시작된 모든 코루틴 작업들은 해당 스코프의 생명주기에 종속되며, `runTest` 스코프 내에서 시작된 코루틴 작업이 완료되지 않으면 `runTest`는 반환되지 않습니다.
+
+이는 단위 테스트 시 주의해야 할 부분으로 무한 루프나 끝나지 않는 프로세스 시작 시 테스트가 끝나지 않는 문제가 발생할 수 있습니다.
+
+```kotlin
+@Test
+fun `should increment counter`() = runTest {
+    var i = 0
+    launch { 
+        while(true) {
+            delay(1000)
+            i++
+        }
+    }
+    
+    delay(1001)
+    assertEquals(1, i)
+    delay(1000)
+    assertEquals(2, i)    
+}
+```
+
+위와 같은 상황을 위해서 `runTest`는 `backgroundScope`를 제공합니다.
+
+`backgroundScope`는 장기 실행 작업이나, 테스트의 주요 흐름에 직접적인 영향을 주지않는 별도의 프로세스를 시작할 때 유용합니다.  
+이렇기에 `runTest`는 `backgroundScope` 작업이 완료될 때까지 기다리지 않고 테스트를 종료합니다.
+
+```kotlin
+@Test
+fun `should increment counter`() = runTest {
+    var i = 0
+    backgroundScope.launch {
+        while(true) {
+            delay(1000)
+            i++
+        }
+    }
+
+    delay(1001)
+    assertEquals(1, i)
+    delay(1000)
+    assertEquals(2, i)
+    }
+```
