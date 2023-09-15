@@ -761,3 +761,15 @@ fun test1() = runTest {
     assertEquals(1000, currentTime)
 }
 ```
+
+```mermaid
+graph LR
+    subgraph "runTest"
+        subgraph "TestScope"
+            subgraph "StandardTestDispatcher"
+                subgraph "TestCoroutineScheduler"
+                end
+            end
+        end
+    end
+```
