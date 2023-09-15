@@ -773,3 +773,18 @@ graph LR
         end
     end
 ```
+
+### Background scope
+
+`runTest`는 테스트에서 코루틴을 실행하기 위한 스코프를 제공하는데, 만약 해당 스코프에서 시작된 코루틴 작업이 완료되지 않으면 `runTest`는 반환되지 않고 계속 실행됩니다.
+
+이처럼 장기적으로 실행되는 작업이나, 테스트의 주요 흐름에 직접적인 영향을 주지않는 별도의 프로세스를 시작할 때 `backgroundScope`를 사용하는 것이 좋습니다.
+
+```kotlin
+@Test
+fun simPleTest() = runTest {
+    backgroundScope.launch {
+        // ...
+    }
+}
+```

@@ -454,3 +454,53 @@ data class User(
 data class Friend(val id: String)
 data class Profile(val description: String)
 ```
+
+---------------------------------------------------------------
+
+## Background scope
+
+`runTest`는 테스트 내에서 코루틴을 실행하기 위한 스코프를 제공합니다.  
+이 스코프에서 시작된 모든 코루틴 작업들은 해당 스코프의 생명주기에 종속되며, `runTest` 스코프 내에서 시작된 코루틴 작업이 완료되지 않으면 `runTest`는 반환되지 않습니다.
+
+이는 단위 테스트 시 주의해야 할 부분으로 무한 루프나 끝나지 않는 프로세스 시작 시 테스트가 끝나지 않는 문제가 발생할 수 있습니다.
+
+```kotlin
+@Test
+fun `should increment counter`() = runTest {
+    var i = 0
+    launch { 
+        while(true) {
+            delay(1000)
+            i++
+        }
+    }
+    
+    delay(1001)
+    assertEquals(1, i)
+    delay(1000)
+    assertEquals(2, i)    
+}
+```
+
+위와 같은 상황을 위해서 `runTest`는 `backgroundScope`를 제공합니다.
+
+`backgroundScope`는 장기 실행 작업이나, 테스트의 주요 흐름에 직접적인 영향을 주지않는 별도의 프로세스를 시작할 때 유용합니다.  
+이렇기에 `runTest`는 `backgroundScope` 작업이 완료될 때까지 기다리지 않고 테스트를 종료합니다.
+
+```kotlin
+@Test
+fun `should increment counter`() = runTest {
+    var i = 0
+    backgroundScope.launch {
+        while(true) {
+            delay(1000)
+            i++
+        }
+    }
+
+    delay(1001)
+    assertEquals(1, i)
+    delay(1000)
+    assertEquals(2, i)
+    }
+```
