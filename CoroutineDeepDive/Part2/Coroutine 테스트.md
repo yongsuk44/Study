@@ -672,3 +672,131 @@ fun testName() = runTest(UnconfinedTestDispatcher()) {
         assertEquals(1000, currentTime)
     }
 ```
+
+---------------------------------------------------------------
+
+## Testing functions that change a dispatcher
+
+디스패처 챕터에서 코루틴에 구체적인 디스패처를 설정하는 경우에 대해 다루었습니다.
+
+- blocking 호출의 경우 `Dispatchers.IO` 사용
+- CPU 집약적인 호출의 경우 `Dispatchers.Default` 사용
+
+위 디스패처들은 동시에 실행될 필요가 거의 없기에 대체로 테스트 시 `runBlocking`을 사용하는 것으로 충분합니다.
+
+`runBlocking`은 주어진 블록 내 코루틴 코드가 완료될 때까지 현재 스레드를 차단합니다.  
+따라서, 디스패처를 변경하는 함수의 테스트는 `runBlocking` 내에서 수행되며,
+함수의 올바른 동작 확인을 위해 스레드 차단 상태에서 결과를 검증할 수 있습니다.
+
+```kotlin
+suspend fun readSave(name: String): GameState = withContext(Dispatchers.IO) {
+        reader.readCsvBlocking(name, GameState:class.java)
+    }
+
+suspend fun calculateModel() = withContext(Dispatchers.Default) {
+    model.fit(
+        dateset = newTrain,
+        epochs = 10,
+        batchSize = 100,
+        verbose = false
+    )
+}
+```
+
+위 함수들이 실제로 어떤 디스패처에서 실행되는지 확인하기 위해, 테스트 환경에서 해당 함수의 내부 동작을 모킹하여 현재 실행 중인 스레드의 이름을 캡처하는 방법을 사용할 수 있습니다.
+
+```kotlin
+@Test
+fun `should change dispatcher`() = runBlocking {
+    // given
+    val csvReader = mockk<CsvReader>()
+    val startThreadName = "MyThreadName"
+    var userThreadName: String? = null
+    
+    every {
+        csvReader.readCsvBlocking("FileName", GameState::class.java)
+    } coAnswers {
+        userThreadName = Thread.currentThread().name
+        aGameState
+    }
+    
+    val saveReader = SaveReader(csvReader)
+    
+    // when
+    withContext(newSingleThreadContext(startThreadName)) {
+        saveReader.readSave("FileName")
+    }
+    
+    // then
+    assertNotNull(userThreadName)
+    val expectedPrefix = "DefaultDispatcher-worker-"
+    assert(userThreadName!!.startsWith(expectedPrefix))
+}
+```
+
+드물게, 디스패처를 변경하는 함수에서 시간 의존성을 테스트하려는 경우 특별하게 주의가 필요합니다.
+
+이는 함수 내에서 다른 디스패처로 전환되면(`withContext(Dispatchers.IO)`와 같이), 이 디스패처 교체로 인해 `StandardTestDispatcher`의 가상 시간을 제어하는 기능을 잃게됩니다.
+따라서 실제 시간에 따라 동작하는 코루틴 동작과 시간 의존성을 올바르게 테스트하기 어려워집니다.
+
+아래와 같이 `fetchUserData()`를 `withContext(Dispatchers.IO)`로 감싸는 것은 이 함수가 I/O 작업을 수행하기 위해 `Dispatchers.IO`를 사용한다는 것을 명시적으로 나타내기 위함입니다.  
+
+이럴 경우, 해당 함수 테스트 시 가상 시간에서의 제어 없이 실제 시간으로 동작하게 되므로, 시간 의존성을 테스트하는데 추가적인 전략이나 방법이 필요하게 됩니다.
+
+
+```kotlin
+suspend fun fetchUserData() = withContext(Dispatchers.IO) {
+    val name = async { repo.getName() }
+    val friends = async { repo.getFriends() }
+    val profile = async { repo.getProfile() }
+    
+    User(
+        name = name.await(),
+        friends = friends.await(),
+        profile = profile.await()
+    )
+}
+```
+
+디스패처를 직접적으로 함수나 클래스 내부에서 고정해서 사용하는 대신, 생성자나 메서드의 파라미터를 통해 디스패처를 주입하는 것이 테스트 가능성을 높이는 좋은 방법이 될 수 있습니다.
+
+아래 코드와 같이 실제 앱 실행 환경에서는 `Dispatchers.IO`를 사용하고, 테스트 환경에서는 `StandardTestDispatcher`를 사용할 수 있습니다.
+
+```kotlin
+class FetchUserUseCase(
+    private val userRepo: UserDataRepository,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+) {
+    suspend fun fetchUserData() = withContext(ioDispatcher) {
+        val name = async { userRepo.getName() }
+        val friends = async { userRepo.getFriends() }
+        val profile = async { userRepo.getProfile() }
+        
+        User(
+            name = name.await(),
+            friends = friends.await(),
+            profile = profile.await()
+        )
+    }
+}
+```
+
+이제 단위 테스트에서 `runTest`의 `StandardTestDispatcher`를 사용하고 `coroutineContext`에서 `ContinuationInterceptor` 키를 사용하여 가져올 수 있습니다.
+
+```kotlin
+val testDispatcher = this.coroutineContext(ContinuationInterceptor) as CoroutineDispatcher
+
+val useCase = FetchUserUseCase(
+    userRepo = userRepo,
+    ioDispatcher = testDispatcher
+)
+```
+
+또는 `ioDispatcher`를 `CoroutineContext`로 캐스팅하고, 단위 테스트에서 `EmptyCoroutineContext`로 교체할 수 있습니다.
+
+```kotlin
+val useCase = FetchUserUseCase(
+    userRepo = userRepo,
+    ioDispatcher = EmptyCoroutineContext
+)
+```
