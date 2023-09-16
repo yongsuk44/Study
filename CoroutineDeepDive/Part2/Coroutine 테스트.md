@@ -504,3 +504,539 @@ fun `should increment counter`() = runTest {
     assertEquals(2, i)
     }
 ```
+
+---------------------------------------------------------------
+
+## Testing cancellation and context passing
+
+구조화된 동시성은 코루틴을 안전하게 관리하고 예상치 못한 동시성 문제를 방지하기 위한 코루틴의 핵심 원칙 중 하나 입니다.
+
+이 때문에 함수가 구조화된 동시성을 준수하는지 테스트하는 것은 중요합니다.
+
+예를 들어 suspending 함수 내에서 현재 코루틴 컨텍스트를 캡처하면, 해당 컨텍스트가 올바른 값과 상태를 가지고 있는지 테스트를 통해 확인할 수 있습니다.
+
+```kotlin
+suspend fun <T, R> Iterable<T>.mapAsync(
+    transform: suspend (T) -> R
+): List<R> = coroutineScope {
+    this@mapAsync.map { 
+        async { transform(it) } 
+    }.awaitAll()
+}
+```
+
+`mapAsync`는 원소들을 비동기적으로 매핑하면서 그 순서를 유지해야 합니다.  
+이러한 동작은 다음의 테스트로 검증할 수 있습니다.
+
+```kotlin
+@Test
+fun `should map async and keep elements order`() = runTest {
+    val transforms = listOf(
+        suspend { delay(3000); "A" },
+        suspend { delay(2000); "B" },
+        suspend { delay(4000); "C" },
+        suspend { delay(1000); "D" }
+    )
+    
+    val res = transforms.mapAsync { it() }
+    assertEquals(listOf("A", "B", "C", "D"), res)
+    assertEquals(4000, currentTime)
+}
+```
+
+올바르게 구현된 suspending 함수는 구조화된 병렬성을 존중해야 합니다.
+
+이를 확인하는 가장 쉬운 방법은 부모 코루틴에 `CoroutineName` 컨텍스트를 지정한 다음, 위 `mapAsync`와 같은 변환 함수 내에서 `CoroutineName`이 동일한지 확인하는 것이 있습니다.
+
+코루틴의 현재 컨텍스트를 얻기 위해서는 다음 2가지 방법이 있습니다.
+
+1. suspending 함수의 컨텍스트를 캡처하려면, `currentCoroutineContext` 혹은 `coroutineContext` 프로퍼티를 사용할 수 있습니다.
+2. 코루틴 빌더나 스코프 함수 내에서 중첩된 람다에서는, `CoroutineScope`의 `coroutineContext` 프로퍼티가 현재 코루틴 컨텍스트를 제공하는 프로퍼티보다 우선순위가 있기에 `currentCoroutineContext` 함수를 사용해야 합니다.
+
+```kotlin
+@Test
+fun `should support context propagation`() = runTest {
+    val ctx: CoroutineContext? = null
+        
+    val name1 = CoroutineName("name1")
+    withContext(name1) {
+        listOf("A").mapAsync {
+            ctx = currentCoroutineContext()
+            it
+        }
+        assertEquals(name1, ctx?.get(CoroutineName))
+    }
+    
+    val name2 = CoroutineName("name2")
+    withContext(name2) {
+        listOf(1, 2, 3).mapAsync {
+            ctx = currentCoroutineContext()
+            it
+        }
+        assertEquals(name2, ctx?.get(CoroutineName))
+    }
+}
+```
+
+코루틴의 취소를 테스트하는 가장 쉬운 방법은 내부 함수의 `Job`을 캡처하고 부모 코루틴 취소 후 자식 코루틴 취소를 검증하는 것 입니다.
+
+아래 예제는 `mapAsync` 내의 코루틴이 부모 코루틴과 함께 취소되는지 확인하여 구조화된 병렬성이 잘 동작하는지 검증하는 예시 입니다.
+
+```kotlin
+@Test
+fun `should support cancellation`() = runTest {
+    var job: Job? = null
+    
+    val parentJob = launch {
+        listOf("A").mapAsync {
+            job = currentCoroutineContext().job
+            delay(Long.MAX_VALUE)
+        }
+    }
+    
+    delay(1000)
+    parentJob.cancel()
+    assertEquals(true, job?.isCancelled)
+}
+```
+
+---------------------------------------------------------------
+
+## UnconfinedTestDispatcher
+
+`UnconfinedTestDispatcher`와 `StandardTestDispatcher`는 코루틴 테스트를 위한 디스패처로 각각의 디스패처는 코루틴의 실행 방식에 영향을 줍니다.
+
+### StandardTestDispatcher
+
+특정한 스케줄링 동작이 일어나기 전까지는 아무런 코루틴 작업도 실행되지 않습니다.
+
+### UnconfinedTestDispatcher
+
+코루틴이 시작되자마자 첫 번째 `delay`가 호출되기 전까지의 모든 작업들을 즉시 실행합니다. 
+만약, 코루틴 내부에서 일련의 작업들을 수행하고 그 중간에 `delay`가 발생되면, 이전의 모든 작업은 즉시 실행되어 그 결과를 출력합니다.
+
+```kotlin
+fun main() {
+    CoroutineScope(StandardTestDispatcher()).launch {
+        println("A")
+        delay(1000)
+        println("B")
+    }
+    
+    CoroutineScope(UnconfinedTestDispatcher()).launch {
+        println("C")
+        delay(1000)
+        println("D")
+    }
+}
+// C
+```
+
+`runBlockingTest` 동작 방식은 `UnconfinedTestDispatcher`를 사용하는 `runTest`와 유사합니다.  
+이전에 `runBlockingTest`를 사용하던 테스트 코드를 `runTest`로 마이그레이션을 진행할 때, `UnconfinedTestDispatcher`를 사용하면 더 쉽게 마이그레이션을 진행할 수 있습니다.
+
+```kotlin
+@Test
+fun testName() = runTest(UnconfinedTestDispatcher()) {
+    // ...
+}
+```
+
+---------------------------------------------------------------
+
+## Using mocks
+
+모킹(mocking)은 테스트에서 외부 시스템이나 복잡한 객체를 대체하기 위해 사용하는 기법입니다.
+모킹 라이브러리 사용 시 실제 객체 대신 mock 객체를 생성하여 테스트에서 원하는 동작을 정의할 수 있습니다.
+
+그러나, 모킹에는 다음과 같은 단점이 있습니다.   
+인터페이스나 클래스의 구조가 변경될 경우, 모든 mock 객체의 정의도 함께 변경해야 할 수 있습니다.
+
+반면에 `fake`는 실제 객체와 유사한 동작을 수행하는 간단한 객체로 이런 상황에서는 더 유연하고 쉽게 대처할 수 있습니다.
+
+```kotlin
+    @Test
+    fun `should load data concurrently`() = runTest {
+        // given
+        val repo = mockk<UserDataRepository>()
+        coEvery { repo.getName() } coAnswers { delay(1000); "Ben" }
+        coEvery { repo.getFriends() } coAnswers { delay(1000); listOf(Friend("some-friend-id-1")) }
+        coEvery { repo.getProfile() } coAnswers { delay(1000); Profile("Example description") }
+        
+        val useCase = FetchUserUseCase(repo) 
+        
+        // when
+        useCase.fetchUserData()
+        
+        // then
+        assertEquals(1000, currentTime)
+    }
+```
+
+---------------------------------------------------------------
+
+## Testing functions that change a dispatcher
+
+디스패처 챕터에서 코루틴에 구체적인 디스패처를 설정하는 경우에 대해 다루었습니다.
+
+- blocking 호출의 경우 `Dispatchers.IO` 사용
+- CPU 집약적인 호출의 경우 `Dispatchers.Default` 사용
+
+위 디스패처들은 동시에 실행될 필요가 거의 없기에 대체로 테스트 시 `runBlocking`을 사용하는 것으로 충분합니다.
+
+`runBlocking`은 주어진 블록 내 코루틴 코드가 완료될 때까지 현재 스레드를 차단합니다.  
+따라서, 디스패처를 변경하는 함수의 테스트는 `runBlocking` 내에서 수행되며,
+함수의 올바른 동작 확인을 위해 스레드 차단 상태에서 결과를 검증할 수 있습니다.
+
+```kotlin
+suspend fun readSave(name: String): GameState = withContext(Dispatchers.IO) {
+        reader.readCsvBlocking(name, GameState:class.java)
+    }
+
+suspend fun calculateModel() = withContext(Dispatchers.Default) {
+    model.fit(
+        dateset = newTrain,
+        epochs = 10,
+        batchSize = 100,
+        verbose = false
+    )
+}
+```
+
+위 함수들이 실제로 어떤 디스패처에서 실행되는지 확인하기 위해, 테스트 환경에서 해당 함수의 내부 동작을 모킹하여 현재 실행 중인 스레드의 이름을 캡처하는 방법을 사용할 수 있습니다.
+
+```kotlin
+@Test
+fun `should change dispatcher`() = runBlocking {
+    // given
+    val csvReader = mockk<CsvReader>()
+    val startThreadName = "MyThreadName"
+    var userThreadName: String? = null
+    
+    every {
+        csvReader.readCsvBlocking("FileName", GameState::class.java)
+    } coAnswers {
+        userThreadName = Thread.currentThread().name
+        aGameState
+    }
+    
+    val saveReader = SaveReader(csvReader)
+    
+    // when
+    withContext(newSingleThreadContext(startThreadName)) {
+        saveReader.readSave("FileName")
+    }
+    
+    // then
+    assertNotNull(userThreadName)
+    val expectedPrefix = "DefaultDispatcher-worker-"
+    assert(userThreadName!!.startsWith(expectedPrefix))
+}
+```
+
+드물게, 디스패처를 변경하는 함수에서 시간 의존성을 테스트하려는 경우 특별하게 주의가 필요합니다.
+
+이는 함수 내에서 다른 디스패처로 전환되면(`withContext(Dispatchers.IO)`와 같이), 이 디스패처 교체로 인해 `StandardTestDispatcher`의 가상 시간을 제어하는 기능을 잃게됩니다.
+따라서 실제 시간에 따라 동작하는 코루틴 동작과 시간 의존성을 올바르게 테스트하기 어려워집니다.
+
+아래와 같이 `fetchUserData()`를 `withContext(Dispatchers.IO)`로 감싸는 것은 이 함수가 I/O 작업을 수행하기 위해 `Dispatchers.IO`를 사용한다는 것을 명시적으로 나타내기 위함입니다.  
+
+이럴 경우, 해당 함수 테스트 시 가상 시간에서의 제어 없이 실제 시간으로 동작하게 되므로, 시간 의존성을 테스트하는데 추가적인 전략이나 방법이 필요하게 됩니다.
+
+
+```kotlin
+suspend fun fetchUserData() = withContext(Dispatchers.IO) {
+    val name = async { repo.getName() }
+    val friends = async { repo.getFriends() }
+    val profile = async { repo.getProfile() }
+    
+    User(
+        name = name.await(),
+        friends = friends.await(),
+        profile = profile.await()
+    )
+}
+```
+
+디스패처를 직접적으로 함수나 클래스 내부에서 고정해서 사용하는 대신, 생성자나 메서드의 파라미터를 통해 디스패처를 주입하는 것이 테스트 가능성을 높이는 좋은 방법이 될 수 있습니다.
+
+아래 코드와 같이 실제 앱 실행 환경에서는 `Dispatchers.IO`를 사용하고, 테스트 환경에서는 `StandardTestDispatcher`를 사용할 수 있습니다.
+
+```kotlin
+class FetchUserUseCase(
+    private val userRepo: UserDataRepository,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+) {
+    suspend fun fetchUserData() = withContext(ioDispatcher) {
+        val name = async { userRepo.getName() }
+        val friends = async { userRepo.getFriends() }
+        val profile = async { userRepo.getProfile() }
+        
+        User(
+            name = name.await(),
+            friends = friends.await(),
+            profile = profile.await()
+        )
+    }
+}
+```
+
+이제 단위 테스트에서 `runTest`의 `StandardTestDispatcher`를 사용하고 `coroutineContext`에서 `ContinuationInterceptor` 키를 사용하여 가져올 수 있습니다.
+
+```kotlin
+val testDispatcher = this.coroutineContext(ContinuationInterceptor) as CoroutineDispatcher
+
+val useCase = FetchUserUseCase(
+    userRepo = userRepo,
+    ioDispatcher = testDispatcher
+)
+```
+
+또는 `ioDispatcher`를 `CoroutineContext`로 캐스팅하고, 단위 테스트에서 `EmptyCoroutineContext`로 교체할 수 있습니다.
+
+```kotlin
+val useCase = FetchUserUseCase(
+    userRepo = userRepo,
+    ioDispatcher = EmptyCoroutineContext
+)
+```
+
+---------------------------------------------------------------
+
+## Testing what happens during function execution
+
+다음은 함수 실행 중 프로그래스 바를 표시하고 나중에 숨기는 함수를 가정한 예시 입니다.
+
+```kotlin
+suspend fun sendUserData() {
+    val userData = database.getUserdata()
+    progressBarVisible.value = true
+    userRepo.sendUserData(userData)
+    progressBarVisible.value = false
+}
+```
+
+만약 최종적인 결과만 확인하는 경우, 함수 실행 중 프로그래스 바의 상태가 변경되었는지 검증할 수 없습니다.
+이러한 경우 이 함수를 새로운 코루틴에서 시작하고 외부에서 가상 시간을 제어하는 것 입니다.
+
+`runTest`를 사용하면 `StandardTestDispatcher`를 사용하여 코루틴을 생성합니다.
+이 디스패처는 가상 시간에서 동작하므로 함수의 동작을 단계별로 제어하고 검증할 수 있습니다.
+`advanceUntilIdle()`를 사용하면 코루틴이 더 이상 작업이 없을 떄까지 가상 시간을 진행시킵니다.
+
+여기서 중요한 점은 함수의 내부 동작 중간에 상태 변화를 검증하려면, 해당 함수를 별도의 코루틴에서 시작하고 메인 코루틴에서 가상 시간을 제어해야 합니다.
+이렇게 함으로써, 함수의 중간 상태를 점검하고 그 상태가 예상대로 변경되엇는지 확인할 수 있습니다.
+
+```kotlin
+@Test
+fun `should show progress bar when sending data`() = runTest {
+    // given
+    val db = FakeDatabase()
+    val vm = MainViewModel(db)
+    
+    // when & then
+    launch { vm.sendUserData() }
+    assertEquals(false, vm.progressBarVisible.value)
+    
+    // when & then
+    advanceTimeBy(1000)
+    assertEquals(false, vm.progressBarVisible.value)
+    
+    // when & then
+    runCurrent()
+    assertEquals(true, vm.progressBarVisible.value)
+    
+    // when & then
+    advanceUntilIdle()
+    assertEquals(false, vm.progressBarVisible.value)
+}
+```
+
+> `runCurrent()` : 테스트 환경에서 현재 큐에 있는 작업들만 실행하게 해줍니다. 
+> 즉, 모든 지연된 작업이나 예약된 작업을 무시하고 현재 시점의 작업만을 처리합니다.
+
+위와 같은 비슷한 효과를 `delay`를 사용하여 구현할 수 있습니다.
+
+`delay` 사용 시 특정 시점에서의 동작이나 상태 변활르 관찰하고 검증하는데 도움이 됩니다.  
+예를 들어 `sendUserData()`에서 데이터 전송 중 일정 시간 동안 프로그래스 바를 보여주고 싶다면, 
+`delay`를 사용하여 해당 동작을 일시 중지 시킬 수 있습니다.
+
+이는 마치 2개의 독립적인 프로세스가 동시에 실행되는 것과 같은 효과를 가져다 줍니다.  
+하나의 프로세스는 주요 로직을 실행하면서 일을 처리하고, 다른 하나는 프로세스의 동작을 관찰하고 검증합니다.
+
+```kotlin
+    @Test
+    fun `should show progress bar when sending data`() = runTest {
+        val db = FakeDatabase()
+        val vm = MainViewModel(db)
+        
+        launch { vm.sendUserData() }
+        
+        // then
+        assertEquals(false, vm.progressBarVisible.value)
+        delay(1000)
+        assertEquals(true, vm.progressBarVisible.value)
+        delay(1000)
+        assertEquals(false, vm.progressBarVisible.value)
+    }
+```
+
+그럼에도 테스트 코드에서는 가독성과 명확성을 위해 `advanceTimeBy`와 같은 명시적인 함수를 사용하는 것이 더 선호됩니다.
+
+---------------------------------------------------------------
+
+## Replacing the main dispatcher
+
+코루틴은 다양한 디스패처에서 실행될 수 있으며, 이 디스패처는 코루틴의 실행을 어디서 진행할지 결정합니다.
+일반적인 앱에서의 UI 작업을 위해 메인 디스패처가 필요하지만, 단위 테스트 환경에서는 기본적으로 제공되지 않습니다.
+
+이를 위해 `kotlinx-coroutine-test` 라이브러리는 메인 디스패처를 설정하고 재설정 할 수 있는 유틸리티를 제공합니다.
+
+테스트 실행 전에 `setMain`을 사용하여 메인 디스패처를 설정하고 테스트 종료 후 `resetMain`을 사용하여 초기 상태로 설정할 수 있습니다.
+
+---------------------------------------------------------------
+
+## Testing Android functions that launch coroutines
+
+안드로이드에서는 보통 `ViewModel`, `Presenter`, `Fragment`, `Activity` 등에서 코루틴을 시작합니다.
+이들은 매우 중요한 클래스들이므로 반드시 테스트해야 합니다. 
+
+아래는 `MainViewModel`의 예시입니다.
+
+```kotlin
+class MainViewModel(
+    private val userRepo: UserDataRepository,
+    private val newsRepo: NewsRepository
+): BaseViewModel() {
+    
+    private val _userName: MutableLiveData<String> = MutableLiveData()
+    val userName: LiveData<String> = _userName
+    
+    private val _news: MutableLiveData<List<News>> = MutableLiveData()
+    val news: LiveData<List<News>> = _news
+    
+    private val _progressBarVisible: MutableLiveData<Boolean> = MutableLiveData()
+    val progressBarVisible: LiveData<Boolean> = _progressBarVisible
+    
+    fun onStart() {
+        viewModelScope.launch {
+            val user = userRepo.getUser()
+            _userName.value = user.name
+        }
+        
+        viewModelScope.launch {
+            _progressBarVisible.value = true
+            val news = newsRepo.getNews().sortedByDescending { it.date }
+            _news.value = news
+            _progressBarVisible.value = false
+        }
+    }
+}
+```
+
+`viewModelScope` 대신 다른 스코프가 있을 수 있지만, 지금 예제에서는 크게 중요하지 않습니다.   
+왜냐하면 테스트 환경에서는 내장된 스코프 대신 테스트를 위한 스코프와 디스패처를 사용하게 됩니다.
+
+`StandardTestDispatcher`는 테스트 환경에서 코루틴의 동작을 관리하고 제어하기 위해 설계된 디스패처로 
+`Dispatchers.setMain`과 같이 사용하여 기본 디스패처를 `StandardTestDispatcher`로 교체하여 
+테스트 중 코루틴의 동작을 더 잘 제어할 수 있습니다.
+
+```kotlin
+private lateinit var testDispatcher: CoroutineDispatcher
+
+@Before
+fun set() {
+    testDispatcher = StandardTestDispatcher()
+    Dispatchers.setMain(testDispatcher)
+}
+
+@After
+fun shutdown() {
+    Dispatchers.resetMain()
+}
+```
+
+메인 디스패처를 위와 같은 방식으로 설정한 후 `onStart`에서의 코루틴은 `testDispatcher`에서 실행됩니다.
+
+그렇기에 코루틴에서 가상 시간을 제어할 수 있습니다. 
+특정 시간이 경과한 것처럼 가장하는 `advanceTimeBy`를 사용할 수 있고, `advanceUntilIdle`을 통해 모든 코루틴이 완료될 때까지 코루틴을 재개할 수 있습니다. 
+
+```kotlin
+class TestMainViewModel {
+    private lateinit var scheduler: TestCoroutineScheduler
+    private lateinit var vm: MainViewModel
+    
+    @BeforeEach
+    fun set() {
+        scheduler = TestCoroutineScheduler()
+        Dispatchers.setMain(StandardTestDispatcher(scheduler))
+        vm = MainViewModel(
+            userRepo = FakeUserDataRepository(),
+            newsRepo = FakeNewsRepository()
+        )
+    }
+    
+    @AfterEach
+    fun shutdown() {
+        Dispatchers.resetMain()
+        vm.onCleared()
+    }
+    
+    @Test
+    fun `should show user name and sorted news`() {
+        // when
+        vm.onStart()
+        scheduler.advanceUntilIdle()
+        
+        // then
+        assertEquals("Ben", vm.userName.value)
+        val someNews = listOf(News(date1), News(date2), News(date3))
+        assertEquals(someNews, vm.news.value)
+    }
+    
+    @Test
+    fun `should show progress bar when loading news`() {
+        // given
+        assertEquals(null, vm.progressBarVisible.value)
+        
+        // when & then
+        vm.onStart()
+        assertEquals(false, vm.progressBarVisible.value)
+        
+        // when & then
+        scheduler.runCurrent()
+        assertEquals(true, vm.progressBarVisible.value)
+        
+        // when & then
+        scheduler.advanceTimeBy(200)
+        assertEquals(true, vm.progressBarVisible.value)
+        
+        // when & then
+        scheduler.runCurrent()
+        assertEquals(false, vm.progressBarVisible.value)
+    }
+    
+    @Test
+    fun `user and news are called concurrently`() {
+        // when
+        vm.onStart()
+        scheduler.advanceUntilIdle()
+        
+        // then
+        assertEquals(300, testDispatcher.currentTime)
+    }
+    
+    class FakeUserDataRepository: UserDataRepository {
+        override suspend fun getUser(): User {
+            delay(300)
+            return User("Ben")
+        }
+    }
+    
+    class FakeNewsRepository: NewsRepository {
+        override suspend fun getNews(): List<News> {
+            delay(200)
+            return listOf(News(date1), News(date2), News(date3))
+        }
+    }
+}
+```

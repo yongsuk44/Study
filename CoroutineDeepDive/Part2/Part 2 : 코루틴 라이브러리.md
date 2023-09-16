@@ -788,3 +788,77 @@ fun simPleTest() = runTest {
     }
 }
 ```
+
+### Testing cancellation and context passing
+
+코루틴을 안전하게 관리하고 예상치 못한 동시성 문제를 방지하기 위해서는 코루틴이 구조화된 동시성을 준수하는지 테스트하는 것이 중요합니다.
+
+이를 위해 suspending 함수에서 현재 코루틴 컨텍스트를 캡처하고, 컨텍스트가 올바른 값과 상태를 갖는지 테스트를 통해 확인할 수 있습니다.
+
+여기에서 코루틴의 현재 컨텍스트를 캡처하는 방법으로는 다음과 같습니다.
+
+1. suspending 함수의 컨텍스트 캡처 : `currentCoroutineContext()` 혹은 `coroutineContext` 프로퍼티 사용
+2. 코루틴 빌더 혹은 스코프 함수 내부 : `CoroutineScope.coroutineContext`는 현재 코루틴 컨텍스트를 제공하는 프로퍼티보다 우선순위가 있기에 `currentCoroutineContext()` 사용
+
+코루틴 취소를 테스트하는 방법으로는 자식 코루틴의 `Job`을 캡처하고 부모 코루틴을 취소하여 자식 코루틴이 취소 되었는지 검증하면 됩니다.
+
+### UnconfinedTestDispatcher
+
+`UnconfinedTestDispatcher`는 코루틴 테스트 시 시작되자마자 첫 번째 `delay`가 호출되지 전 까지의 모든 작업을 즉시 실행하도록 합니다.
+즉, 코루틴 내부에서 일련의 작업을 수행하고 중간에 `delay` 발생 시 이전의 모든 작업을 즉시 실행하여 그 결과를 출력합니다.
+
+이는 `StandardTestDispatcher`와 차이가 있습니다.
+`StandardTestDispatcher`는 별도의 스케줄링 처리를 해주지 않으면 아무런 작업을 실행하지 않습니다.
+
+### Using mocks
+
+Mocking은 테스트에서 외부 시스템 혹은 복잡한 객체를 대체하기 위해 사용되는 기법으로써,
+실제 객체 대신 mock 객체를 생성하여 테스트에서 원하는 동작을 정의할 수 있습니다.
+
+그러나 Mocking은 인터페이스 혹은 클래스 구조 변경 시 모든 mock 객체의 정의도 변경해야 할 수 있습니다.  
+반면 `fake`는 실제 객체와 유사한 동작을 수행하는 간단한 객체로 이러한 상황에서 더 유연하고 쉽게 대응할 수 있습니다.
+
+### Testing functions that change a dispatcher
+
+단위 테스트 시 `runBlocking`을 사용하는 경우, `runBlocking`은 주어진 블록 내 코루틴 코드가 완료될 떄까지 현재 스레드를 차단합니다.
+이런 특징으로 디스패처를 변경하는 함수의 테스트는 `runBlocking` 내에서 수행됩니다.
+
+실제로 어떤 디스패처에서 실행되는지 확인하기 위해 해당 함수의 내부 동작을 모킹하여 현재 실행 중인 스레드의 이름을 캡처하는 방법을 사용할 수 있습니다.
+
+또한 디스패처를 변경하는 함수 중 시간 의존성을 고려하여 테스트하는 경우 디스패처의 교환이 일어나면 `StandardTestDispatcher`의 가상 시간 제어 기능을 사용할 수 없기에,
+디스패처를 직접적으로 내부에서 고정해서 사용하는 대신, 생성자나 메서드의 파라미터를 통해 주입하는 것이 좋습니다.
+
+### Testing what happens during function execution
+
+함수 실행 중 상태가 변화되는 것을 확인하는 방법은 이 함수를 새로운 코루틴에서 시작하고 외부에서 가상 시간을 제어하는 방법이 있습니다.
+
+`runTest`를 사용하면 `StandardTestDispatcher`를 사용하여 코루틴을 생성하며,
+[`StandardTestDispatcher`에서 제공되는 메서드](#testcoroutinescheduler-and-standardtestdispatcher)를 통해 가상 시간을 제어하고 검증할 수 있습니다.
+
+위와 비슷한 테스트 환경을 `delay`로 구현할 수 있지만, 명시적으로 표현하는 `StandardTestDispatcher`의 메서드를 사용하는 것이 코드 가독성과 명확성을 위해 좋습니다.
+
+### Replacing the main dispatcher
+
+단위 테스트에서는 기본적으로 메인 디스패처가 제공되지 않기에,
+만약 필요한 경우 테스트 실행 전 `Dispatcher.setMain`을 통해 메인 디스패처를 설정하고
+테스트 종료 후 `Dispatcher.resetMain`을 사용하여 초기 상태로 설정할 수 있습니다.
+
+### Testing Android functions that launch coroutines
+
+안드로이드에서는 보통 `ViewModel`, `Presenter`, `Fragment`, `Activity` 등에서 코루틴을 시작하며,
+해당 클래스에서 시작되는 코루틴들은 보통 테스트 환경에서 사용되지 않기에, 테스트 환경에서는 `StandardTestDispatcher`를 메인 디스패처로 사용하여 가상 시간을 제어하도록 합니다.
+
+```kotlin
+private lateinit var testDispatcher: CoroutineDispatcher
+
+@Before
+fun set() {
+    testDispatcher = StandardTestDispatcher()
+    Dispatchers.setMain(testDispatcher)
+}
+
+@After
+fun shutdown() {
+    Dispatchers.resetMain()
+}
+```
