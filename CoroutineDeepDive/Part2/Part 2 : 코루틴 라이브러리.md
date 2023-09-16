@@ -801,3 +801,11 @@ fun simPleTest() = runTest {
 2. 코루틴 빌더 혹은 스코프 함수 내부 : `CoroutineScope.coroutineContext`는 현재 코루틴 컨텍스트를 제공하는 프로퍼티보다 우선순위가 있기에 `currentCoroutineContext()` 사용
 
 코루틴 취소를 테스트하는 방법으로는 자식 코루틴의 `Job`을 캡처하고 부모 코루틴을 취소하여 자식 코루틴이 취소 되었는지 검증하면 됩니다.
+
+### UnconfinedTestDispatcher
+
+`UnconfinedTestDispatcher`는 코루틴 테스트 시 시작되자마자 첫 번째 `delay`가 호출되지 전 까지의 모든 작업을 즉시 실행하도록 합니다.
+즉, 코루틴 내부에서 일련의 작업을 수행하고 중간에 `delay` 발생 시 이전의 모든 작업을 즉시 실행하여 그 결과를 출력합니다.
+
+이는 `StandardTestDispatcher`와 차이가 있습니다.
+`StandardTestDispatcher`는 별도의 스케줄링 처리를 해주지 않으면 아무런 작업을 실행하지 않습니다.

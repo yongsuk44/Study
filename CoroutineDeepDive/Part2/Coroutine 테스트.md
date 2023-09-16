@@ -599,3 +599,45 @@ fun `should support cancellation`() = runTest {
     assertEquals(true, job?.isCancelled)
 }
 ```
+
+---------------------------------------------------------------
+
+## UnconfinedTestDispatcher
+
+`UnconfinedTestDispatcher`와 `StandardTestDispatcher`는 코루틴 테스트를 위한 디스패처로 각각의 디스패처는 코루틴의 실행 방식에 영향을 줍니다.
+
+### StandardTestDispatcher
+
+특정한 스케줄링 동작이 일어나기 전까지는 아무런 코루틴 작업도 실행되지 않습니다.
+
+### UnconfinedTestDispatcher
+
+코루틴이 시작되자마자 첫 번째 `delay`가 호출되기 전까지의 모든 작업들을 즉시 실행합니다. 
+만약, 코루틴 내부에서 일련의 작업들을 수행하고 그 중간에 `delay`가 발생되면, 이전의 모든 작업은 즉시 실행되어 그 결과를 출력합니다.
+
+```kotlin
+fun main() {
+    CoroutineScope(StandardTestDispatcher()).launch {
+        println("A")
+        delay(1000)
+        println("B")
+    }
+    
+    CoroutineScope(UnconfinedTestDispatcher()).launch {
+        println("C")
+        delay(1000)
+        println("D")
+    }
+}
+// C
+```
+
+`runBlockingTest` 동작 방식은 `UnconfinedTestDispatcher`를 사용하는 `runTest`와 유사합니다.  
+이전에 `runBlockingTest`를 사용하던 테스트 코드를 `runTest`로 마이그레이션을 진행할 때, `UnconfinedTestDispatcher`를 사용하면 더 쉽게 마이그레이션을 진행할 수 있습니다.
+
+```kotlin
+@Test
+fun testName() = runTest(UnconfinedTestDispatcher()) {
+    // ...
+}
+```
