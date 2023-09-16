@@ -641,3 +641,34 @@ fun testName() = runTest(UnconfinedTestDispatcher()) {
     // ...
 }
 ```
+
+---------------------------------------------------------------
+
+## Using mocks
+
+모킹(mocking)은 테스트에서 외부 시스템이나 복잡한 객체를 대체하기 위해 사용하는 기법입니다.
+모킹 라이브러리 사용 시 실제 객체 대신 mock 객체를 생성하여 테스트에서 원하는 동작을 정의할 수 있습니다.
+
+그러나, 모킹에는 다음과 같은 단점이 있습니다.   
+인터페이스나 클래스의 구조가 변경될 경우, 모든 mock 객체의 정의도 함께 변경해야 할 수 있습니다.
+
+반면에 `fake`는 실제 객체와 유사한 동작을 수행하는 간단한 객체로 이런 상황에서는 더 유연하고 쉽게 대처할 수 있습니다.
+
+```kotlin
+    @Test
+    fun `should load data concurrently`() = runTest {
+        // given
+        val repo = mockk<UserDataRepository>()
+        coEvery { repo.getName() } coAnswers { delay(1000); "Ben" }
+        coEvery { repo.getFriends() } coAnswers { delay(1000); listOf(Friend("some-friend-id-1")) }
+        coEvery { repo.getProfile() } coAnswers { delay(1000); Profile("Example description") }
+        
+        val useCase = FetchUserUseCase(repo) 
+        
+        // when
+        useCase.fetchUserData()
+        
+        // then
+        assertEquals(1000, currentTime)
+    }
+```
