@@ -800,3 +800,84 @@ val useCase = FetchUserUseCase(
     ioDispatcher = EmptyCoroutineContext
 )
 ```
+
+---------------------------------------------------------------
+
+## Testing what happens during function execution
+
+다음은 함수 실행 중 프로그래스 바를 표시하고 나중에 숨기는 함수를 가정한 예시 입니다.
+
+```kotlin
+suspend fun sendUserData() {
+    val userData = database.getUserdata()
+    progressBarVisible.value = true
+    userRepo.sendUserData(userData)
+    progressBarVisible.value = false
+}
+```
+
+만약 최종적인 결과만 확인하는 경우, 함수 실행 중 프로그래스 바의 상태가 변경되었는지 검증할 수 없습니다.
+이러한 경우 이 함수를 새로운 코루틴에서 시작하고 외부에서 가상 시간을 제어하는 것 입니다.
+
+`runTest`를 사용하면 `StandardTestDispatcher`를 사용하여 코루틴을 생성합니다.
+이 디스패처는 가상 시간에서 동작하므로 함수의 동작을 단계별로 제어하고 검증할 수 있습니다.
+`advanceUntilIdle()`를 사용하면 코루틴이 더 이상 작업이 없을 떄까지 가상 시간을 진행시킵니다.
+
+여기서 중요한 점은 함수의 내부 동작 중간에 상태 변화를 검증하려면, 해당 함수를 별도의 코루틴에서 시작하고 메인 코루틴에서 가상 시간을 제어해야 합니다.
+이렇게 함으로써, 함수의 중간 상태를 점검하고 그 상태가 예상대로 변경되엇는지 확인할 수 있습니다.
+
+```kotlin
+@Test
+fun `should show progress bar when sending data`() = runTest {
+    // given
+    val db = FakeDatabase()
+    val vm = MainViewModel(db)
+    
+    // when & then
+    launch { vm.sendUserData() }
+    assertEquals(false, vm.progressBarVisible.value)
+    
+    // when & then
+    advanceTimeBy(1000)
+    assertEquals(false, vm.progressBarVisible.value)
+    
+    // when & then
+    runCurrent()
+    assertEquals(true, vm.progressBarVisible.value)
+    
+    // when & then
+    advanceUntilIdle()
+    assertEquals(false, vm.progressBarVisible.value)
+}
+```
+
+> `runCurrent()` : 테스트 환경에서 현재 큐에 있는 작업들만 실행하게 해줍니다. 
+> 즉, 모든 지연된 작업이나 예약된 작업을 무시하고 현재 시점의 작업만을 처리합니다.
+
+위와 같은 비슷한 효과를 `delay`를 사용하여 구현할 수 있습니다.
+
+`delay` 사용 시 특정 시점에서의 동작이나 상태 변활르 관찰하고 검증하는데 도움이 됩니다.  
+예를 들어 `sendUserData()`에서 데이터 전송 중 일정 시간 동안 프로그래스 바를 보여주고 싶다면, 
+`delay`를 사용하여 해당 동작을 일시 중지 시킬 수 있습니다.
+
+이는 마치 2개의 독립적인 프로세스가 동시에 실행되는 것과 같은 효과를 가져다 줍니다.  
+하나의 프로세스는 주요 로직을 실행하면서 일을 처리하고, 다른 하나는 프로세스의 동작을 관찰하고 검증합니다.
+
+```kotlin
+    @Test
+    fun `should show progress bar when sending data`() = runTest {
+        val db = FakeDatabase()
+        val vm = MainViewModel(db)
+        
+        launch { vm.sendUserData() }
+        
+        // then
+        assertEquals(false, vm.progressBarVisible.value)
+        delay(1000)
+        assertEquals(true, vm.progressBarVisible.value)
+        delay(1000)
+        assertEquals(false, vm.progressBarVisible.value)
+    }
+```
+
+그럼에도 테스트 코드에서는 가독성과 명확성을 위해 `advanceTimeBy`와 같은 명시적인 함수를 사용하는 것이 더 선호됩니다.

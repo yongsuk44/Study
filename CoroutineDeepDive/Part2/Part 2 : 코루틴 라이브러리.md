@@ -827,3 +827,12 @@ Mocking은 테스트에서 외부 시스템 혹은 복잡한 객체를 대체하
 
 또한 디스패처를 변경하는 함수 중 시간 의존성을 고려하여 테스트하는 경우 디스패처의 교환이 일어나면 `StandardTestDispatcher`의 가상 시간 제어 기능을 사용할 수 없기에,
 디스패처를 직접적으로 내부에서 고정해서 사용하는 대신, 생성자나 메서드의 파라미터를 통해 주입하는 것이 좋습니다.
+
+### Testing what happens during function execution
+
+함수 실행 중 상태가 변화되는 것을 확인하는 방법은 이 함수를 새로운 코루틴에서 시작하고 외부에서 가상 시간을 제어하는 방법이 있습니다.
+
+`runTest`를 사용하면 `StandardTestDispatcher`를 사용하여 코루틴을 생성하며,
+[`StandardTestDispatcher`에서 제공되는 메서드](#testcoroutinescheduler-and-standardtestdispatcher)를 통해 가상 시간을 제어하고 검증할 수 있습니다.
+
+위와 비슷한 테스트 환경을 `delay`로 구현할 수 있지만, 명시적으로 표현하는 `StandardTestDispatcher`의 메서드를 사용하는 것이 코드 가독성과 명확성을 위해 좋습니다.
