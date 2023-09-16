@@ -504,3 +504,98 @@ fun `should increment counter`() = runTest {
     assertEquals(2, i)
     }
 ```
+
+---------------------------------------------------------------
+
+## Testing cancellation and context passing
+
+구조화된 동시성은 코루틴을 안전하게 관리하고 예상치 못한 동시성 문제를 방지하기 위한 코루틴의 핵심 원칙 중 하나 입니다.
+
+이 때문에 함수가 구조화된 동시성을 준수하는지 테스트하는 것은 중요합니다.
+
+예를 들어 suspending 함수 내에서 현재 코루틴 컨텍스트를 캡처하면, 해당 컨텍스트가 올바른 값과 상태를 가지고 있는지 테스트를 통해 확인할 수 있습니다.
+
+```kotlin
+suspend fun <T, R> Iterable<T>.mapAsync(
+    transform: suspend (T) -> R
+): List<R> = coroutineScope {
+    this@mapAsync.map { 
+        async { transform(it) } 
+    }.awaitAll()
+}
+```
+
+`mapAsync`는 원소들을 비동기적으로 매핑하면서 그 순서를 유지해야 합니다.  
+이러한 동작은 다음의 테스트로 검증할 수 있습니다.
+
+```kotlin
+@Test
+fun `should map async and keep elements order`() = runTest {
+    val transforms = listOf(
+        suspend { delay(3000); "A" },
+        suspend { delay(2000); "B" },
+        suspend { delay(4000); "C" },
+        suspend { delay(1000); "D" }
+    )
+    
+    val res = transforms.mapAsync { it() }
+    assertEquals(listOf("A", "B", "C", "D"), res)
+    assertEquals(4000, currentTime)
+}
+```
+
+올바르게 구현된 suspending 함수는 구조화된 병렬성을 존중해야 합니다.
+
+이를 확인하는 가장 쉬운 방법은 부모 코루틴에 `CoroutineName` 컨텍스트를 지정한 다음, 위 `mapAsync`와 같은 변환 함수 내에서 `CoroutineName`이 동일한지 확인하는 것이 있습니다.
+
+코루틴의 현재 컨텍스트를 얻기 위해서는 다음 2가지 방법이 있습니다.
+
+1. suspending 함수의 컨텍스트를 캡처하려면, `currentCoroutineContext` 혹은 `coroutineContext` 프로퍼티를 사용할 수 있습니다.
+2. 코루틴 빌더나 스코프 함수 내에서 중첩된 람다에서는, `CoroutineScope`의 `coroutineContext` 프로퍼티가 현재 코루틴 컨텍스트를 제공하는 프로퍼티보다 우선순위가 있기에 `currentCoroutineContext` 함수를 사용해야 합니다.
+
+```kotlin
+@Test
+fun `should support context propagation`() = runTest {
+    val ctx: CoroutineContext? = null
+        
+    val name1 = CoroutineName("name1")
+    withContext(name1) {
+        listOf("A").mapAsync {
+            ctx = currentCoroutineContext()
+            it
+        }
+        assertEquals(name1, ctx?.get(CoroutineName))
+    }
+    
+    val name2 = CoroutineName("name2")
+    withContext(name2) {
+        listOf(1, 2, 3).mapAsync {
+            ctx = currentCoroutineContext()
+            it
+        }
+        assertEquals(name2, ctx?.get(CoroutineName))
+    }
+}
+```
+
+코루틴의 취소를 테스트하는 가장 쉬운 방법은 내부 함수의 `Job`을 캡처하고 부모 코루틴 취소 후 자식 코루틴 취소를 검증하는 것 입니다.
+
+아래 예제는 `mapAsync` 내의 코루틴이 부모 코루틴과 함께 취소되는지 확인하여 구조화된 병렬성이 잘 동작하는지 검증하는 예시 입니다.
+
+```kotlin
+@Test
+fun `should support cancellation`() = runTest {
+    var job: Job? = null
+    
+    val parentJob = launch {
+        listOf("A").mapAsync {
+            job = currentCoroutineContext().job
+            delay(Long.MAX_VALUE)
+        }
+    }
+    
+    delay(1000)
+    parentJob.cancel()
+    assertEquals(true, job?.isCancelled)
+}
+```
