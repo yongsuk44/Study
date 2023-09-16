@@ -842,3 +842,23 @@ Mocking은 테스트에서 외부 시스템 혹은 복잡한 객체를 대체하
 단위 테스트에서는 기본적으로 메인 디스패처가 제공되지 않기에,
 만약 필요한 경우 테스트 실행 전 `Dispatcher.setMain`을 통해 메인 디스패처를 설정하고
 테스트 종료 후 `Dispatcher.resetMain`을 사용하여 초기 상태로 설정할 수 있습니다.
+
+### Testing Android functions that launch coroutines
+
+안드로이드에서는 보통 `ViewModel`, `Presenter`, `Fragment`, `Activity` 등에서 코루틴을 시작하며,
+해당 클래스에서 시작되는 코루틴들은 보통 테스트 환경에서 사용되지 않기에, 테스트 환경에서는 `StandardTestDispatcher`를 메인 디스패처로 사용하여 가상 시간을 제어하도록 합니다.
+
+```kotlin
+private lateinit var testDispatcher: CoroutineDispatcher
+
+@Before
+fun set() {
+    testDispatcher = StandardTestDispatcher()
+    Dispatchers.setMain(testDispatcher)
+}
+
+@After
+fun shutdown() {
+    Dispatchers.resetMain()
+}
+```

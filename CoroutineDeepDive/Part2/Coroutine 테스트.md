@@ -892,3 +892,151 @@ fun `should show progress bar when sending data`() = runTest {
 이를 위해 `kotlinx-coroutine-test` 라이브러리는 메인 디스패처를 설정하고 재설정 할 수 있는 유틸리티를 제공합니다.
 
 테스트 실행 전에 `setMain`을 사용하여 메인 디스패처를 설정하고 테스트 종료 후 `resetMain`을 사용하여 초기 상태로 설정할 수 있습니다.
+
+---------------------------------------------------------------
+
+## Testing Android functions that launch coroutines
+
+안드로이드에서는 보통 `ViewModel`, `Presenter`, `Fragment`, `Activity` 등에서 코루틴을 시작합니다.
+이들은 매우 중요한 클래스들이므로 반드시 테스트해야 합니다. 
+
+아래는 `MainViewModel`의 예시입니다.
+
+```kotlin
+class MainViewModel(
+    private val userRepo: UserDataRepository,
+    private val newsRepo: NewsRepository
+): BaseViewModel() {
+    
+    private val _userName: MutableLiveData<String> = MutableLiveData()
+    val userName: LiveData<String> = _userName
+    
+    private val _news: MutableLiveData<List<News>> = MutableLiveData()
+    val news: LiveData<List<News>> = _news
+    
+    private val _progressBarVisible: MutableLiveData<Boolean> = MutableLiveData()
+    val progressBarVisible: LiveData<Boolean> = _progressBarVisible
+    
+    fun onStart() {
+        viewModelScope.launch {
+            val user = userRepo.getUser()
+            _userName.value = user.name
+        }
+        
+        viewModelScope.launch {
+            _progressBarVisible.value = true
+            val news = newsRepo.getNews().sortedByDescending { it.date }
+            _news.value = news
+            _progressBarVisible.value = false
+        }
+    }
+}
+```
+
+`viewModelScope` 대신 다른 스코프가 있을 수 있지만, 지금 예제에서는 크게 중요하지 않습니다.   
+왜냐하면 테스트 환경에서는 내장된 스코프 대신 테스트를 위한 스코프와 디스패처를 사용하게 됩니다.
+
+`StandardTestDispatcher`는 테스트 환경에서 코루틴의 동작을 관리하고 제어하기 위해 설계된 디스패처로 
+`Dispatchers.setMain`과 같이 사용하여 기본 디스패처를 `StandardTestDispatcher`로 교체하여 
+테스트 중 코루틴의 동작을 더 잘 제어할 수 있습니다.
+
+```kotlin
+private lateinit var testDispatcher: CoroutineDispatcher
+
+@Before
+fun set() {
+    testDispatcher = StandardTestDispatcher()
+    Dispatchers.setMain(testDispatcher)
+}
+
+@After
+fun shutdown() {
+    Dispatchers.resetMain()
+}
+```
+
+메인 디스패처를 위와 같은 방식으로 설정한 후 `onStart`에서의 코루틴은 `testDispatcher`에서 실행됩니다.
+
+그렇기에 코루틴에서 가상 시간을 제어할 수 있습니다. 
+특정 시간이 경과한 것처럼 가장하는 `advanceTimeBy`를 사용할 수 있고, `advanceUntilIdle`을 통해 모든 코루틴이 완료될 때까지 코루틴을 재개할 수 있습니다. 
+
+```kotlin
+class TestMainViewModel {
+    private lateinit var scheduler: TestCoroutineScheduler
+    private lateinit var vm: MainViewModel
+    
+    @BeforeEach
+    fun set() {
+        scheduler = TestCoroutineScheduler()
+        Dispatchers.setMain(StandardTestDispatcher(scheduler))
+        vm = MainViewModel(
+            userRepo = FakeUserDataRepository(),
+            newsRepo = FakeNewsRepository()
+        )
+    }
+    
+    @AfterEach
+    fun shutdown() {
+        Dispatchers.resetMain()
+        vm.onCleared()
+    }
+    
+    @Test
+    fun `should show user name and sorted news`() {
+        // when
+        vm.onStart()
+        scheduler.advanceUntilIdle()
+        
+        // then
+        assertEquals("Ben", vm.userName.value)
+        val someNews = listOf(News(date1), News(date2), News(date3))
+        assertEquals(someNews, vm.news.value)
+    }
+    
+    @Test
+    fun `should show progress bar when loading news`() {
+        // given
+        assertEquals(null, vm.progressBarVisible.value)
+        
+        // when & then
+        vm.onStart()
+        assertEquals(false, vm.progressBarVisible.value)
+        
+        // when & then
+        scheduler.runCurrent()
+        assertEquals(true, vm.progressBarVisible.value)
+        
+        // when & then
+        scheduler.advanceTimeBy(200)
+        assertEquals(true, vm.progressBarVisible.value)
+        
+        // when & then
+        scheduler.runCurrent()
+        assertEquals(false, vm.progressBarVisible.value)
+    }
+    
+    @Test
+    fun `user and news are called concurrently`() {
+        // when
+        vm.onStart()
+        scheduler.advanceUntilIdle()
+        
+        // then
+        assertEquals(300, testDispatcher.currentTime)
+    }
+    
+    class FakeUserDataRepository: UserDataRepository {
+        override suspend fun getUser(): User {
+            delay(300)
+            return User("Ben")
+        }
+    }
+    
+    class FakeNewsRepository: NewsRepository {
+        override suspend fun getNews(): List<News> {
+            delay(200)
+            return listOf(News(date1), News(date2), News(date3))
+        }
+    }
+}
+```
