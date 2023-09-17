@@ -1040,3 +1040,82 @@ class TestMainViewModel {
     }
 }
 ```
+
+---------------------------------------------------------------
+
+## Setting a test dispatcher with a rule
+
+`JUnit4`의 규칙(Rule) 기능은 테스트 코드의 실행 전,후에 특정 동작이나 설정을 수행하는 데 유용하게 사용됩니다.   
+예를 들어, DB 연결을 준비하거나, 로깅 설정을 바꾸는 것과 같은 테스트 환경을 설정하거나 정리하는 작업을 자동화하는데 사용할 수 있습니다.
+
+코루틴 테스트 시, 테스트 실행 전 테스트용 디스패처를 설정하고 테스트 후 원래의 디스패처로 되돌리는 작업이 필요합니다.
+이러한 작업을 자동화하기 위해 `JUnit4`의 규칙을 사용할 수 있습니다.
+
+```kotlin
+class MainCoroutineRule: TestWatcher() {
+    lateinit var scheduler: TestCoroutineScheduler
+        private set
+    lateinit var dispatcher: TestDispatcher
+        private set
+    
+    override fun starting(description: Description) {
+        scheduler = TestCoroutineScheduler()
+        dispatcher = StandardTestDispatcher(scheduler)
+        Dispatchers.setMain(dispatcher)
+    }
+    
+    override fun finished(description: Description) {
+        Dispatchers.resetMain()
+    }
+}
+```
+
+`JUnit` 규칙은 `TestWatcher`를 확장하여 구현할 수 있습니다.
+
+`TestWatcher`는 테스트의 생명 주기 동안 발생하는 다양한 이벤트를 감지하고 그에 따른 동작을 정의할 수 있는 기능을 제공합니다.
+이를 확장하여 테스트 전,후의 특정 동작을 구현할 수 있습니다.
+
+이러한 규칙을 사용하면, 각 테스트 실행 전에 자동으로 테스트 디스패처를 설정하고 테스트 후 원래의 디스패처로 되돌리는 작업을 자동화할 수 있습니다.
+
+```kotlin
+class MainViewModelTests {
+    @get:Rule
+    var mainCoroutineRule = MainCoroutineRule()
+    
+    @Test
+    fun `should show user name and sorted news`() {
+        // when
+        vm.onStart()
+        mainCoroutineRule.scheduler.advanceUntilIdle()
+        
+        // then
+        assertEquals("Ben", vm.userName.value)
+        val someNews = listOf(News(date1), News(date2), News(date3))
+        assertEquals(someNews, vm.news.value)
+    }
+    
+    @Test
+    fun `should show progress bar when loading news`() {
+        // given
+        assertEquals(null, vm.progressBarVisible.value)
+        
+        // when & then
+        vm.onStart()
+        assertEquals(true, vm.progressBarVisible.value)
+        
+        // when & then
+        mainCoroutineRule.scheduler.advanceTimeBy(200)
+        assertEquals(false, vm.progressBarVisible.value)
+    }
+    
+    @Test
+    fun `user and news are called concurrently`() {
+        // when
+        vm.onStart()
+        mainCoroutineRule.scheduler.advanceUntilIdle()
+        
+        // then
+        assertEquals(300, mainCoroutineRule.scheduler.currentTime)
+    }
+}
+```
