@@ -883,3 +883,21 @@ class MainCoroutineRule: TestWatcher() {
     }
 }
 ```
+
+### Summary
+
+- `StandardTestDispatcher`를 이용하면 코루틴의 가상 시간을 조작할 수 있어 실제 오래 걸리는 작업도 거의 즉시 완료할 수 있습니다.
+- 코루틴 테스트 시 `TestCoroutineScheduler`는 다음과 같은 메서드를 지원합니다. 
+  - `advanceUntilIdle`: 가상 시간을 진행하고 해당 시간 동안 실제 호출되었을 작업을 호출합니다.
+  - `advanceTimeBy`: 지정한 시간까지의 모든 코루틴 작업 재개합니다.
+  - `runCurrent`: 현 시점까지 예정된 작업을 실행합니다.
+- `runTest` 사용하여 테스트 시 실제 시간을 기다리지 않고 코루틴 로직을 빠르게 테스트할 수 있습니다.
+- `backgroundScope`는 코루틴 테스트 중 장기 실행 작업이나 주요 흐름에 영향을 주지 않는 별도의 프로세스를 시작할 때 유용합니다.
+- `UnconfinedTestDispatcher`는 코루틴 테스트 시 첫 번째 `delay` 전까지 모든 작업을 즉시 실행합니다.
+- 코루틴의 현재 컨텍스트를 캡처하는 방법으로는 다음과 같습니다.
+  - suspending 함수의 컨텍스트 캡처: `currentCoroutineContext()` 혹은 `coroutineContext` 프로퍼티 사용
+  - 코루틴 빌더 혹은 스코프 함수 내부: `CoroutineScope.coroutineContext`는 현재 코루틴 컨텍스트를 제공하는 프로퍼티보다 우선순위가 있기에 `currentCoroutineContext()` 사용
+- Mocking은 테스트에서 외부 시스템 혹은 복잡한 객체를 대체하기 위해 사용되는 기법으로 원하는 동작을 정의할 수 있지만 클래스 혹은 인터페이스 구조 변경 시 모든 mock 객체 정의도 변경해야 할 수 있는 단점이 있습니다.
+- Fake는 실제 객체와 유사한 동작을 수행하는 간단한 객체로 구조 변경에 유연하게 대응할 수 있습니다.
+- 테스트 환경에서는 기본적으로 메인 디스패처가 제공되지 않으므로 필요한 경우 `Dispatcher.setMain` 및 `Dispatcher.resetMain`을 이용하여 설정할 수 있습니다.
+- `JUnit4`의 규칙 기능을 사용하여 테스트 전,후의 설정 및 동작을 수행할 수 있습니다.
