@@ -862,3 +862,24 @@ fun shutdown() {
     Dispatchers.resetMain()
 }
 ```
+
+### Setting a test dispatcher with a rule
+
+`JUnit4`의 규칙 기능을 사용하여 테스트 코드 실행 전,후 특정 동작이나 설정을 수행할 수 있습니다.
+
+코루틴 테스트 시, 테스트 실행 전 테스트 디스패처를 설정하고 테스트 후 원래 디스패처로 되돌리는 작업이 필요한데, 
+이때 `JUnit4`의 규칙을 사용하면 이를 자동화 할 수 있습니다.
+
+```kotlin
+class MainCoroutineRule: TestWatcher() {
+    private val testDispatcher = UnconfinedTestDispatcher()
+
+    override fun starting(description: Description) {
+        Dispatchers.setMain(testDispatcher)
+    }
+
+    override fun finished(description: Description) {
+        Dispatchers.resetMain()
+    }
+}
+```
