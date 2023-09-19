@@ -50,3 +50,15 @@
 - SUSPEND(기본) : `send()`에서 코루틴을 중단시킵니다.
 - DROP_OLDEST : 버퍼의 가장 오래된 데이터를 삭제합니다.
 - DROP_LATEST : 버퍼의 가장 최근 데이터를 삭제합니다.
+
+---
+
+### On undelivered element handler
+
+`onUndeliveredElement`는 `Channel`의 생명주기와 관련된 문제나 다양한 상황에서 예외가 발생했을 때 이 핸들러를 활용할 수 있습니다.
+
+예로 파일을 전송하는 `Channel`에서 오류가 발생하여 리소스를 닫지 못하면 리소스 누수 문제가 발생하게 됩니다.  
+이 떄, `onUndeliveredElement`를 사용하여 리소스를 정리하는 작업을 할 수 있습니다.
+
+따라서 리소스 관리가 중요한 `Channel`에서 `onUndeliveredElement`를 활용하여 예기치 못한 상황에 대비합니다. 
+

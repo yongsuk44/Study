@@ -418,3 +418,38 @@ suspend fun main() = coroutineScope {
 // 1s delay
 // 8
 ```
+
+----------------------------------------------------------------------------
+
+## On undelivered element handler
+
+`onUndeliveredElement`는 `Channel`을 통해 전달된 요소가 제대로 처리되지 않았을 때 호출되는 함수입니다.
+즉, `Channel`이 닫히거나 취소되었을 때를 의미하지만, `send`, `receive`, `receiveOrNull`, `hasNext`에서 예외가 발생할 수도 있습니다.
+
+예를 들어 파일을 전송하는 `Channel`에서 파일 전송 중 오류가 발생되어 해당 파일의 리소스를 제대로 닫지 못했으면 리소스 누수와 같은 문제가 발생될 수 있습니다.
+이런 상황에서 `onUndeliveredElement`를 사용하면 `Channel`로 전송되는 파일의 리소스를 안전하게 닫아 이러한 문제를 예방할 수 있습니다.
+
+```kotlin
+val channel = Channel<Resource>(capacity) { resource ->
+    resource.close()
+}
+// or
+// val channel = Channel<Resource>(
+//    capacity = capacity,
+//    onUndeliveredElement = { resource ->
+//        resource.close()
+//    }
+// )
+
+// Produce code
+val resourceToSend = openResource()
+channel.send(resourceToSend)
+
+// Consumer code
+val resourceReceived = channel.receive()
+try {
+    // use resourceReceived
+} finally {
+    resourceReceived.close()
+}
+```
