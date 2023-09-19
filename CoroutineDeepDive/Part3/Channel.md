@@ -364,3 +364,57 @@ suspend fun main() = coroutineScope {
 // 1 - 4 * 0.1 = 0.6s delay
 // 8
 ```
+
+----------------------------------------------------------------------------
+
+## On buffer overflow
+
+`Channel`의 `onBufferOverflow` 파라미터는 버퍼가 가득 찼을 떄 동작을 제어하는 방식을 정의하여 `Channel`의 동작을 더욱 세밀하게 제어할 수 있게 해줍니다.
+
+`onBufferOverflow`는 다음과 같은 옵션들이 있습니다.
+
+- SUSPEND(기본값) : 버퍼가 가득 차면, `send()`에서 코루틴을 중단시킵니다.
+- DROP_OLDEST : 버퍼가 가득 차면, 가장 오래된 요소를 삭제합니다.
+- DROP_LATEST : 버퍼가 가득 차면, 가장 최근 요소를 삭제합니다.
+
+추측할 수 있겠지만, `Channel.CONFLATED`를 사용하는 경우 `onBufferOverflow`를 `DROP_OLDEST`로 설정하는 것과 동일합니다.
+
+그러나 현재 `produce`는 `onBufferOverflow`를 지원하지 않습니다.
+따라서 이 설정을 사용하려면 `Channel`을 직접 호출하여 정의해야 합니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    val channel = Channel<Int>(
+        capacity = 2,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
+    launch {
+        repeat(5) { i ->
+            channel.send(i * 2)
+            delay(100)
+            println("Sent")
+        }
+        channel.clsoe()
+    }
+
+    delay(1000)
+    for (element in channel) {
+        println(element)
+        delay(1000)
+    }
+}
+// Sent
+// 0.1s delay
+// Sent
+// 0.1s delay
+// Sent
+// 0.1s delay
+// Sent
+// 0.1s delay
+// Sent
+// 1 - 4 * 0.1 = 0.6s delay
+// 6
+// 1s delay
+// 8
+```
