@@ -585,3 +585,29 @@ fun <T> CoroutineScope.fanIn(
     }
 }
 ```
+
+----------------------------------------------------------------------------
+
+## Pipelines
+
+'Pipeline'은 일련의 데이터 처리 단계를 나타내는 데 사용되는 용어로써, 
+코루틴에서는 하나의 `Channel`이 데이터를 수신하고 그 데이터를 가공하여 다른 `Channel`로 전달하는 방식으로 동작하는 구조를 의미합니다. 
+
+```kotlin
+fun CoroutineScope.numbers(): ReceiveChannel<Int> = produce {
+    repeat(3) { num -> send(num + 1) }
+}
+
+fun CoroutineScope.square(numbers: ReceiveChannel<Int>): ReceiveChannel<Int> = produce {
+    for (num in numbers) send(num * num)
+}
+
+suspend fun main() = coroutienScope {
+    val numbers = numbers()
+    val squares = square(numbers)
+    for (square in squares) println(square)
+}
+// 1
+// 4
+// 9
+```
