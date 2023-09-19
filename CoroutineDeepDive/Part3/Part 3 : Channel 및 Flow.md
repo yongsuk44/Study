@@ -88,3 +88,20 @@
 ### Pipelines
 
 일련의 데이터 처리 단계를 나타내는 용어로, 코루틴에서는 하나의 `Channel`에서 데이터를 받고 가공하여 다른 `Channel`로 전달되는 구조를 의미합니다.
+
+---
+
+### Summary
+
+- `Channel`은 여러 코루틴이 동시에 데이터를 보내거나 받을 수 있도록 설계되어 데이터를 주고 받을 수 있습니다.  
+  단, `Channel`로 보내진 데이터는 데이터의 일관성과 무결성으로 인해 오직 1번만 수신할 수 있습니다.
+- `Channel`은 `SendChannel`과 `ReceiveChannel`을 구현하여 데이터를 보내고 받을 수 있습니다.
+- 각 `Send`와 `Receive`는 suspending 함수를 지원하며 이를 통해 동시성 제어를 할 수 있습니다.  
+  즉, `Channel`이 비어있거나 가득 찬 경우 코루틴이 일시 중지될 수 있습니다.
+- `produce`는 `Channel`을 생성하고 생성된 `Channel`에 데이터를 보내는 코루틴을 생성합니다.  
+  또한 예외가 발생한 경우 `Channel`을 닫아 리소스 정리하여 안전하게 관리할 수 있습니다.
+- `Channel`의 타입은 버퍼 용량을 기반으로 구분하며 각 `UNLIMITED`, `BUFFERED`, `RENDEZVOUS`, `CONFLATED`로 구분할 수 있습니다.
+- `onBufferOverflow` 파라미터는 `Channel`의 버퍼가 가득 찬 경우 동작을 제어하며, `SUSPEND`, `DROP_OLDEST`, `DROP_LATEST` 등 각 타입으로 지원합니다.
+- `onUndeliveredElement`는 `Channel`의 생명주기와 관련된 문제나 다양한 상황에서 예외가 발생했을 때 이 핸들러를 활용할 수 있습니다.
+- 'Fan-out' : 여러 코루틴이 하나의 `Channel`에서 데이터를 수신하는 패턴을 의미합니다.
+- 'Fan-in' : 여러 코루틴에서 하나의 `Channel`로 데이터를 보내는 패턴을 의미합니다.
