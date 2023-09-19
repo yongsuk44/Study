@@ -40,3 +40,68 @@
 - BUFFERED : 정해진 크기(기본 값 64)의 버퍼 용량을 가진 채널로, `send()`는 버퍼가 가득 차면 일시 중단됩니다.
 - RENDEZVOUS : 버퍼 용량이 0인 채널로, `send()`와 `receive()`가 모두 준비되어야 데이터 전송을 할 수 있습니다.
 - CONFLATED : 버퍼 용량이 1인 채널로, 버퍼에 항상 마자막으로 전송된 아이템만 유지되며 새로운 아이템이 들어오면 이전 아이템은 새로운 아이템으로 대체 됩니다.
+
+---
+
+### On buffer overflow
+
+`onBufferOverflow` 파라미터는 `Channel`의 버퍼가 가득 찬 경우, 동작을 제어하여 `Channel`의 동작을 더욱 세밀하게 제어할 수 있습니다.
+
+- SUSPEND(기본) : `send()`에서 코루틴을 중단시킵니다.
+- DROP_OLDEST : 버퍼의 가장 오래된 데이터를 삭제합니다.
+- DROP_LATEST : 버퍼의 가장 최근 데이터를 삭제합니다.
+
+---
+
+### On undelivered element handler
+
+`onUndeliveredElement`는 `Channel`의 생명주기와 관련된 문제나 다양한 상황에서 예외가 발생했을 때 이 핸들러를 활용할 수 있습니다.
+
+예로 파일을 전송하는 `Channel`에서 오류가 발생하여 리소스를 닫지 못하면 리소스 누수 문제가 발생하게 됩니다.  
+이 떄, `onUndeliveredElement`를 사용하여 리소스를 정리하는 작업을 할 수 있습니다.
+
+따라서 리소스 관리가 중요한 `Channel`에서 `onUndeliveredElement`를 활용하여 예기치 못한 상황에 대비합니다. 
+
+--- 
+
+### Fan-out
+
+- Fan-out : 여러 코루틴이 하나의 `Channel`에서 데이터를 수신하는 패턴을 의미합니다.
+
+하나의 `Channel`에서 여러 코루틴이 안전하게 데이터를 수신하기 위해서는 `consumeEach` 보다는 `for-loop`를 통해 데이터를 수신하는 것이 안전합니다.
+
+이와 같이 'Fan-out' 패턴은 `Channel`이 데이터나 요소를 `Queue` 방식으로 처리하며, 첫 번째로 대기하던 코루틴이 먼저 데이터를 수신합니다.
+
+--- 
+
+### Fan-in
+
+- Fan-in : 여러 코루틴에서 하나의 `Channel`로 데이터를 보내는 패턴을 의미합니다.
+
+여러 코루틴에서 동시에 작업을 처리하고 그 결과를 하나의 `Channel`로 집중시킬 때 유용합니다.
+주의할 점으로는 여러 코루틴에서 동시에 데이터를 전송하면 데이터 순서가 보장되지 않기에 별도의 처리가 필요할 수 있습니다.
+
+여러 `Channel`을 하나로 병합하려면 `produce`를 통해 `Channel`을 생성하고 `Channel`을 병합하는 방식으로 구현할 수 있습니다.
+
+---
+
+### Pipelines
+
+일련의 데이터 처리 단계를 나타내는 용어로, 코루틴에서는 하나의 `Channel`에서 데이터를 받고 가공하여 다른 `Channel`로 전달되는 구조를 의미합니다.
+
+---
+
+### Summary
+
+- `Channel`은 여러 코루틴이 동시에 데이터를 보내거나 받을 수 있도록 설계되어 데이터를 주고 받을 수 있습니다.  
+  단, `Channel`로 보내진 데이터는 데이터의 일관성과 무결성으로 인해 오직 1번만 수신할 수 있습니다.
+- `Channel`은 `SendChannel`과 `ReceiveChannel`을 구현하여 데이터를 보내고 받을 수 있습니다.
+- 각 `Send`와 `Receive`는 suspending 함수를 지원하며 이를 통해 동시성 제어를 할 수 있습니다.  
+  즉, `Channel`이 비어있거나 가득 찬 경우 코루틴이 일시 중지될 수 있습니다.
+- `produce`는 `Channel`을 생성하고 생성된 `Channel`에 데이터를 보내는 코루틴을 생성합니다.  
+  또한 예외가 발생한 경우 `Channel`을 닫아 리소스 정리하여 안전하게 관리할 수 있습니다.
+- `Channel`의 타입은 버퍼 용량을 기반으로 구분하며 각 `UNLIMITED`, `BUFFERED`, `RENDEZVOUS`, `CONFLATED`로 구분할 수 있습니다.
+- `onBufferOverflow` 파라미터는 `Channel`의 버퍼가 가득 찬 경우 동작을 제어하며, `SUSPEND`, `DROP_OLDEST`, `DROP_LATEST` 등 각 타입으로 지원합니다.
+- `onUndeliveredElement`는 `Channel`의 생명주기와 관련된 문제나 다양한 상황에서 예외가 발생했을 때 이 핸들러를 활용할 수 있습니다.
+- 'Fan-out' : 여러 코루틴이 하나의 `Channel`에서 데이터를 수신하는 패턴을 의미합니다.
+- 'Fan-in' : 여러 코루틴에서 하나의 `Channel`로 데이터를 보내는 패턴을 의미합니다.

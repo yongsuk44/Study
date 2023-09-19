@@ -364,3 +364,301 @@ suspend fun main() = coroutineScope {
 // 1 - 4 * 0.1 = 0.6s delay
 // 8
 ```
+
+----------------------------------------------------------------------------
+
+## On buffer overflow
+
+`Channel`의 `onBufferOverflow` 파라미터는 버퍼가 가득 찼을 떄 동작을 제어하는 방식을 정의하여 `Channel`의 동작을 더욱 세밀하게 제어할 수 있게 해줍니다.
+
+`onBufferOverflow`는 다음과 같은 옵션들이 있습니다.
+
+- SUSPEND(기본값) : 버퍼가 가득 차면, `send()`에서 코루틴을 중단시킵니다.
+- DROP_OLDEST : 버퍼가 가득 차면, 가장 오래된 요소를 삭제합니다.
+- DROP_LATEST : 버퍼가 가득 차면, 가장 최근 요소를 삭제합니다.
+
+추측할 수 있겠지만, `Channel.CONFLATED`를 사용하는 경우 `onBufferOverflow`를 `DROP_OLDEST`로 설정하는 것과 동일합니다.
+
+그러나 현재 `produce`는 `onBufferOverflow`를 지원하지 않습니다.
+따라서 이 설정을 사용하려면 `Channel`을 직접 호출하여 정의해야 합니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    val channel = Channel<Int>(
+        capacity = 2,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
+    launch {
+        repeat(5) { i ->
+            channel.send(i * 2)
+            delay(100)
+            println("Sent")
+        }
+        channel.clsoe()
+    }
+
+    delay(1000)
+    for (element in channel) {
+        println(element)
+        delay(1000)
+    }
+}
+// Sent
+// 0.1s delay
+// Sent
+// 0.1s delay
+// Sent
+// 0.1s delay
+// Sent
+// 0.1s delay
+// Sent
+// 1 - 4 * 0.1 = 0.6s delay
+// 6
+// 1s delay
+// 8
+```
+
+----------------------------------------------------------------------------
+
+## On undelivered element handler
+
+`onUndeliveredElement`는 `Channel`을 통해 전달된 요소가 제대로 처리되지 않았을 때 호출되는 함수입니다.
+즉, `Channel`이 닫히거나 취소되었을 때를 의미하지만, `send`, `receive`, `receiveOrNull`, `hasNext`에서 예외가 발생할 수도 있습니다.
+
+예를 들어 파일을 전송하는 `Channel`에서 파일 전송 중 오류가 발생되어 해당 파일의 리소스를 제대로 닫지 못했으면 리소스 누수와 같은 문제가 발생될 수 있습니다.
+이런 상황에서 `onUndeliveredElement`를 사용하면 `Channel`로 전송되는 파일의 리소스를 안전하게 닫아 이러한 문제를 예방할 수 있습니다.
+
+```kotlin
+val channel = Channel<Resource>(capacity) { resource ->
+    resource.close()
+}
+// or
+// val channel = Channel<Resource>(
+//    capacity = capacity,
+//    onUndeliveredElement = { resource ->
+//        resource.close()
+//    }
+// )
+
+// Produce code
+val resourceToSend = openResource()
+channel.send(resourceToSend)
+
+// Consumer code
+val resourceReceived = channel.receive()
+try {
+    // use resourceReceived
+} finally {
+    resourceReceived.close()
+}
+```
+
+----------------------------------------------------------------------------
+
+## Fan-out
+
+'Fan-out'은 여러 코루틴이 하나의 `Channel`에서 데이터를 수신하는 패턴을 의미합니다. 이 패턴을 사용하면 병렬 처리 효율성을 높일 수 있습니다.  
+예를 들어 데이터 처리 작업이 있을 때 한 `Channel`에서 데이터를 받아 여러 코루틴이 동시에 그 데이터를 처리하는 경우를 생각할 수 있습니다.
+
+여기서 중요한 점은 여러 코루틴에서 안전하게 데이터를 수신하기 위한 방법입니다.  
+`consumeEach`는 여러 코루틴에서 동시에 사용할 때 안전하지 않습니다.
+따라서 여러 코루틴에서는 `for-loop`를 사용하여 데이터를 안전하게 수신하는 것이 좋습니다.
+
+```mermaid
+graph LR
+    coroutien#1 -- send --> channel#1
+    channel#1 -- receive --> consumer#1
+    channel#1 -- receive --> consumer#2
+```
+
+```kotlin
+fun CoroutineScope.produceNumbers() = produce {
+    repeat(10) {
+        delay(100)
+        send(it)
+    }
+}
+
+fun CoroutineScope.launchProcessor(
+    id: Int,
+    channel: ReceiveChannel<Int>
+) = launch {
+    for (msg in channel) {
+        println("Processor #$id received $msg")
+    }
+}
+
+suspend fun main() = coroutineScope {
+    val channel = produceNumbers()
+    repeat(3) { id ->
+        delay(10)
+        launchProcessor(id, channel)
+    }
+}
+
+// Processor #0 received 0
+// Processor #1 received 1
+// Processor #2 received 2
+// Processor #0 received 3
+// Processor #1 received 4
+// Processor #2 received 5
+// Processor #0 received 6
+// ...
+```
+
+여기서 중요한 개념은 `Channel`이 데이터나 요소를 `Queue` 방식으로 처리한다는 것입니다.
+따라서 여러 코루틴이 하나의 `Channel`에서 데이터를 수신할 때, 첫 번째로 수신 대기하던 코루틴이 먼저 데이터를 수신하게 됩니다.
+
+----------------------------------------------------------------------------
+
+## Fan-in
+
+'Fan-in'은 'Fan-out'과 반대로 여러 코루틴에서 하나의 `Channel`로 데이터를 보내는 패턴을 의미합니다.  
+이 방식은 다양한 코루틴이 동시에 작업을 처리하고 그 결과를 하나의 `Channel`로 집중시킬 떄 유용합니다.
+
+예를 들어 다양한 'dataSoruce'에서 데이터를 수집하여 한 곳에 집중시키고 싶을 떄 이 패턴을 사용할 수 있습니다.  
+여러 코루틴이 독립적으로 각각의 'dataSoruce'에서 데이터를 가져오고, 그 결과를 하나의 `Channel`로 전송하여 집중적으로 처리합니다.
+
+여기서 주의해야 할 점은 여러 코루틴에서 동시에 데이터를 전송하면 데이터의 순서가 보장되지 않아 이를 고려한 처리가 필요할 수 있습니다.
+
+```mermaid
+graph LR
+    producer#1 -- send --> channel#1
+    producer#2 -- send --> channel#1
+    producer#3 -- send --> channel#1
+    channel#1 -- receive --> coroutine#1
+```
+
+```kotlin
+suspend fun sendString(
+    channel: SendChannel<String>,
+    text: String,
+    time: Long
+) {
+    while (true) {
+        delay(time)
+        channel.send(text)
+    }
+}
+
+fun main() = runBlocking {
+    val channel = Channel<String>()
+    launch { sendString(channel, "foo", 200L) }
+    launch { sendString(channel, "BAR!", 500L) }
+    
+    repeat(50) {
+        println(channel.receive())
+    }
+    
+    coroutineContext.cancelChildren()
+}
+// 0.2s delay
+// foo
+// 0.2s delay
+// foo
+// 0.1s delay
+// BAR!
+// 0.1s delay
+// foo
+// 0.2s delay
+// foo
+// ...
+```
+
+코루틴에서 여러 `Channel`을 하나로 병합하려면 `produce`를 사용하는 것이 좋습니다.  
+`produce`는 새로운 `Channel`을 반환하고, 이 `Channel`에 데이터를 보내는 코루틴을 생성합니다.  
+여러 `Channel`의 데이터를 생성된 `Channel`로 전송하여 하나의 `Channel`에서 모든 데이터를 수신할 수 있게 만들 수 있습니다.
+
+아래 예제는 여러 `Channel`을 병합하는 방법입니다.
+
+```kotlin
+fun <T> CoroutineScope.fanIn(
+    channels: List<ReceiveChannel<T>>
+): ReceiveChannel<T> = produce {
+    for (channel in channels) {
+        launch {
+            for(element in channel) {
+                send(element)
+            }
+        }
+    }
+}
+```
+
+----------------------------------------------------------------------------
+
+## Pipelines
+
+'Pipeline'은 일련의 데이터 처리 단계를 나타내는 데 사용되는 용어로써, 
+코루틴에서는 하나의 `Channel`이 데이터를 수신하고 그 데이터를 가공하여 다른 `Channel`로 전달하는 방식으로 동작하는 구조를 의미합니다. 
+
+```kotlin
+fun CoroutineScope.numbers(): ReceiveChannel<Int> = produce {
+    repeat(3) { num -> send(num + 1) }
+}
+
+fun CoroutineScope.square(numbers: ReceiveChannel<Int>): ReceiveChannel<Int> = produce {
+    for (num in numbers) send(num * num)
+}
+
+suspend fun main() = coroutienScope {
+    val numbers = numbers()
+    val squares = square(numbers)
+    for (square in squares) println(square)
+}
+// 1
+// 4
+// 9
+```
+
+----------------------------------------------------------------------------
+
+## Channels as a communication primitive
+
+`Channel`은 코루틴 간의 통신 메커니즘으로 사용되며 데이터를 안전하게 전달할 수 있고 공유 상태(shared state)에 대한 문제를 방지할 수 있습니다.  
+
+동시성 문제는 여러 스레드나 코루틴이 동일한 데이터를 동시에 접근 시 발생하는 경쟁 조건이나 데이터 일관성 문제 등을 포함합니다.  
+`Channel`은 이러한 문제를 피할 수 있습니다. 데이터를 전송하는 코루틴과 데이터를 수신하는 코루틴 사이에 버퍼 역할을 하여 안전하게 데이터를 전달할 수 있습니다.
+
+또한 `Channel`은 데이터의 전달을 공정하게 처리합니다.  
+이는 `Channel`에 데이터를 보내는 코루틴이나 데이터를 수신하는 코루틴 중 어느 한쪽이 과도하게 우선시되지 않도록 보장합니다.
+
+아래 예제는 다양한 바리스타들이 커피를 만들고, 각 바리스타는 독립적으로 작동하는 별도의 코루틴이어야 합니다.  
+다른 종류의 커피는 준비하는데 다른 시간이 걸리지만, 주문이 들어오는 순서대로 처리하고 싶은 경우에 주문과 커피 모두를 `Channel`로 보내는 것입니다.
+바리스타는 `produce` 빌더를 사용하여 정의될 수 있습니다.
+
+아래 예제는 각각의 바리스타(코루틴)는 커피 주문을 처리하는 작업 단위로 생각할 수 있습니다.  
+각 주문은 `Channel`을 통해 바리스타에게 전달되며, 바리스타는 해당 주문을 처리하여 만든 커피를 결과 `Channel`로 전송합니다.
+
+이 상황에서 바리스타는 `produce`를 사용하여 주문을 처리하고 결과를 전송할 수 있습니다.  
+`Channel`을 사용하면 주문이 들어오는 순서대로 처리됨을 보장할 수 있으므로, 고객들은 주문한 순서대로 커피를 받을 수 있게됩니다.
+
+```kotlin
+suspend fun CoroutineScope.serveOrders(
+    orders: ReceiveChannel<Order>,
+    baristaName: String
+): ReceiveChannel<CoffeResult> = produce {
+    for (order in orders) {
+        val coffee = prepareCoffee(order.type)
+        
+        send(
+            CoffeeResult(
+                coffee = coffee,
+                customer = order.customer,
+                baristaName = baristaName
+            )
+        )
+    }
+}
+```
+
+또는 'pipeline'을 설정하려면 이전 챕터에서 정의한 `fanIn`을 사용하여 다양한 바리스타들이 제조한 커피를 다음과 같이 하나로 병합할 수 있습니다.
+
+```kotlin
+val coffeResults = fanIn(
+    serveOrders(orders, "Jack"),
+    serveOrders(orders, "Jane"),
+    serveOrders(orders, "Joe")
+)
+```
