@@ -509,3 +509,79 @@ suspend fun main() = coroutineScope {
 
 여기서 중요한 개념은 `Channel`이 데이터나 요소를 `Queue` 방식으로 처리한다는 것입니다.
 따라서 여러 코루틴이 하나의 `Channel`에서 데이터를 수신할 때, 첫 번째로 수신 대기하던 코루틴이 먼저 데이터를 수신하게 됩니다.
+
+----------------------------------------------------------------------------
+
+## Fan-in
+
+'Fan-in'은 'Fan-out'과 반대로 여러 코루틴에서 하나의 `Channel`로 데이터를 보내는 패턴을 의미합니다.  
+이 방식은 다양한 코루틴이 동시에 작업을 처리하고 그 결과를 하나의 `Channel`로 집중시킬 떄 유용합니다.
+
+예를 들어 다양한 'dataSoruce'에서 데이터를 수집하여 한 곳에 집중시키고 싶을 떄 이 패턴을 사용할 수 있습니다.  
+여러 코루틴이 독립적으로 각각의 'dataSoruce'에서 데이터를 가져오고, 그 결과를 하나의 `Channel`로 전송하여 집중적으로 처리합니다.
+
+여기서 주의해야 할 점은 여러 코루틴에서 동시에 데이터를 전송하면 데이터의 순서가 보장되지 않아 이를 고려한 처리가 필요할 수 있습니다.
+
+```mermaid
+graph LR
+    producer#1 -- send --> channel#1
+    producer#2 -- send --> channel#1
+    producer#3 -- send --> channel#1
+    channel#1 -- receive --> coroutine#1
+```
+
+```kotlin
+suspend fun sendString(
+    channel: SendChannel<String>,
+    text: String,
+    time: Long
+) {
+    while (true) {
+        delay(time)
+        channel.send(text)
+    }
+}
+
+fun main() = runBlocking {
+    val channel = Channel<String>()
+    launch { sendString(channel, "foo", 200L) }
+    launch { sendString(channel, "BAR!", 500L) }
+    
+    repeat(50) {
+        println(channel.receive())
+    }
+    
+    coroutineContext.cancelChildren()
+}
+// 0.2s delay
+// foo
+// 0.2s delay
+// foo
+// 0.1s delay
+// BAR!
+// 0.1s delay
+// foo
+// 0.2s delay
+// foo
+// ...
+```
+
+코루틴에서 여러 `Channel`을 하나로 병합하려면 `produce`를 사용하는 것이 좋습니다.  
+`produce`는 새로운 `Channel`을 반환하고, 이 `Channel`에 데이터를 보내는 코루틴을 생성합니다.  
+여러 `Channel`의 데이터를 생성된 `Channel`로 전송하여 하나의 `Channel`에서 모든 데이터를 수신할 수 있게 만들 수 있습니다.
+
+아래 예제는 여러 `Channel`을 병합하는 방법입니다.
+
+```kotlin
+fun <T> CoroutineScope.fanIn(
+    channels: List<ReceiveChannel<T>>
+): ReceiveChannel<T> = produce {
+    for (channel in channels) {
+        launch {
+            for(element in channel) {
+                send(element)
+            }
+        }
+    }
+}
+```
