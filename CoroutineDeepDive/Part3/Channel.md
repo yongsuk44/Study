@@ -453,3 +453,59 @@ try {
     resourceReceived.close()
 }
 ```
+
+----------------------------------------------------------------------------
+
+## Fan-out
+
+'Fan-out'은 여러 코루틴이 하나의 `Channel`에서 데이터를 수신하는 패턴을 의미합니다. 이 패턴을 사용하면 병렬 처리 효율성을 높일 수 있습니다.  
+예를 들어 데이터 처리 작업이 있을 때 한 `Channel`에서 데이터를 받아 여러 코루틴이 동시에 그 데이터를 처리하는 경우를 생각할 수 있습니다.
+
+여기서 중요한 점은 여러 코루틴에서 안전하게 데이터를 수신하기 위한 방법입니다.  
+`consumeEach`는 여러 코루틴에서 동시에 사용할 때 안전하지 않습니다.
+따라서 여러 코루틴에서는 `for-loop`를 사용하여 데이터를 안전하게 수신하는 것이 좋습니다.
+
+```mermaid
+graph LR
+    coroutien#1 -- send --> channel#1
+    channel#1 -- receive --> consumer#1
+    channel#1 -- receive --> consumer#2
+```
+
+```kotlin
+fun CoroutineScope.produceNumbers() = produce {
+    repeat(10) {
+        delay(100)
+        send(it)
+    }
+}
+
+fun CoroutineScope.launchProcessor(
+    id: Int,
+    channel: ReceiveChannel<Int>
+) = launch {
+    for (msg in channel) {
+        println("Processor #$id received $msg")
+    }
+}
+
+suspend fun main() = coroutineScope {
+    val channel = produceNumbers()
+    repeat(3) { id ->
+        delay(10)
+        launchProcessor(id, channel)
+    }
+}
+
+// Processor #0 received 0
+// Processor #1 received 1
+// Processor #2 received 2
+// Processor #0 received 3
+// Processor #1 received 4
+// Processor #2 received 5
+// Processor #0 received 6
+// ...
+```
+
+여기서 중요한 개념은 `Channel`이 데이터나 요소를 `Queue` 방식으로 처리한다는 것입니다.
+따라서 여러 코루틴이 하나의 `Channel`에서 데이터를 수신할 때, 첫 번째로 수신 대기하던 코루틴이 먼저 데이터를 수신하게 됩니다.
