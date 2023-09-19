@@ -611,3 +611,54 @@ suspend fun main() = coroutienScope {
 // 4
 // 9
 ```
+
+----------------------------------------------------------------------------
+
+## Channels as a communication primitive
+
+`Channel`은 코루틴 간의 통신 메커니즘으로 사용되며 데이터를 안전하게 전달할 수 있고 공유 상태(shared state)에 대한 문제를 방지할 수 있습니다.  
+
+동시성 문제는 여러 스레드나 코루틴이 동일한 데이터를 동시에 접근 시 발생하는 경쟁 조건이나 데이터 일관성 문제 등을 포함합니다.  
+`Channel`은 이러한 문제를 피할 수 있습니다. 데이터를 전송하는 코루틴과 데이터를 수신하는 코루틴 사이에 버퍼 역할을 하여 안전하게 데이터를 전달할 수 있습니다.
+
+또한 `Channel`은 데이터의 전달을 공정하게 처리합니다.  
+이는 `Channel`에 데이터를 보내는 코루틴이나 데이터를 수신하는 코루틴 중 어느 한쪽이 과도하게 우선시되지 않도록 보장합니다.
+
+아래 예제는 다양한 바리스타들이 커피를 만들고, 각 바리스타는 독립적으로 작동하는 별도의 코루틴이어야 합니다.  
+다른 종류의 커피는 준비하는데 다른 시간이 걸리지만, 주문이 들어오는 순서대로 처리하고 싶은 경우에 주문과 커피 모두를 `Channel`로 보내는 것입니다.
+바리스타는 `produce` 빌더를 사용하여 정의될 수 있습니다.
+
+아래 예제는 각각의 바리스타(코루틴)는 커피 주문을 처리하는 작업 단위로 생각할 수 있습니다.  
+각 주문은 `Channel`을 통해 바리스타에게 전달되며, 바리스타는 해당 주문을 처리하여 만든 커피를 결과 `Channel`로 전송합니다.
+
+이 상황에서 바리스타는 `produce`를 사용하여 주문을 처리하고 결과를 전송할 수 있습니다.  
+`Channel`을 사용하면 주문이 들어오는 순서대로 처리됨을 보장할 수 있으므로, 고객들은 주문한 순서대로 커피를 받을 수 있게됩니다.
+
+```kotlin
+suspend fun CoroutineScope.serveOrders(
+    orders: ReceiveChannel<Order>,
+    baristaName: String
+): ReceiveChannel<CoffeResult> = produce {
+    for (order in orders) {
+        val coffee = prepareCoffee(order.type)
+        
+        send(
+            CoffeeResult(
+                coffee = coffee,
+                customer = order.customer,
+                baristaName = baristaName
+            )
+        )
+    }
+}
+```
+
+또는 'pipeline'을 설정하려면 이전 챕터에서 정의한 `fanIn`을 사용하여 다양한 바리스타들이 제조한 커피를 다음과 같이 하나로 병합할 수 있습니다.
+
+```kotlin
+val coffeResults = fanIn(
+    serveOrders(orders, "Jack"),
+    serveOrders(orders, "Jane"),
+    serveOrders(orders, "Joe")
+)
+```
