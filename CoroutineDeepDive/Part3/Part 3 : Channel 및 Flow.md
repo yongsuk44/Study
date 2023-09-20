@@ -132,3 +132,14 @@ select<User> {
     async { getRestApi2() }.onAwait { it }
 }.also { coroutineContext.cancelChildren() }
 ```
+
+---
+
+### Selecting from channels
+
+`select`과 채널을 같이 사용하여 여러 채널 중 데이터를 전송하거나, 데이터를 수신할 수 있는 첫 번째 채널을 선택할 수 있으며 다음 함수들을 지원합니다.
+
+- onReceive : 채널에 데이터가 있을 떄 데이터를 받아올 수 있으며 `select`는 람다식의 결과를 반환합니다.
+- onReceiveCatching : 채널에 데이터가 있을 떄 데이터를 받아올 수 있고, 추가로 채널이 닫혔을 떄 채널을 정리하는 등의 처리할 수 있습니다. 
+  `select`는 람다식의 결과를 반환합니다.
+- onSend : 채널의 버퍼에 공간이 있을 때 데이터를 전송할 수 있습니다. `select`는 `Unit`을 반환합니다.

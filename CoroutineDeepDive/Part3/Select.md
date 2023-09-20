@@ -103,3 +103,116 @@ suspend fun main() = coroutineScope {
 // 1s delay
 // Data2
 ```
+
+------------------------------------------------------------------------------
+
+## Selecting from channels
+
+`select`를 채널과 함께 사용할 수 있습니다. 이를 위해 사용할 수 있는 주요 함수들은 다음과 같습니다.
+
+### onReceive
+
+채널에 데이터가 있을 때 해당 데이터를 받아올 수 있습니다.   
+예를 들어 producer 코루틴과 consumer 코루틴 사이에서 `onReceive`를 사용하면 데이터가 준비되었을 때만 소비하는 동작을 실행할 수 있습니다.
+
+`onReceive`가 선택되면 `select`는 람다 표현식의 결과를 반환합니다. 
+
+### onReceiveCatching
+
+채널에 데이터가 있을때 받아올 수 있고, 추가로 채널이 닫혔을 때 처리할 수 있습니다.  
+채널이 닫힌 경우, 더 이상의 데이터 전송이 불가능하므로 이를 처리하는 로직을 포함시킬 수 있습니다.
+
+`onReceiveCatching`이 선택되면, `select`는 람다 표현식의 결과를 반환합니다.
+
+### onSend
+
+채널의 버퍼에 여유 공간이 있을 때 데이터를 전송할 수 있습니다.
+데이터를 소비하는 속도가 생상하는 속도보다 느릴 경우, `onSend`를 사용하여 버퍼에 여유 공간이 생길 때만 데이터를 전송하는 로직을 구현할 수 있습니다.
+
+`onSend`가 선택되면, `select`는 `Unit`을 반환합니다.
+
+---
+
+여러 채널에서 동시에 값을 기다리는 상황에서 `select`은 `onReceive`를 통해 먼저 값을 전송하는 채널을 선택하여 결과를 가져옵니다.
+
+```kotlin
+suspend fun CoroutineScope.produceString(
+    s: String,
+    time: Long
+) = produce {
+    while (true) {
+        delay(time)
+        send(s)
+    }
+}
+
+fun main() = runBlocking {
+    val fooChannel = produceString("foo", 210L)
+    val barChannel = produceString("bar", 500L)
+    
+    repeat(7) {
+        select {
+            fooChannel.onReceive { println("From fooChannel : $it") }
+            barChannel.onReceive { println("From barChannel : $it") }
+        }
+    }
+    
+    coroutineContext.cancelChildren()
+}
+// From fooChannel : foo
+// From fooChannel : foo
+// From barChannel : bar
+// From fooChannel : foo
+// From fooChannel : foo
+// From barChannel : bar
+// From fooChannel : foo
+```
+
+`select`는 `onSend`를 통해 버퍼 공간이 있는 첫 번째 채널로 데이터를 전송할 수 있습니다.
+
+```kotlin
+fun main() = runBlocking {
+    val c1 = Channel<Char>(capacity = 2)
+    val c2 = Channel<Char>(capacity = 2)
+    
+    // Send value
+    launch {
+        for (c in 'A'..'H') {
+            delay(400)
+            select<Unit> {
+                c1.onSend(c) { println("Sent $c to 1") }
+                c2.onSend(c) { println("Sent $c to 2") }
+            }
+        }
+    }
+    
+    // Receive values
+    launch {
+        while(true) {
+            delay(1000)
+            val c = select<String> {
+                c1.onReceive { "$it from 1" }
+                c2.onReceive { "$it from 2" }
+            }
+            println("Received $c")
+        }
+    }
+}
+
+// Sent A to 1
+// Sent B to 1
+// Received A from 1
+// Sent C to 1
+// Sent D to 2
+// Received B from 1
+// Sent E to 1
+// Sent F to 2
+// Received C from 1
+// Sent G to 1
+// Received E from 1
+// Sent H to 1
+// Received G from 1
+// Received H from 1
+// Received D from 2
+// Received F from 2
+```
