@@ -14,5 +14,6 @@
 
 ## [Coroutine Deep Dive](https://leanpub.com/coroutines)
 
-- **[1장 Understanding Kotlin Coroutines](CoroutineDeepDive/Part1/)**
-- **[2장 Kotlin Coroutine Library](CoroutineDeepDive/Part2/)**
+- **[1장 Understanding Kotlin Coroutines](CoroutineDeepDive/Part1/Part1%20%3A%20Kotlin%20Coroutines%20이해하기.md)**
+- **[2장 Kotlin Coroutine Library](CoroutineDeepDive/Part2/Part%202%20%3A%20코루틴%20라이브러리.md)**
+- **[3장 Channel and flow](CoroutineDeepDive/Part3/Part%203%20%3A%20Channel%20및%20Flow.md)**
