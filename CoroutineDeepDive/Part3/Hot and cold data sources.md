@@ -56,3 +56,110 @@ fun main() {
 - 무한할 수 있습니다. 즉, 요청을 받을 때 마다 데이터를 생성하므로 이론적으로 무한한 길이의 데이터를 생성할 수 있습니다.
 - 최소한의 연산만을 수행합니다. 실제로 데이터가 필요한 시점에만 연산을 수행합니다. 이는 연산의 최적화 및 효율성을 의미합니다.
 - 더 적은 메모리를 사용합니다. 중간 결과를 저장하는 컬렉션을 만들 필요가 없기에 메모리 사용량이 줄어듭니다.
+
+--------------------------------------------------------------------------------------------
+
+## Hot channels, cold flow
+
+`flow`는 `produce` 함수와 유사한 방식으로 동작하며 `flow` 블록 내부에서 데이터를 생성하고 전송할 수 있습니다.
+
+```kotlin
+val channel = produce {
+    while (true) {
+        val x = computeNextValue()
+       send(x)
+    }
+}
+
+val flow = flow {
+    while (true) {
+        val x = computeNextValue()
+        emit(x)
+    }
+}
+```
+
+`Channel`과 `flow` 빌더는 개념적으로 유사하지만 그들의 동작 방식의 차이로 인해 두 함수 사이에 중요한 차이점이 있습니다.
+
+`Channel`은 핫 스트림으로 코루틴에서 즉시 값을 계산하여 시작합니다.
+
+이 계산은 수신자가 준비될 떄까지 중단되며, 채널은 소비와 무관하게 요소를 독립적으로 생산하고 보관합니다.  
+요소는 1번만 수신될 수 있기에, 하나의 수신자가 모든 요소를 소비하면 다른 수신자는 비어 있고 이미 닫힌 채널을 찾게 됩니다.
+
+```kotlin
+private fun CoroutineScope.makeChannel() = produce {
+    println("Channel started")
+
+    for (i in 1..3) {
+        delay(1000)
+        send(i)
+    }
+}
+
+suspend fun main() = coroutineScope {
+    val channel = makeChannel()
+
+    delay(1000)
+
+    println("Calling channel...")
+    for (value in channel) println(value)
+
+    println("Consuming again...")
+    for (value in channel) println(value)
+}
+
+// Channel started
+// 1s delay
+// Calling channel...
+// 1
+// 1s delay
+// 2
+// 1s delay
+// 3
+// Consuming again...
+```
+
+`Flow`는 콜드 스트림으로 요청에 따라 요소가 생산됩니다.  
+또한 `Flow`는 처리 작업을 하지 않는 단순한 정의로 터미널 연산(예: `collect`)이 수행될 때 요소가 어떻게 생성될지에 대해 정의합니다.
+
+이러한 특성으로 `flow` 빌더는 `CoroutineScope`가 필요하지 않으며 모든 터미널 연산은 처음부터 처리를 시작합니다.
+
+```kotlin
+private fun makeFlow() = flow {
+    println("Flow started")
+
+    for (i in 1..3) {
+        delay(1000)
+        emit(i)
+    }
+}
+
+suspend fun main() = coroutineScope {
+    val flow = makeFlow()
+
+    delay(1000)
+
+    println("Calling flow...")
+    flow.collect { println(it) }
+
+    println("Consuming again...")
+    flow.collect { println(it) }
+}
+// 1s delay
+// Calling flow...
+// Flow started
+// 1s delay
+// 1
+// 1s delay
+// 2
+// 1s delay
+// 3
+// Consuming again...
+// Flow started
+// 1s delay
+// 1
+// 1s delay
+// 2
+// 1s delay
+// 3
+```
