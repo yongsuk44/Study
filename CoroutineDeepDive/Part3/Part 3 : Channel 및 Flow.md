@@ -5,6 +5,7 @@
 - [Channel](#part-31--channel)
 - [Select](#part-32--select)
 - [Hot and cold data sources](#part-33--hot-and-cold-data-sources)
+- [Flow introduction](#part-34--flow-introduction)
 
 ## [Part 3.1 : Channel](Channel.md)
 
@@ -169,3 +170,14 @@ Cold Stream은 데이터가 필요할 때까지 어떠한 연산도 수행하지
 `Flow`는 Cold Stream으로 요청에 따라 요소가 생산됩니다.  
 또한 `Flow`는 처리 작업을 하지 않는 단순한 정의로 터미널 연산(`collect`)가 수행될 때 요소가 어떻게 생산될지에 대해 정의합니다.
 즉, 터미널 연산을 여러번 시도하면 계속해서 요소를 사용할 수 있습니다.
+
+------------------------------------------------------------------
+
+## [Part 3.4 : Flow introduction](Flow%20introduction.md)
+
+### The characteristics of Flow
+
+`collect`와 같은 터미널 연산은 스레드 차단이 아닌 코루틴을 중지하며, 현재 코루틴 컨텍스트를 존중하여 다른 코루틴 컨텍스트들의 기능(`CoroutineExceptionHandler`, `CoroutineName` 등)들을 지원합니다.  
+또한 구조적 동시성을 지원하기에 부모 코루틴이 취소되면, 내부에서 실행 중인 Flow 연산도 함께 취소됩니다.
+
+`flow` 빌더는 일시 중지 함수가 아니며, 특별한 코루틴 없이 사용할 수 있지만, 터미널 연산은 코루틴을 중지한다는 특징을 알아야 합니다.
