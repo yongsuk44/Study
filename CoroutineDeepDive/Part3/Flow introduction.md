@@ -91,3 +91,58 @@ suspend fun main() {
         .collect { println("Collected $it") } // Terminal Operation
 }
 ```
+
+---
+
+### Real-life use cases
+
+`Flow`와 `Channel`은 데이터 스트림을 처리하기 위한 메커니즘이지만, 다음의 차이가 있습니다.  
+`Flow`는 비동기 데이터 스트림을 나타내며, `Channel`은 여러 코루틴 간 데이터를 교환하는 구조를 나타냅니다.
+
+이처럼 일반적인 사용 사례에서는 `Flow`가 더 많이 사용 됩니다.
+예를 들어 UI를 통한 사용자 입력이나 센서에서의 데이터와 같은 연속적인 이벤트 스트림을 관찰할 때, 각각의 관찰자가 해당 이벤트를 독립적으로 받아야할 때 `Flow`가 유용합니다.
+또한 아무도 해당 이벤트 스트림을 관찰하고 있지 않을 때, `Flow`는 자동으로 수신을 중단합니다.
+
+`Flow`의 가장 전형적인 사용 사례는 다음과 같습니다.
+- 웹소켓, R소켓, 알림 등의 서버 전송 이벤트를 통해 소통되는 메시지 전송 또는 수신
+- 버튼 클릭, 텍스트 입력과 같은 연속적인 데이터 스트림으로 간주될 수 있는 사용자 이벤트 관찰
+- 모바일 기기에서의 센서(가속도계, GPS 등)에서 수신되는 정보
+- 데이터 베이스의 변화 관찰
+
+```kotlin
+@Dao
+interface MyDao {
+    @Query("SELECT * FROM users")
+    fun getAllUsers(): Flow<List<User>>
+}
+```
+
+또한 `Flow`는 다양항 동시 처리 상황에서도 유용합니다. 
+예를 들어 판매자 목록이 있고 각 판매자의 제안을 가져와야 하는 상황이 있다고 가정하면, `Flow`를 사용하지 않고 처리하는 경우 `async`를 사용하여 수행할 수 있습니다.
+
+```kotlin
+suspend fun getOffers(
+    sellers: List<Seller>
+): List<Offer> = coroutineScope {
+    sellers
+        .map { seller -> async { api.requestOffers(seller.id) } }
+        .flatMap { it.await() }
+}
+```
+
+위 방법의 경우에는 `sellers`의 크기가 크다면 한번에 너무 많은 요청을 보낼 수 있어 서버에 과부하를 줄 수 있습니다.  
+물론 저장소에서 제한을 둘 수 있지만, 클라이언트 측에서도 이를 제어하고 싶을 수 있습니다.
+
+이럴 때 `Flow`를 사용하여 동시에 발생하는 호출의 수를 제한하여 사용할 수 있습니다.
+
+```kotlin
+suspend fun getOffers(
+    sellers: List<Seller>
+): List<Offer> = sellers
+    .asFlow()
+    .flatMapMerge(concurrency = 20) { seller -> 
+        suspend { api.requestOffers(seller.id) }.asFlow()
+    }
+    .toList()
+}
+```
