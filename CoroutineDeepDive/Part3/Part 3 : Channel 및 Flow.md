@@ -6,6 +6,7 @@
 - [Select](#part-32--select)
 - [Hot and cold data sources](#part-33--hot-and-cold-data-sources)
 - [Flow introduction](#part-34--flow-introduction)
+- [Understanding flow](#part-35--understanding-flow)
 
 ## [Part 3.1 : Channel](Channel.md)
 
@@ -177,7 +178,8 @@ Cold Stream은 데이터가 필요할 때까지 어떠한 연산도 수행하지
 
 ### The characteristics of Flow
 
-`collect`와 같은 터미널 연산은 스레드 차단이 아닌 코루틴을 중지하며, 현재 코루틴 컨텍스트를 존중하여 다른 코루틴 컨텍스트들의 기능(`CoroutineExceptionHandler`, `CoroutineName` 등)들을 지원합니다.  
+`collect`와 같은 터미널 연산은 스레드 차단이 아닌 코루틴을 중지하며, 현재 코루틴 컨텍스트를 존중하여 다른 코루틴 컨텍스트들의
+기능(`CoroutineExceptionHandler`, `CoroutineName` 등)들을 지원합니다.  
 또한 구조적 동시성을 지원하기에 부모 코루틴이 취소되면, 내부에서 실행 중인 Flow 연산도 함께 취소됩니다.
 
 `flow` 빌더는 일시 중지 함수가 아니며, 특별한 코루틴 없이 사용할 수 있지만, 터미널 연산은 코루틴을 중지한다는 특징을 알아야 합니다.
@@ -197,4 +199,78 @@ Flow 시작과 터미녈 연산 사이에 중간 연산을 통해 데이터를 �
 - GPS, 가속도계 등 센서에서 수신되는 연속적인 데이터 정보
 - 데이터 베이스가 변화되는것을 관찰
 
-또한 많은 양의 API를 요청하는 상황에서 `flatMapMerge` 중간 연산의 `concurrency` 파라미터를 추가하여 호출의 수를 제한하는 방법을 제공합니다. 
+또한 많은 양의 API를 요청하는 상황에서 `flatMapMerge` 중간 연산의 `concurrency` 파라미터를 추가하여 호출의 수를 제한하는 방법을 제공합니다.
+
+------------------------------------------------------------------
+
+## [Part 3.5 : Understanding flow](Flow%20이해하기.md)
+
+Flow는 여러 여산들의 실행 정의를 나타내는 개념으로 중단 람다식과 유사합니다.
+
+중단 람다식은 특정 연산이나 작업을 잠시 중단하고 나중에 재개 해주는 기능을 가진 코드 블록을 의미합니다.  
+이는 기본 람다식에 `suspend` 키워드를 사용하여 만들 수 있으며, 코루틴 내에서 `delay`와 같이 일시적으로 정지할 수 있습니다.
+
+그러나 이러한 람다식들은 코드 복잡성을 증가시킬 수 있기에, 이러한 람다 구현을 함수형 인터페이스로 정의하여 인스턴스를 전달할 필요 없이 직접 람다식을 사용하여 호출할 수 있습니다.
+
+또한 함수형 인터페이스는 람다식으로 표현될 수 있기에 해당 람다식을 리시버 타입으로 만들어 특정 객체 참조 없이 멤버를 직접 사용할 수 있도록 할 수 있습니다.
+
+```kotlin
+fun interface FlowCollector<T> {
+    suspend fun emit(value: T)
+}
+
+val f: suspend FlowCollector<String>.() -> Unit = {
+    emit("A")
+}
+```
+
+그럼에도 람다식 대신 인터페이스를 통해 코드의 목적과 구조가 명확해지길 원한다면 다음과 같이 정의할 수 있습니다.
+
+```kotlin
+interface Flow<T> {
+    suspend fun collect(collector: FlowCollector<T>)
+}
+
+val builder: suspend FlowCollector<String>.() -> Unit = {
+    emit("A")
+}
+
+val flow: Flow<String> = object : Flow<String> {
+    override suspend fun collect(collector: FlowCollector<String>) {
+        collector.builder()
+    }
+}
+```
+
+한번 더 `flow`의 생성을 간소화하기 위해 `flow` 빌더를 정의할 수 있습니다.
+
+```kotlin
+fun <T> flow(builder: suspend FlowCollector<T>.() -> Unit) = object : Flow<T> {
+    override suspend fun collect(collector: FlowCollector<T>) {
+        collector.builder()
+    }
+}
+
+val flow: Flow<String> = flow {
+    emit("A")
+}
+```
+
+---
+
+### Flow is synchronous
+
+Flow는 동기적 특성을 가집니다. 즉, 각 단계의 실행은 순차적으로 이루어지고 특정 단계가 완료되기 전 다음 단계로 넘어가지 않습니다.
+
+예를 들어 `collect`는 모든 요소를 수집하는 동안 중단되며, 이는 `Flow`가 동기적이고 새로운 코루틴을 생성하지 않음을 나타냅니다.
+또한 `onEach`에서 `delay`를 사용하면 동기적 특성으로 인해 각 요소 사이에 `delay`가 적용됩니다.
+
+---
+
+### Flow and shared states
+
+`Flow`는 동기적 특징을 지니기에, `Flow` 연산 내 로컬 변수를 사용하여 일부 데이터를 임시로 저장하거나, 
+연산의 중간 결과를 계산하는 등의 작업은 안전하다고 할 수 있습니다.
+
+그러나 여러 코루틴에서 동시에 실행되는 `Flow` 혹은 다른 코루틴과 공유되는 상태를 사용할 때는 
+동시성 문제가 발생될 수 있으므로 동기화 메커니즘을 사용하여 공유된 상태를 보호해야 합니다.
