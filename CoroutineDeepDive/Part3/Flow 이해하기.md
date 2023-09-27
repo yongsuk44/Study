@@ -235,3 +235,26 @@ fun <T> Flow<T>.onStart(
     collect { emit(it) }
 }
 ```
+
+---------------------------------------------------------------------------
+
+## Flow is synchronous
+
+`Flow`의 동기적 특성은 데이터 스트림 처리에 중요한 특징입니다.  
+`Flow`를 사용할 때, 각 단계의 실행은 순차적으로 이루어지며, 특정 단계가 완료되기 전에 다음 단계로 넘어가지 않습니다.
+
+`collect`는 `Flow`의 모든 요소를 수집하는 동안 중단되며, 이는 `Flow`가 비동기적으로 동작하지 않고, 새로운 코루틴을 생성하지 않음을 나타냅니다.  
+그러나 `Flow`의 각 처리 단계는 코루틴을 생성할 수 있는 중단 함수(`map`, `filter` 등)를 사용할 수 있음을 알아야 합니다.
+
+또한 `onEach`에서 `delay`를 사용할 때, `Flow`의 동기적 특성으로 인해 `delay`는 각 요소 사이에 적용됩니다.
+
+```kotlin
+suspend fun main() {
+    flowOf("A", "B", "C")
+        .onEach { delay(1000) }
+        .collect { println(it) }
+}
+// 1s delay A
+// 1s delay B
+// 1s delay C
+```
