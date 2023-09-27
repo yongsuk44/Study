@@ -173,3 +173,65 @@ suspend fun main() {
     flow.collect { print(it) } // ABC
 }
 ```
+
+---------------------------------------------------------------------------
+
+## How Flow processing works
+
+Flow는 리시버가 있는 중단 람다식보다 조금 더 복잡할 수 있지만, Flow의 강력함은 생성, 처리, 관찰을 위해 정의된 모든 함수들에 있습니다.  
+이 모든것의 기본은 `flow`, `collect`, `emit`과 같은 기본적인 구성요소들에 있습니다. 
+
+`map` 함수는 `Flow`의 각 요소를 변환하는 역할을 하며 다음과 같이 실행됩니다.
+
+1. `map`은 `flow` 빌더를 사용하여 새로운 `Flow` 객체를 반환합니다.
+2. 새로운 Flow 객체 생성 과정 중, `map` 함수는 원본 `Flow`의 `collect`를 호출하여 원본 `Flow`의 각 요소에 접근합니다.
+3. 원본 `Flow`에서 요소를 하나씩 수집할 때마다, `map`은 파라미터 `transformation`을 사용하여 해당 요소를 변환합니다
+4. 변환된 요소는 새로운 `Flow`에 `emit`을 통해 방출됩니다.
+
+```kotlin
+fun <T, R> Flow<T>.map(
+    transformation: suspend (T) -> R
+): Flow<R> = flow {
+    this@map.collect { this.emit(transformation(it)) }
+}
+
+suspend fun main() {
+    flowOf("A", "B", "C")
+        .map {
+            delay(1000)
+            it.lowercase()
+        }
+        .collect { println(it) }
+}
+// 1s delay a
+// 1s delay b
+// 1s delay c
+```
+
+그 외의 유사한 함수들 입니다.
+
+```kotlin
+fun <T> FLow<T>.filter(
+    predicate: suspend (T) -> Boolean
+): Flow<T> = flow {
+    collect {
+        if (predicate(it)) emit(it)
+    }
+}
+
+fun <T> Flow<T>.onEach(
+    action: suspend (T) -> Unit
+): Flow<T> = flow {
+    collect {
+        action(it)
+        emit(it)
+    }
+}
+
+fun <T> Flow<T>.onStart(
+    action: suspend () -> Unit
+): Flow<T> = flow {
+    action()
+    collect { emit(it) }
+}
+```
