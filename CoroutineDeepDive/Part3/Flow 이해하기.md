@@ -258,3 +258,106 @@ suspend fun main() {
 // 1s delay B
 // 1s delay C
 ```
+
+---------------------------------------------------------------------------
+
+## Flow and shared states
+
+`Flow`는 동기적 특성을 지니기에, 한 번에 하나의 연산을 실행합니다.  
+따라서 `Flow` 내부의 특정 단계에서 상태를 수정하는 것은 안전하다고 할 수 있습니다.
+
+예를 들어 아래 예제와 같이 `Flow` 연산 내 로컬 변수를 사용하여 일부 데이터를 임시로 저장하거나 연산의 중간 결과를 계산하는 것은 안전합니다.  
+이러한 변수는 해당 `Flow` 단계 내에서만 접근되며 다른 코루틴이나 스레드로부터 동시에 접근되지 않습니다.
+
+그러나 여러 코루틴에서 동시에 실행되는 `Flow` 혹은 다른 코루틴과 공유되는 상태에 대해서는 주의가 필요합니다.  
+이러한 경우 동시성 문제가 발생될 수 있으므로 동기화 메커니즘을 사용하여 상태를 보호해야 합니다.
+
+```kotlin
+fun <T, K> Flow<T>.distinctBy(
+    keySelector: (T) -> K
+) = flow {
+    val sentKeys = mutableSetOf<K>()
+    collect { value ->
+        val key = keySelector(value)
+        
+        if (key !in sentKeys) {
+            sentKeys.add(key)
+            emit(value)
+        }
+    }
+}
+```
+
+다음은 `flow` 단계 내에서 `counter` 변수를 사용하여 항상 1000까지 증가되는 일관된 예제 입니다.
+
+```kotlin
+fun Flow<*>.counter() = flow<Int> {
+    var counter = 0
+    collect {
+        counter++
+        List(100) { Random.nextLong() }.shuffled().sorted()
+        emit(counter)
+    }
+}
+
+suspend fun main(): Unit = coroutineScope {
+    val f1 = List(1000) { "$it" }.asFlow()
+    val f2 = List(1000) { "$it" }.asFlow().counter()
+
+    launch { println(f1.counter().last()) } // 1000
+    launch { println(f1.counter().last()) } // 1000
+    launch { println(f2.last()) } // 1000
+    launch { println(f2.last()) } // 1000
+}
+```
+
+`Flow` 단계 외부에서 변수를 함수로 가져오게되면, 해당 변수는 동일한 `flow`에서 데이터를 수집하는 모든 코루틴에 의해 공유됩니다.  
+이렇게 되면 예상치 못한 결과나 병렬 처리 문제가 발생될 수 있습니다.
+
+아래 예시에서 `f2.last()`가 2000을 반환하는데, 이것은 2개의 `flow` 실행이 동시에 일어나면서 각각의 `flow`에서 `counter` 작업이 병렬로 이루어지기 떄문입니다.
+만약 해당 변수가 `flow-specific`가 아니라면 이러한 문제가 발생될 수 있습니다.
+
+따라서 `Flow`와 코루틴을 사용할 때는 변수의 범위와 사용방법에 대해 신중해야 합니다.
+
+```kotlin
+fun Flow<*>.counter(): Flow<Int> {
+    var counter = 0
+    return this.map {
+        counter++
+        List(100) { Random.nextLong() }.shuffled().sorted()
+        counter
+    }
+}
+
+suspend fun main(): Unit = coroutineScope {
+    val f1 = List(1000) { "$it" }.asFlow()
+    val f2 = List(1000) { "$it" }.asFlow().counter()
+
+    launch { println(f1.counter().last()) } // 1000
+    launch { println(f1.counter().last()) } // 1000
+    launch { println(f2.last()) } // 2000
+    launch { println(f2.last()) } // 2000
+}
+```
+
+동일한 변수를 사용하는 중단 함수가 동기화가 필요한 것처럼, 함수 외부에서 정의되거나 클래스의 범위 또는 최상위 수준에서 정의된 `flow` 내의 변수도 동기화가 필요합니다.
+
+```kotlin
+var counter = 0
+
+fun Flow<*>.counter(): Flow<Int> = map {
+    counter++
+    List(100) { Random.nextLong() }.shuffled().sorted()
+    counter
+}
+
+suspend fun main() = coroutineScope {
+    val f1 = List(1000) { "$it" }.asFlow()
+    val f2 = List(1000) { "$it" }.asFlow().counter()
+
+    launch { println(f1.counter().last()) } // 4000
+    launch { println(f1.counter().last()) } // 4000
+    launch { println(f2.last()) } // 4000
+    launch { println(f2.last()) } // 4000
+}
+```
