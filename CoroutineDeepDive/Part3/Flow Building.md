@@ -43,11 +43,11 @@ listOf(1, 2, 3, 4, 5)
 
 ```kotlin
 suspend fun main() {
-    val function = suspend { 
+    val function = suspend {
         delay(1000)
         "name"
     }
-    
+
     function
         .asFlow()
         .collect { print(it) }
@@ -117,3 +117,59 @@ fun allUsersFlow(
     } while (!users.isNullOrEmpty())
 }
 ```
+
+------------------------------------------------------------------
+
+## Understanding flow builder
+
+`Flow` 생성 함수나 확장 함수들은 대부분 내부적으로 `flow` 빌더를 기반으로 동작합니다.
+
+```kotlin
+public fun <T> flowOf(vararg elements: T): Flow<T> = flow {
+    for (element in elements) {
+        emit(element)
+    }
+}
+```
+
+`flow` 빌더는 내부적으로 매우 간단합니다.  
+`flow` 빌더는 `Flow` 인터페이스를 구현하는 객체를 생성하며, 이는 `collect` 메서드 내부에서 `block`을 호출하기만 합니다.
+
+```kotlin
+interface FlowCollector<in T> {
+    suspend fun emit(value: T)
+}
+interface Flow<out T> {
+    suspend fun collect(collector: FlowCollector<T>)
+}
+
+fun <T> flow(
+    block: suspend FlowCollector<T>.() -> Unit
+): Flow<T> = object : Flow<T> {
+    override suspend fun collect(collector: FlowCollector<T>) {
+        collector.block()
+    }
+}
+
+fun main() = runBlocking {
+    flow { // 1
+        emit("A")
+        emit("B")
+        emit("C")
+    }.collect { value -> // 2 
+        println(value)
+    }
+}
+// A
+// B
+// C
+```
+
+`Flow` 빌더 호출 시 실제로 하는 것은 `Flow` 객체를 생성하기만 합니다.
+이 객체는 내부적으로 `Flow` 인터페이스를 구현하게 되며, `collect`를 호출할 때 `flow` 빌더 내 정의한 `block` 함수가 실행됩니다.
+이 `block` 함수 내에서는 다양한 `Flow` 연산을 수행할 수 있으며, 특히 `emit`을 통해 `Flow`에 값을 추가할 수 있습니다.
+
+`emit`은 `FlowCollector`에 정의되어 있으며, 이 인터페이스 구현은 `2`에서 정의된 람다식에 의해 제공됩니다.
+위 예시에서는 `emit` 호출될 때마다 `println(value)`를 실행합니다.
+
+이러한 방식으로 `Flow`는 매우 직관적이며 간단하며 `Flow`에 대한 다양한 확장 함수나 추가 기능들은 모두 이 기본적인 원리를 기반으로 구축됩니다.
