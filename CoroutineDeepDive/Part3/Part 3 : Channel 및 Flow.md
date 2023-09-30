@@ -341,8 +341,23 @@ listOf(1, 2, 3, 4, 5)
 이렇게 생성된 데이터는 별도의 코루틴에서 처리되어 데이터의 요청과 처리가 동시에 이루어질 수 있습니다.  
 즉, `Flow`와 `Channel`의 특징을 결합한 `Flow` 입니다.
 
-`channelFlow`는 내부에서 `ProducerScope<T>` 작업을 수행하며, 
+`channelFlow`는 내부에서 `ProducerScope<T>` 작업을 수행하며,
 `ProducerScope`는 `CoroutineScope`를 구현하기에 코루틴 생성, 코루틴 생명주기 관리, 다양한 코루틴 연산을 수행할 수 있습니다.
 
 `ProducerScope`는 `SendChannel`을 구현하고 있어, `SendChannel`의 다양한 함수를 통해 채널을 닫거나, 특정 조건에 데이터 전송을 일시 정지하는 등의 채널 동작을 제어할 수 있습니다.
 또한 내부에서 데이터를 생성하고 전송하는데 `emit`이 아닌 `send`를 사용합니다.
+
+---
+
+### CallbackFlow
+
+`callbackFlow`와 `channelFlow` 모두 독립적인 코루틴 환경에서 데이터 생성 및 전달을 수행합니다.  
+그러나 `callbackFlow`는 콜백 기반 코드와의 통합을 목적으로 설계되었으며,
+UI 이벤트와 네트워크 응답 등 비동기적인 콜백을 `Flow`로 표현할 때 사용합니다.
+
+`callbackFlow` 다음 함수들을 통해 콜백 기안 비동기 작업을 `Flow`로 변환하고 관리할 수 있습니다.
+
+- `awaitClose` : 코루틴이 콜백 등록 후 즉시 종료되는 것을 방지하며, 채널이 다른 방법으로 닫힐 때까지 코루틴을 일시 중지 상태로 유지합니다.
+- `trySendBlocking` : 코루틴 일시 중지 없이 값을 채널에 전송하며, 일반 함수에서도 사용 가능합니다.
+- `close` : 채널을 종료하고 해당 `Flow`의 데이터 전송을 중단합니다.
+- `cancel` : 예외와 함께 채널을 종료하며 `Flow` 수신자에게 예외를 전달하여 오류 처리가 가능합니다.

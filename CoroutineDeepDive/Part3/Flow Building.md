@@ -178,13 +178,13 @@ fun main() = runBlocking {
 
 ## ChannelFlow
 
-`Flow`는 Cold 스트림으로써 자동으로 데이터를 생성하거나 전송하지 않으며, consumer가 데이터를 요청할 때만 값을 생성하고 전달합니다. 
+`Flow`는 Cold 스트림으로써 자동으로 데이터를 생성하거나 전송하지 않으며, consumer가 데이터를 요청할 때만 값을 생성하고 전달합니다.
 
 예를 들어 페이지별 사용자 데이터를 제공하는 API를 `Flow`로 표현할 때,  
 첫 번째 페이지의 데이터만 필요한 상황에서 `Flow`를 사용하면 첫 번째 페이지의 데이터만 요청하고 응답을 받게 됩니다.  
 그 후 두 번째 페이지의 데이터가 필요할 때까지 데이터 요청은 발생하지 않습니다.
 
-이러한 특성은 필요한 데이터만 요청하므로 불필요한 네트워크 요청이나 연산을 줄일 수 있어 리소스의 효율적인 사용을 가능하게 합니다. 
+이러한 특성은 필요한 데이터만 요청하므로 불필요한 네트워크 요청이나 연산을 줄일 수 있어 리소스의 효율적인 사용을 가능하게 합니다.
 
 ```kotlin
 data class User(val name: String)
@@ -193,10 +193,10 @@ interface UserApi {
     suspend fun takePage(pageNumber: Int): List<User>
 }
 
-class FakeUserApi: UserApi {
+class FakeUserApi : UserApi {
     private val users = List(20) { User("User$it") }
     private val pageSize: Int = 3
-    
+
     override suspend fun takePage(pageNumber: Int): List<User> {
         delay(1000)
         return users
@@ -223,7 +223,7 @@ suspend fun main() {
             delay(1000)
             it.name == "User3"
         }
-    
+
     println(user)
 }
 // Fetching page 0
@@ -310,12 +310,48 @@ interface ProducerScope<in E> : CoroutineScope, SendChannel<E> {
 
 ```kotlin
 fun <T> Flow<T>.merge(other: Flow<T>): Flow<T> = channelFlow {
-    launch { collect { send(it)} }
+    launch { collect { send(it) } }
     other.collect { send(it) }
 }
 
 fun <T> contextualFlow(): Flow<T> = channelFlow {
     launch(Dispatchers.IO) { send(computeIoValue()) }
     launch(Dispatchers.Default) { send(computeCpuValue()) }
+}
+```
+
+------------------------------------------------------------------
+
+## callbackFlow
+
+`callbackFlow`는 UI 이벤트, 네트워크 응답과 같은 비동기적인 콜백을 `Flow`로 표현하고 처리하고자 할 때 사용할 수 있습니다.
+
+기본적으로 `channelFlow`와 `callbackFlow` 둘다 독립적인 코루틴 환경에서 데이터를 생성하고 전달하는 것을 지원합니다.  
+그러나 `callbackFlow`는 콜백 기반의 코드와의 통합을 목적으로 설계되었습니다.
+
+`callbackFlow`에서는 `ProducerScope<T>`를 통해 데이터 스트림을 생성하고 관리합니다.  
+여기서 제공되는 다양한 함수들을 통해 콜백 기반 비동기 작업을 `Flow`로 변환하고 관리할 수 있습니다.
+
+- `awaitClose` : 코루틴이 콜백을 등록한 후 즉시 종료되는 것을 방지하기 위해 사용됩니다. 이 함수는 채널이 다른 방법으로 닫힐 때까지 코루틴을 일시 중지 상태로 유지합니다.
+- `trySendBlocking` : 일반적인 `send`와 달리, 코루틴의 일시 중지 없이 값을 채널에 전송합니다. 이에 따라 일반 함수 내에서도 사용할 수 있습니다.
+- `close` : 채널을 종료하고, 해당 `Flow`의 데이터 전송을 중단합니다.
+- `cancel` : 예외와 함께 채널을 종료합니다. 이렇게 하면 `Flow` 수신자에게 예외가 전달되어 오류 처리가 가능합니다.
+
+```kotlin
+fun flowFrom(api: CallbackBasedApi): Flow<T> = callbackFlow {
+    val callback = object : Callback {
+        override fun onNextValue(value: T) {
+            trySendBlocking(value)
+        }
+        override fun onApiError(cause: Throwable) {
+            cancel(CancellationExcpetion("Api Error", cause))
+        }
+
+        override fun onCompleted() {
+            channel.close()
+        }
+    }
+    api.register(callback)
+    awaitClose { api.unregister(callback) }
 }
 ```
