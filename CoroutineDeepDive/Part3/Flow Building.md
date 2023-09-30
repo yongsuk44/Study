@@ -173,3 +173,149 @@ fun main() = runBlocking {
 위 예시에서는 `emit` 호출될 때마다 `println(value)`를 실행합니다.
 
 이러한 방식으로 `Flow`는 매우 직관적이며 간단하며 `Flow`에 대한 다양한 확장 함수나 추가 기능들은 모두 이 기본적인 원리를 기반으로 구축됩니다.
+
+------------------------------------------------------------------
+
+## ChannelFlow
+
+`Flow`는 Cold 스트림으로써 자동으로 데이터를 생성하거나 전송하지 않으며, consumer가 데이터를 요청할 때만 값을 생성하고 전달합니다. 
+
+예를 들어 페이지별 사용자 데이터를 제공하는 API를 `Flow`로 표현할 때,  
+첫 번째 페이지의 데이터만 필요한 상황에서 `Flow`를 사용하면 첫 번째 페이지의 데이터만 요청하고 응답을 받게 됩니다.  
+그 후 두 번째 페이지의 데이터가 필요할 때까지 데이터 요청은 발생하지 않습니다.
+
+이러한 특성은 필요한 데이터만 요청하므로 불필요한 네트워크 요청이나 연산을 줄일 수 있어 리소스의 효율적인 사용을 가능하게 합니다. 
+
+```kotlin
+data class User(val name: String)
+
+interface UserApi {
+    suspend fun takePage(pageNumber: Int): List<User>
+}
+
+class FakeUserApi: UserApi {
+    private val users = List(20) { User("User$it") }
+    private val pageSize: Int = 3
+    
+    override suspend fun takePage(pageNumber: Int): List<User> {
+        delay(1000)
+        return users
+            .drop(pageSize * pageNumber)
+            .take(pageSize)
+    }
+}
+
+fun allUsersFlow(api: UserApi): Flow<User> = flow {
+    var page = 0
+    do {
+        println("Fetching page $page")
+        val users = api.takePage(page++)
+        emitAll(users.asFlow())
+    } while (!users.isNullOrEmpty())
+}
+
+suspend fun main() {
+    val api = FakeUserApi()
+    val users = allUsersFlow(api)
+    val user = users
+        .first {
+            println("Checking $it")
+            delay(1000)
+            it.name == "User3"
+        }
+    
+    println(user)
+}
+// Fetching page 0
+// 1s delay
+// Checking User(name=User0)
+// 1s delay
+// Checking User(name=User1)
+// 1s delay
+// Checking User(name=User2)
+// 1s delay
+// Fetching page 1
+// 1s delay
+// Checking User(name=User3)
+// 1s delay
+// User(name=User3)
+```
+
+`channelFlow`는 `Flow`와 `Channel`의 특징을 결합한 것으로, 2가지 특징을 모두 갖고 있습니다.  
+`Flow`는 Cold 스트림으로 요청에 따라 데이터를 생성하는 반면, `Channel`은 Hot 스트림으로 독립적으로 데이터를 생성하고 전달합니다.
+
+`channelFlow`는 `Flow`와 같이 `collect`와 같은 터미널 연산으로 시작되지만, `Channel`처럼 독립적으로 데이터를 생성합니다.  
+이렇게 생성된 데이터는 별도의 코루틴에서 처리되므로, 데이터의 요청과 처리가 동시에 이루어질 수 있습니다.
+
+이러한 특징으로 `channelFlow`를 활용하면 데이터를 미리 생성하거나, 다양한 소스에서 데이터를 동시에 처리하는 등의 복잡한 작업을 수행할 수 있습니다.
+예를 들어 네트워크 API에서 페이지 별 데이터를 가져오는 작업과 이 데이터를 처리하는 작업을 동시에 수행하고자 할 때 `channelFlow`를 사용할 수 있습니다.
+
+```kotlin
+fun allUsersFlow(api: UserApi): Flow<User> = channelFlow {
+    var page = 0
+    do {
+        println("Fetching page $page")
+        val users = api.takePage(page++)
+        users.forEach { send(it) }
+    } while (!users.isNullOrEmpty())
+}
+
+suspend fun main() {
+    val api = FakeUserApi()
+    val users = allUsersFlow(api)
+    val user = users
+        .first {
+            println("Checking $it")
+            delay(1000)
+            it.name == "User3"
+        }
+    println(user)
+}
+
+// Fetching page 0
+// 1s delay
+// Checking User(name=User0)
+// Fetching page 1
+// 1s delay
+// Checking User(name=User1)
+// Fetching page 2
+// 1s delay
+// Checking User(name=User2)
+// Fetching page 3
+// 1s delay
+// Checking User(name=User3)
+// Fetching page 4
+// 1s delay
+// User(name=User3)
+```
+
+`channelFlow` 사용 시 내부에서 `ProducerScope<T>`에 작업을 수행하며, 이 `ProducerScope`는 코루틴의 생성과 생명주기를 관리할 수 있는 환경을 제공합니다.
+
+`ProducerScope`는 `CoroutineScope`를 구현하기에, 코루틴을 시작하거나 다양한 코루틴 연산을 수행할 수 있습니다.  
+`ProducerScope` 내부에서는 데이터를 생성하고 전송하는데 `emit` 대신 `send`를 사용합니다.
+
+또한 `ProducerScope` 내의 `SendChannel`의 다양한 함수를 통해 채널을 닫거나, 특정 조건에 따라 데이터 전송을 일시 정지하는 등 채널의 동작을 직접 제어할 수 있습니다.
+
+```kotlin
+interface ProducerScope<in E> : CoroutineScope, SendChannel<E> {
+    val channel: SendChannel<E>
+}
+```
+
+`channelFlow`의 주요 장점 중 하나는 내부적으로 코루틴 스코프를 생성하기 때문에 독립적으로 값을 계산하고 처리할 수 있는 환경을 제공한다는 것입니다.
+따라서 `channelFlow` 내부에서 다양한 코루틴 빌더를 직접 사용하여 별도의 코루틴을 시작할 수 있습니다.
+
+반면 `flow` 빌더는 이러한 코루틴 스코프를 자동으로 생성하지 않기 때문에, 내부에서 별도의 코루틴을 직접 시작하는 것이 지원되지 않습니다.
+따라서 독립적인 작업과 병렬 처리가 필요한 경우 `channelFlow`를 사용하는 것이 적절합니다.
+
+```kotlin
+fun <T> Flow<T>.merge(other: Flow<T>): Flow<T> = channelFlow {
+    launch { collect { send(it)} }
+    other.collect { send(it) }
+}
+
+fun <T> contextualFlow(): Flow<T> = channelFlow {
+    launch(Dispatchers.IO) { send(computeIoValue()) }
+    launch(Dispatchers.Default) { send(computeCpuValue()) }
+}
+```
