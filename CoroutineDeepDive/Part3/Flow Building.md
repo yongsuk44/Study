@@ -74,3 +74,46 @@ suspend fun main() {
 }
 // 1s delay 후 "name" 출력
 ```
+
+------------------------------------------------------------------
+
+## Flow builders
+
+`flow` 빌더는 `Flow`를 생성하는데 가장 일반적인 방법입니다.   
+`flow` 빌더는 순차적 데이터 구조나 채널을 생성하는 다른 빌더와 유사한 방식으로 동작하며, 이를 통해 원하는 데이터 스트림을 `Flow` 타입으로 만들 수 있습니다.
+
+`flow` 빌더 내에서 `emit`을 통해 원하는 값을 `Flow`에 추가할 수 있습니다.   
+예를 들어 특정 연산 결과나 API 호출 응답 값을 `Flow`에 추가할 수 있습니다.
+
+또한 `emitAll`은 주어진 `Channel`이나 `Flow`의 모든 값을 현재의 `Flow`에 순차적으로 추가합니다.  
+`emitAll(flow) == flow.collect { emit(it) }`으로 각각의 값을 순차적으로 가져오는 것과 동일합니다.
+
+```kotlin
+fun makeFlow(): Flow<Int> = flow {
+    repeat(3) { num ->
+        delay(1000)
+        emit(num)
+    }
+}
+
+suspend fun main() {
+    makeFlow().collect { print(it) }
+}
+// 1s delay 후 0
+// 1s delay 후 1
+// 1s delay 후 2
+```
+
+네트워크 API 결과를 페이지별로 요청해야하는 사용자 데이터 스트림을 생성하는 예시입니다.
+
+```kotlin
+fun allUsersFlow(
+    api: UserApi
+): Flow<User> = flow {
+    var page = 0
+    do {
+        val users = api.takePage(page++)
+        emitAll(users)
+    } while (!users.isNullOrEmpty())
+}
+```
