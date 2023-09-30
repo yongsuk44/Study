@@ -302,3 +302,12 @@ listOf(1, 2, 3, 4, 5)
     .asFlow()
     .collect()
 ```
+
+---
+
+### Converting a function to a flow
+
+기존의 suspending 함수나 일반 함수의 결과를 `Flow`로 변환하는 경우, `Flow`는 해당 함수의 결과만을 포함하게 됩니다.
+즉, `suspend () -> T` or `() -> T`의 경우 `Flow<T>`로 변환됨을 말합니다.
+
+또한 참조 연산자(`::`)를 통해 특정 함수를 참조하여 `Flow`로 변환할 수 있습니다.
