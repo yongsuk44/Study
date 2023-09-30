@@ -17,3 +17,17 @@ emptyFlow<Int>().collect { print(it) }
 // nothing
 ```
 
+------------------------------------------------------------------
+
+## Converters
+
+`asFlow`는 `Iterable`, `Iterator`, `Sequence`와 같은 컬렉션 형태의 데이터 구조를 `Flow`로 변환하는 데 사용됩니다.
+
+```kotlin
+listOf(1, 2, 3, 4, 5)
+    // setOf(1, 2, 3, 4, 5)
+    // sequenceOf(1, 2, 3, 4, 5)
+    .asFlow()
+    .collect { print(it) }
+// 12345
+```
