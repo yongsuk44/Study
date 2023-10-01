@@ -7,6 +7,8 @@
 - [Hot and cold data sources](#part-33--hot-and-cold-data-sources)
 - [Flow introduction](#part-34--flow-introduction)
 - [Understanding flow](#part-35--understanding-flow)
+- [Flow building](#part-36--flow-building)
+- [Flow lifecycle functions](#part-37--flow-lifecycle-functions)
 
 ## [Part 3.1 : Channel](Channel.md)
 
@@ -361,3 +363,52 @@ UI 이벤트와 네트워크 응답 등 비동기적인 콜백을 `Flow`로 표�
 - `trySendBlocking` : 코루틴 일시 중지 없이 값을 채널에 전송하며, 일반 함수에서도 사용 가능합니다.
 - `close` : 채널을 종료하고 해당 `Flow`의 데이터 전송을 중단합니다.
 - `cancel` : 예외와 함께 채널을 종료하며 `Flow` 수신자에게 예외를 전달하여 오류 처리가 가능합니다.
+
+------------------------------------------------------------------
+
+## [Part 3.7 : Flow lifecycle functions](Flow%20lifecycle%20functions.md)
+
+`Flow`는 다양한 이벤트를 감지하고 반응하는 기능을 제공합니다.
+
+### onEach
+
+`Flow` 데이터 스트림의 요소들을 순서대로 처리하며 일시 정지될 수 있어 `delay` 시 각 값을 지연하여 출력합니다.
+
+```kotlin
+flowOf(1,2)
+    .onEach { delay(1000) }
+    .collect { println(it) }
+```
+
+---
+
+### onStart
+
+`Flow` 수집이 시작 될떄 동작하며, 터미널 연산이 호출될 때 즉시 실행됩니다.
+데이터 스트림에서 데이터를 가져오기 전 로깅이나 초기화 작업을 수행하고자 할 때 `onStart`가 적합합니다.
+
+```kotlin
+flowOf(1, 3)
+  .onStart { emit(0) }
+  .collect { print(it) }
+// 013
+```
+
+---
+
+### onCompletion
+
+`onCompletion`은 `Flow`의 다음과 같은 종료 시나리오에서 호출됩니다.
+
+- 모든 데이터 전송 후
+- 예외 발생
+- 코루틴 취소
+
+```kotlin
+scope.launch {
+    newsFlow()
+      .onStart { showProgress() }
+      .onCompletion { hideProgress() }
+      .collect { view.showNews(it) }
+}
+```
