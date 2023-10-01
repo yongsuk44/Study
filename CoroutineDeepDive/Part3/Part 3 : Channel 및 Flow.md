@@ -393,3 +393,22 @@ flowOf(1, 3)
   .collect { print(it) }
 // 013
 ```
+
+---
+
+### onCompletion
+
+`onCompletion`은 `Flow`의 다음과 같은 종료 시나리오에서 호출됩니다.
+
+- 모든 데이터 전송 후
+- 예외 발생
+- 코루틴 취소
+
+```kotlin
+scope.launch {
+    newsFlow()
+      .onStart { showProgress() }
+      .onCompletion { hideProgress() }
+      .collect { view.showNews(it) }
+}
+```

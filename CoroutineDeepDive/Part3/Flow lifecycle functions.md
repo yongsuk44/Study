@@ -60,3 +60,50 @@ suspend fun main() {
 // 1s delay 후 1 출력
 // 1s delay 후 3 출력
 ```
+
+---
+
+## onCompletion
+
+`onCompletion`은 `Flow` 수집이 종료 시 실행되는 리스너 함수로 아래 상황과 같이 `Flow`의 종료 시나리오에서 호출됩니다.
+
+- 모든 데이터 전송 후
+- 중간에 예외가 발생했을 때
+- 코루틴이 취소되었을 때 
+
+예를 들어 `Flow` 수집이 종료되면 로깅을 수행하거나 리소스를 해제할 때 `onCompletion`을 사용할 수 있습니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    flowOf(1,3)
+        .onEach { delay(1000) }
+        .onCompletion { println("Done") }
+        .collect { println(it) }
+}
+// 1s delay 후 1 출력
+// 1s delay 후 3 출력
+// Done
+
+suspend fun main() = coroutineScope {
+    val job = launch {
+        flowOf(1,3)
+            .onEach { delay(1000) }
+            .onCompletion { println("Done") }
+            .collect { println(it) }
+    }
+    
+    delay(1100)
+    job.cancel()
+}
+// 1s delay 후 1 
+// 0.1s delay Done
+
+fun updateNews() {
+    scope.launch {
+        newsFlow()
+            .onStart { showProgress() }
+            .onCompletion { hideProgress() }
+            .collect { view.showNews(it) }
+    }
+}
+```
