@@ -7,6 +7,8 @@
 - [Hot and cold data sources](#part-33--hot-and-cold-data-sources)
 - [Flow introduction](#part-34--flow-introduction)
 - [Understanding flow](#part-35--understanding-flow)
+- [Flow building](#part-36--flow-building)
+- [Flow lifecycle functions](#part-37--flow-lifecycle-functions)
 
 ## [Part 3.1 : Channel](Channel.md)
 
@@ -361,3 +363,19 @@ UI 이벤트와 네트워크 응답 등 비동기적인 콜백을 `Flow`로 표�
 - `trySendBlocking` : 코루틴 일시 중지 없이 값을 채널에 전송하며, 일반 함수에서도 사용 가능합니다.
 - `close` : 채널을 종료하고 해당 `Flow`의 데이터 전송을 중단합니다.
 - `cancel` : 예외와 함께 채널을 종료하며 `Flow` 수신자에게 예외를 전달하여 오류 처리가 가능합니다.
+
+------------------------------------------------------------------
+
+## [Part 3.7 : Flow lifecycle functions](Flow%20lifecycle%20functions.md)
+
+`Flow`는 다양한 이벤트를 감지하고 반응하는 기능을 제공합니다.
+
+### onEach
+
+`Flow` 데이터 스트림의 요소들을 순서대로 처리하며 일시 정지될 수 있어 `delay` 시 각 값을 지연하여 출력합니다.
+
+```kotlin
+flowOf(1,2)
+    .onEach { delay(1000) }
+    .collect { println(it) }
+```
