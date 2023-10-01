@@ -29,3 +29,34 @@ suspend fun main() {
     // 1s delay 후 2 출력
 }
 ```
+
+---
+
+## onStart
+
+`onStart`는 `Flow` 수집이 시작될 때 동작하는 리스너 함수로, 터미널 연산이 호출될 때 즉시 실행됩니다.  
+즉, `Flow`에서 값이 흐르기 시작하기 전, 즉시 실행됩니다.
+
+예를 들어, 특정 API로부터 데이터를 가져오는 `Flow`에서 데이터를 실제로 가져오기 시작하기 전에 로깅이나 초기화 작업을 수행하고자 할 때, `onStart`를 사용할 수 있습니다.
+
+```kotlin
+suspend fun main() {
+    flowOf(1, 3)
+        .onEach { delay(1000) }
+        .onStart { println("Starting flow") }
+        .collect { println(it) }
+}
+// Starting flow
+// 1s delay 후 1 출력
+// 1s delay 후 3 출력
+
+suspend fun main() {
+    flowOf(1, 3)
+        .onEach { delay(1000) }
+        .onStart { emit(0) }
+        .collect { println(it) }
+}
+// 0
+// 1s delay 후 1 출력
+// 1s delay 후 3 출력
+```

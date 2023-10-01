@@ -379,3 +379,17 @@ flowOf(1,2)
     .onEach { delay(1000) }
     .collect { println(it) }
 ```
+
+---
+
+### onStart
+
+`Flow` 수집이 시작 될떄 동작하며, 터미널 연산이 호출될 때 즉시 실행됩니다.
+데이터 스트림에서 데이터를 가져오기 전 로깅이나 초기화 작업을 수행하고자 할 때 `onStart`가 적합합니다.
+
+```kotlin
+flowOf(1, 3)
+  .onStart { emit(0) }
+  .collect { print(it) }
+// 013
+```
