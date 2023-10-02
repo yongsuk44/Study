@@ -125,3 +125,82 @@ suspend fun main() = coroutineScope {
 }
 // 1s delay 후 Empty 출력
 ```
+
+----
+
+## catch
+
+`catch`는 `Flow`에서 예외가 발생했을 때 해당 예외를 처리하기 위한 함수입니다.  
+`Flow` 수집 중 어떠한 이유로 예외가 발생하면 해당 예외는 파이프라인을 따라 전파됩니다.  
+이 때 `catch`를 사용하면 해당 예외를 감지하고 적절한 처리를 수행할 수 있습니다.
+
+`catch` 내에서 발생한 예외를 인자로 받아들일 수 있으므로, 예외의 종류나 메시지에 따라 다양한 처리를 구현할 수 있습니다.
+
+```kotlin
+class MyError: Throwable("My Error")
+
+val flow = flow {
+    emit(1)
+    emit(2)
+    throw MyError()
+}
+
+suspend fun main() {
+    flow.onEach { println("Got $it") }
+        .catch { println("Caught $it") }
+        .collect { println("Collected $it") }
+}
+
+// Got 1
+// Collected 1
+// Got 2
+// Collected 2
+// Caught MyError
+```
+
+또한 `catch`는 `Flow`의 동작을 중지하지 않고 계속 진행할 수 있게 합니다.  
+예외가 발생한 이후의 `Flow` 단계들은 이미 종료되었을 수 있지만, `catch`내에서 새로운 값을 방출함으로써 `Flow`의 나머지 부분을 계속 실행할 수 있습니다.
+
+```kotlin
+val flow = flow {
+    emit("msg 1")
+    throw MyError()
+}
+
+suspend fun main() {
+    flow.catch { emit("Error") }
+        .collect { println("Collected $it") }
+}
+// Collected msg 1
+// Collected Error
+```
+
+`catch`는 `Flow`의 업스트림에 발생한 예외를 처리하는데 사용됩니다.
+즉, `catch` 이전에 발생한 예외들만 처리할 수 있으며 이후에 발생된 예외는 `catch`에서 처리되지 않습니다.
+
+```kotlin
+suspend fun main() {
+    flowOf("Message 1")
+        .catch { emit("Error") }
+        .onEach { throw Error(it) }
+        .collect { println("Collected $it") }
+}
+// Exception in thread java.lang.Error: Message 1
+```
+
+Android에서는 다음과 같이 사용할 수 있습니다.
+
+```kotlin
+fun updateNews() {
+    scope.launch {
+        newsFlow()
+            .catch { 
+                view.handleError(it)
+                emit(emptyList())
+            }
+            .onStart { showProgress() }
+            .onCompletion { hideProgress() }
+            .collect { view.showNews(it) }
+    }
+}
+```
