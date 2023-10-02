@@ -375,7 +375,7 @@ UI 이벤트와 네트워크 응답 등 비동기적인 콜백을 `Flow`로 표�
 `Flow` 데이터 스트림의 요소들을 순서대로 처리하며 일시 정지될 수 있어 `delay` 시 각 값을 지연하여 출력합니다.
 
 ```kotlin
-flowOf(1,2)
+flowOf(1, 2)
     .onEach { delay(1000) }
     .collect { println(it) }
 ```
@@ -389,8 +389,8 @@ flowOf(1,2)
 
 ```kotlin
 flowOf(1, 3)
-  .onStart { emit(0) }
-  .collect { print(it) }
+    .onStart { emit(0) }
+    .collect { print(it) }
 // 013
 ```
 
@@ -407,9 +407,9 @@ flowOf(1, 3)
 ```kotlin
 scope.launch {
     newsFlow()
-      .onStart { showProgress() }
-      .onCompletion { hideProgress() }
-      .collect { view.showNews(it) }
+        .onStart { showProgress() }
+        .onCompletion { hideProgress() }
+        .collect { view.showNews(it) }
 }
 ```
 
@@ -423,8 +423,8 @@ scope.launch {
 ```kotlin
 suspend fun main() = coroutineScope {
     flow<List<Int>> { delay(1000) }
-      .onEmpty { emit(emptyList()) }
-      .collect { println(it) }
+        .onEmpty { emit(emptyList()) }
+        .collect { println(it) }
 }
 ```
 
@@ -451,8 +451,18 @@ suspend fun main() = coroutineScope {
 
 ```kotlin
 flowOf(1, 2, 3)
-  .onStart { println("Started") }
-  .onEach { throw MyError() }
-  .catch { println("Caught $it") }
-  .collect()
+    .onStart { println("Started") }
+    .onEach { throw MyError() }
+    .catch { println("Caught $it") }
+    .collect()
 ```
+
+---
+
+### flowOn
+
+`Flow`의 연산 및 빌더 내에서 사용되는 일시 중지 함수들은 터미널 연산이 호출되는 위치의 컨텍스트를 기반으로 실행됩니다.
+이떄 터미널 연산 호출함으로 파이프라인을 따라 업스트림 방향으로 컨텍스트를 전파합니다.
+
+여기서 `flowOn`을 사용하면 파이프라인 내에서 특정 부분의 컨텍스트를 변경할 수 있습니다.
+또한 `flowOn`은 업스트림에 있는 함수들에 대해서만 동작함을 주의해야 합니다.

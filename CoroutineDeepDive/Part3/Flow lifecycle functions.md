@@ -267,3 +267,67 @@ suspend fun main() {
 // Started
 // Caught MyError
 ```
+
+-----
+
+## flowOn
+
+`Flow`의 연산들이나 빌더들 내에서 사용되는 일시 중단 함수들은 코루틴 컨텍스트와 비슷한 컨텍스트를 가지고 있습니다.  
+이 컨텍스트는 일반적으로 `Flow`를 수집하는 `collect`가 호출되는 위치의 컨텍스트를 사용합니다.
+
+따라서 `Flow` 파이프라인 내에서 어느 위치에서든지 일시 중단 함수를 호출하더라도, 그 함수는 `collect`가 호출되는 컨텍스트에서 실행됩니다.
+
+```kotlin
+fun usersFlow(): Flow<String> = flow {
+    repeat(2) {
+        val ctx = currentCoroutineContext()
+        val name = ctx[CoroutineName]?.name
+        emit("User$it in $name")
+    }
+}
+
+suspend fun main() {
+    val users = usersFlow()
+    withContext(CoroutineName("Name1")) {
+        users.collect { println(it) }
+    }
+    withContext(CoroutineName("Name2")) {
+        users.collect { println(it) }
+    }
+}
+// User0 in Name1
+// User1 in Name1
+// User0 in Name2
+// User1 in Name2
+```
+
+터미널 연산 호출은 업스트림으로부터 요소를 요청함으로써 컨텍스트를 전파합니다.  
+이때 `flowOn`을 사용하면 `Flow`의 특정 부분만 다른 컨텍스트에서 실행되게 할 수 있습니다.
+
+또한 `flowOn`은 `Flow`의 업스트림에 있는 함수들에 대해서만 동작함을 주의해야 합니다.
+
+```kotlin
+suspend fun present(place: String, message: String) {
+    val ctx = currentCoroutineContext()
+    val name = ctx[CoroutineName]?.name
+    println("[$name] $message on $place")
+}
+
+fun messageFlow(): Flow<String> = flow {
+    present("flow builder", "Message")
+    emit("Message")
+}
+
+suspend fun main() {
+    withContext(CoroutineName("Name1")) {
+        messageFlow()
+            .flowOn(CoroutineName("Name3"))
+            .onEach { present("onEach", it) }
+            .flowOn(CoroutineName("Name2"))
+            .collect { present("collect", it) }
+    }
+}
+// [Name3] Message on flow builder
+// [Name2] Message on onEach
+// [Name1] Message on collect
+```
