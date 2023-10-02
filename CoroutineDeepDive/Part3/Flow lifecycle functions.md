@@ -107,3 +107,21 @@ fun updateNews() {
     }
 }
 ```
+
+---
+
+## onEmpty
+
+`onEmpty`는 `Flow`에서 어떠한 값도 방출되지 않았을 때 실행되는 함수로, `Flow`의 수집 과정 중 어떠한 데이터 전송되지 않고 종료된 경우에만 호출됩니다.
+
+예를 들어 API를 통해 데이터를 가져오는 `Flow`가 있을 떄, API에서 어떠한 결과도 반호나하지 않았을 경우 이를 감지하고 적절한 처리를 하기 위해 `onEmpty`를 사용할 수 있습니다. 
+이는 특정 상황에서 데이터가 없는 것이 예외적인 상황이거나 특별한 처리가 필요한 경우에 유용합니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    flow<List<Int>> { delay(1000) }
+        .onEmpty { println("Empty") }
+        .collect { println(it) }
+}
+// 1s delay 후 Empty 출력
+```

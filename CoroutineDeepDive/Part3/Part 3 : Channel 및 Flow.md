@@ -412,3 +412,18 @@ scope.launch {
       .collect { view.showNews(it) }
 }
 ```
+
+---
+
+### onEmpty
+
+`onEmpty`는 `Flow`에서 어떠한 데이터도 전송되지 않고 종료된 경우에 호출됩니다.  
+이는 특정 상황에서 데이터 없는 것이 예외적이거나, 특별한 처리가 필요한 경우에 유용합니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    flow<List<Int>> { delay(1000) }
+      .onEmpty { emit(emptyList()) }
+      .collect { println(it) }
+}
+```
