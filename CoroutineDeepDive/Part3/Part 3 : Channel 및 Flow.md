@@ -466,3 +466,18 @@ flowOf(1, 2, 3)
 
 여기서 `flowOn`을 사용하면 파이프라인 내에서 특정 부분의 컨텍스트를 변경할 수 있습니다.
 또한 `flowOn`은 업스트림에 있는 함수들에 대해서만 동작함을 주의해야 합니다.
+
+---
+
+### launchIn
+
+`Flow` 데이터 처리를 별도의 코루틴에서 비동기로 실행하고 싶은 경우 `launch` 코루틴 빌더와 `collect`를 사용하는 것이 일반적입니다.
+그러나 이러한 패턴을 더 간결하게 만들기 위해 `launchIn`이 제공됩니다.
+
+`launchIn`은 코루틴의 스코프를 파라미터로 받아 `collect`를 해당 스코프로 실행합니다.
+
+```kotlin
+fun <T> Flow<T>.launchIn(
+    scope: CoroutineScope
+): Job = scope.launch { collect() }
+```

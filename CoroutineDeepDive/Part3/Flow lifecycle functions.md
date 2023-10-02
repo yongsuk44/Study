@@ -331,3 +331,31 @@ suspend fun main() {
 // [Name2] Message on onEach
 // [Name1] Message on collect
 ```
+
+---
+
+## launchIn
+
+`collect`는 `Flow` 데이터를 수집핟고 처리하는 일시 중지 함수입니다.  
+때로는 `Flow`의 데이터 처리를 별도의 코루틴에서 비동기로 실행하고 싶은 경우 `luanch`와 같은 코루틴 빌더와 함께 `collect`를 사용하는 것이 일반적입니다.
+그러나 이러한 패턴을 더 간결하게 만들기 위해 `launchIn`이라는 함수를 제공합니다.
+
+`launchIn`은 `collect`를 별도의 코루틴에서 자동으로 실행해주며, 해당 코루틴의 스코프를 인수로 받아 실행합니다.
+
+```kotlin
+fun <T> Flow<T>.launchIn(
+    scope: CoroutineScope
+): Job = scope.launch { collect() }
+```
+
+```kotlin
+suspend fun main(): Unit = coroutineScope {
+    flowOf("User1", "User2")
+        .onStart { println("Users:") }
+        .onEach { println(it) }
+        .launchIn(this)
+}
+// Users:
+// User1
+// User2
+```
