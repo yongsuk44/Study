@@ -438,3 +438,21 @@ suspend fun main() = coroutineScope {
 `catch` 내에서 `Flow`의 동작을 중지하지 않고 `catch` 블록 내에서 `emit`을 통해 데이터를 전송하여 계속해서 `Flow`를 실행할 수 있습니다.
 
 또한 `Flow`의 업스트림에 대한 예외를 처리하는 데 사용하며, 다운스트림에 대한 예외는 책임지지 않습니다.
+
+---
+
+### Uncaught exceptions
+
+`Flow` 내에서 잡히지 않은 예외가 발생되면 `Flow`는 즉시 중지되며 `collect`는 해당 에외를 다시 던져 호출자에게 알릴 수 있습니다.
+이처럼 코루틴과 같이 `Flow`도 `try-catch`를 사용하여 예외를 잡아내고 적절한 처리를 수행할 수 있습니다.
+
+`catch`는 파이프라인의 업스트림에 한해서 예외를 처리하기 위한것이지, 터미널 연산에서 발생하는 예외에 대해서는 동작하지 않습니다.
+따라서 `collect` 내부에서 데이터를 직접 다루는 것이 아닌, `onEach`를 사용하여 해당 블록에서 작업을 수행하고, `catch`를 통해 파이프라인 모든 예외를 처리하게 할 수 있습니다.
+
+```kotlin
+flowOf(1, 2, 3)
+  .onStart { println("Started") }
+  .onEach { throw MyError() }
+  .catch { println("Caught $it") }
+  .collect()
+```

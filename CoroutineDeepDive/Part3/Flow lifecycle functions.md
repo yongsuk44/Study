@@ -204,3 +204,66 @@ fun updateNews() {
     }
 }
 ```
+
+-----
+
+## Uncaught exceptions
+
+`Flow` 내에서 잡히지 않은 예외가 발생하면 해당 `Flow`는 즉시 중지됩니다.  
+이 때 `collect`는 해당 예외를 다시 던져서 호출자에게 알립니다. 
+
+이러한 예외 처리 방식은 `try-catch`를 사용하여 `Flow`나 코루틴에서 발생하는 예외를 잡아내고 적절한 처리를 수행할 수 있습니다.
+
+```kotlin
+val flow = flow {
+    emit("msg 1")
+    throw MyError()
+}
+
+suspend fun main() {
+    try {
+        flow.collect { println("Collected $it") }
+    } catch(e: MyError) {
+        println("Caught")
+    }
+}
+// Collected msg 1
+// Caught
+```
+
+`catch`는 `Flow`의 파이프라인 내에서 예외를 처리하기 위한것이지, 터미널 연산에서 발생하는 예외에 대해서는 동작하지 않습니다.  
+이는 `catch`가 `Flow` 파이프라인의 마지막에 위치할 수 없기 떄문입니다.
+
+```kotlin
+val flow = flow {
+    emit("msg 1")
+    emit("msg 2")
+}
+
+suspend fun main() {
+    flow.onStart { println("Started") }
+        .catch { println("Caught $it") }
+        .collect { throw MyError() }
+}
+// Started
+// Exceptio in thread ... MyError : My Error
+```
+
+따라서 `collect` 함수 내에서 직접 수행하는 대신, `onEach`를 사용하여 해당 작업을 수행하면 발생하는 에외를 `catch`를 통해 쉽게 처리할 수 있습니다. 
+이러한 접근 방식을 사용하면 `Flow` 파이프라인 내에서 발생하는 모든 예외를 안전하게 처리할 수 있게됩니다.
+
+```kotlin
+val flow = flow {
+    emit("msg 1")
+    emit("msg 2")
+}
+
+suspend fun main() {
+    flow.onStart { println("Started") }
+        .onEach { throw MyError() }
+        .catch { println("Caught $it") }
+        .collect()
+}
+// Started
+// Caught MyError
+```
