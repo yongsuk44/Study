@@ -375,7 +375,7 @@ UI 이벤트와 네트워크 응답 등 비동기적인 콜백을 `Flow`로 표�
 `Flow` 데이터 스트림의 요소들을 순서대로 처리하며 일시 정지될 수 있어 `delay` 시 각 값을 지연하여 출력합니다.
 
 ```kotlin
-flowOf(1,2)
+flowOf(1, 2)
     .onEach { delay(1000) }
     .collect { println(it) }
 ```
@@ -389,8 +389,8 @@ flowOf(1,2)
 
 ```kotlin
 flowOf(1, 3)
-  .onStart { emit(0) }
-  .collect { print(it) }
+    .onStart { emit(0) }
+    .collect { print(it) }
 // 013
 ```
 
@@ -407,8 +407,77 @@ flowOf(1, 3)
 ```kotlin
 scope.launch {
     newsFlow()
-      .onStart { showProgress() }
-      .onCompletion { hideProgress() }
-      .collect { view.showNews(it) }
+        .onStart { showProgress() }
+        .onCompletion { hideProgress() }
+        .collect { view.showNews(it) }
 }
+```
+
+---
+
+### onEmpty
+
+`onEmpty`는 `Flow`에서 어떠한 데이터도 전송되지 않고 종료된 경우에 호출됩니다.  
+이는 특정 상황에서 데이터 없는 것이 예외적이거나, 특별한 처리가 필요한 경우에 유용합니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    flow<List<Int>> { delay(1000) }
+        .onEmpty { emit(emptyList()) }
+        .collect { println(it) }
+}
+```
+
+---
+
+### catch
+
+`Flow`에서 예외가 발생한 경우 해당 예외를 처리하기 위한 함수입니다.  
+`catch` 사용 시 예외를 인자로 받아 예외의 종류나 메시지에 따라 다양한 처리를 구현할 수 있습니다.
+
+`catch` 내에서 `Flow`의 동작을 중지하지 않고 `catch` 블록 내에서 `emit`을 통해 데이터를 전송하여 계속해서 `Flow`를 실행할 수 있습니다.
+
+또한 `Flow`의 업스트림에 대한 예외를 처리하는 데 사용하며, 다운스트림에 대한 예외는 책임지지 않습니다.
+
+---
+
+### Uncaught exceptions
+
+`Flow` 내에서 잡히지 않은 예외가 발생되면 `Flow`는 즉시 중지되며 `collect`는 해당 에외를 다시 던져 호출자에게 알릴 수 있습니다.
+이처럼 코루틴과 같이 `Flow`도 `try-catch`를 사용하여 예외를 잡아내고 적절한 처리를 수행할 수 있습니다.
+
+`catch`는 파이프라인의 업스트림에 한해서 예외를 처리하기 위한것이지, 터미널 연산에서 발생하는 예외에 대해서는 동작하지 않습니다.
+따라서 `collect` 내부에서 데이터를 직접 다루는 것이 아닌, `onEach`를 사용하여 해당 블록에서 작업을 수행하고, `catch`를 통해 파이프라인 모든 예외를 처리하게 할 수 있습니다.
+
+```kotlin
+flowOf(1, 2, 3)
+    .onStart { println("Started") }
+    .onEach { throw MyError() }
+    .catch { println("Caught $it") }
+    .collect()
+```
+
+---
+
+### flowOn
+
+`Flow`의 연산 및 빌더 내에서 사용되는 일시 중지 함수들은 터미널 연산이 호출되는 위치의 컨텍스트를 기반으로 실행됩니다.
+이떄 터미널 연산 호출함으로 파이프라인을 따라 업스트림 방향으로 컨텍스트를 전파합니다.
+
+여기서 `flowOn`을 사용하면 파이프라인 내에서 특정 부분의 컨텍스트를 변경할 수 있습니다.
+또한 `flowOn`은 업스트림에 있는 함수들에 대해서만 동작함을 주의해야 합니다.
+
+---
+
+### launchIn
+
+`Flow` 데이터 처리를 별도의 코루틴에서 비동기로 실행하고 싶은 경우 `launch` 코루틴 빌더와 `collect`를 사용하는 것이 일반적입니다.
+그러나 이러한 패턴을 더 간결하게 만들기 위해 `launchIn`이 제공됩니다.
+
+`launchIn`은 코루틴의 스코프를 파라미터로 받아 `collect`를 해당 스코프로 실행합니다.
+
+```kotlin
+fun <T> Flow<T>.launchIn(
+    scope: CoroutineScope
+): Job = scope.launch { collect() }
 ```
