@@ -341,3 +341,181 @@ class LocationService(
     fun observeLocations(): Flow<List<Location>> = locations
 }
 ```
+
+-----------------------------------------------------------------
+
+## StateFlow
+
+`StateFlow`는 `SharedFlow` 개념의 확장으로, 항상 최신 값을 저장하고 있는 특성을 가지고 있습니다.  
+즉, 항상 현재 상태를 나타내는 하나의 값을 지니고 있다는 것으로 이러한 특징은 상태 관리에 매우 유용합니다.
+
+`StateFlow`의 `value` 프로퍼티를 통해 현재 저장된 값을 직접 읽거나 설정할 수 있습니다.  
+이 `value`에 새로운 값이 설정될 때 자동으로 업데이트 알림을 보내줍니다. 따라서 구독자는 항상 최신 상태의 값을 받을 수 있습니다,
+
+```kotlin
+interface StateFlow<out T>: SharedFlow<T> {
+    val value: T
+}
+
+interface MutableStateFlow<T>: StateFlow<T>, MutableSharedFlow<T> {
+    override var value: T
+    fun compareAndSet(expect: T, update: T): Boolean
+}
+```
+
+`MutableStateFlow`을 사용할 때, 생성자에 초기 값이 필요하며, 이 값은 나중에 다양한 구독자에게 전파될 수 있습니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    val state = MutableStateFlow("A")
+    println(state.value) // A
+    
+    launch { 
+        state.collect { 
+            println("Value Changed to $it") // Value changed to A 
+        } 
+    }
+    
+    delay(1000)
+    state.value = "B" // Value changed to B
+    
+    delay(1000)
+    launch {
+        state.collect {
+            println("and now it is $it") // and now it is B
+        }
+    }
+    
+    delay(1000)
+    state.value = "C" // Value changed to C and now it is C
+}
+```
+
+Android 플랫폼에서 `StateFlow`는 `LiveData`의 대안으로 사용됩니다.  
+`StateFlow`는 코루틴에 대한 완벽한 지원을 갖추고 있으며, 초기 값이 있기에 `nullable`일 필요가 없습니다.
+
+```kotlin
+class LatestNewsViewModel(
+    private val newsRepository: NewsRepository
+): ViewModel() {
+    private val _uiState = MutableStateFlow<NewsState>(LoadingNews)
+    val uiState: StateFlow<NewsState> = _uiState
+    
+    fun init() {
+        scope.launch {
+            _uiState.value = NewsLoaded(newsRepository.getNews())
+        }
+    }
+}
+```
+
+`StateFlow`는 `conflated` 되어 있어, 느린 관찰자는 일부 중간 상태 변경을 받지 못할 수 있습니다.  
+예를 들어 상태가 빠르게 여러 번 변경되는 경우 일부를 놓칠 수 있습니다.
+
+만약 모든 이벤트를 수신하려면 `SharedFlow`를 사용해야 합니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    val state = MutableStateFlow('X')
+    
+    launch {
+        for (c in 'A'..'E') {
+            delay(300)
+            state.value = c
+        }
+    }
+    
+    state.collect {
+        delay(1000)
+        println(it)
+    }
+}
+// X
+// C
+// E
+```
+
+---
+
+### stateIn
+
+`stateIn`은 `Flow`에서 발생하는 이벤트나 값의 스트림을 지속적인 상태로 변환하는 데 사용됩니다.
+이 변환을 통해, 특정 `Flow`의 최신 값에 쉽게 접근하고 관찰할 수 있습니다.
+
+`stateIn` 사용 시 반드시 코루틴 스코프와 함께 호출해야 하며 이 스코프를 통해 `StateFlow`가 생명주기를 가짐을 보장합니다.  
+
+또한 `stateIn`은 2가지 타입을 지원합니다.  
+첫 번째 타입은 일시 중지 타입으로, 초기 값을 지정하지 않으면 첫 번째 값이 계산될 때까지 기다려야 합니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    val flow = flowOf("A", "B", "C")
+        .onEach { delay(1000) }
+        .onEach { println("Produced $it") }
+    
+    val stateFlow: StateFlow<String> = flow.stateIn(this)
+    
+    println("Started")
+    println(stateFlow.value)
+    stateFlow.collect { println("Received $it") }
+}
+// 1s delay
+// Produced A
+// Started
+// A
+// Received A
+// 1s delay
+// Produced B
+// Received B
+// 1s delay
+// Produced C
+// Received C
+```
+
+두 번째 타입은 일시 중지 함수가 아닌, 호출 시 초기값을 제공해야 합니다.  
+또한 두 번째 타입에서의 `stateIn`은 `started` 파라미터를 지정해야 하며, 이 모드는 `shareIn`의 옵션들과 동일합니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    val flow = flowOf("A", "B")
+        .onEach { delay(1000) }
+        .onEach { println("Produced $it") }
+    
+    val stateFlow: StateFlow<String> = flow.stateIn(
+        scope = this,
+        started = SharingStarted.Lazily,
+        initialValue = "Empty"
+    )
+    
+    println(stateFlow.value)
+    delay(2000)
+    stateFlow.collect { println("Received $it") }
+}
+// Empty
+// 2s delay
+// Received Empty
+// 1s delay
+// Produced A
+// Received A
+// 1s delay
+// Produced B
+// Received B
+```
+
+Android 플랫폼에서 DB에 존재하는 Location을 지속적인 상태로 변환하는 예제 입니다.
+
+```kotlin
+class LocationsViewModel(
+    locationService: LocationService
+): ViewModel() {
+    
+    private val location: StateFlow<LocationsDisplay> = 
+        locationService.observeLocations()
+            .map(Location::toLocationDispaly)
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.Lazily,
+                initialValue = LocationsDisplay.Loading
+            )
+}
+```
