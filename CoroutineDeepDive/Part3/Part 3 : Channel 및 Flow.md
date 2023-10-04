@@ -9,6 +9,7 @@
 - [Understanding flow](#part-35--understanding-flow)
 - [Flow building](#part-36--flow-building)
 - [Flow lifecycle functions](#part-37--flow-lifecycle-functions)
+- [SharedFlow and StateFlow](#part-38--sharedflow-and-stateflow)
 
 ## [Part 3.1 : Channel](Channel.md)
 
@@ -481,3 +482,91 @@ fun <T> Flow<T>.launchIn(
     scope: CoroutineScope
 ): Job = scope.launch { collect() }
 ```
+
+--------
+
+## [Part 3.8 : SharedFlow and StateFlow](SharedFlow%20and%20StateFlow.md)
+
+### SharedFlow
+
+`SharedFlow`는 여러 코루틴이 동시에 구독하여 데이터를 수신할 수 있는 `Flow`의 특별한 타입입니다.
+`SharedFlow`의 가변성 타입으로 `MutableSharedFlow`를 지원하여 데이터를 발행까지 할 수 있습니다.
+
+#### MutableSharedFlow
+
+`MutableSharedFlow`는 다음과 같은 특징을 지닙니다.
+
+- 닫는 메커니즘이 없기에 한 번 시작된 수신 대기 상태의 코루틴은 계속 대기하게 됩니다.
+따라서 해당 스코프에 속한 모든 코루틴을 명시적으로 취소해주어야 합니다.
+- `replay` 파라미터를 통해 최근 발행된 값을 버퍼에 저장하여 제공하는 기능이 존재합니다.
+- `resetReplayCache()`를 통해 버퍼에 저장된 캐시들을 초기화할 수 있습니다.
+- `SharedFlow`와 `FlowCollector` 모두의 기능을 결합하여 데이터 발행과 관찰하는 기능을 갖추었습니다.
+
+#### shareIn
+
+`Flow`에 여러 구성 요소나 클래스들이 동일한 변화 혹은 이벤트 스트림을 기대하는 경우에 
+하나의 `Flow` 소스를 여러 구독자에게 공유해야 하는 상황이 생길 수 있습니다.
+
+이 때, `shareIn`을 통해 `Flow`를 `SharedFlow`로 간단하게 변환할 수 있으며, 아래 파라미터를 통해 원하고자 하는 동작으로 제어할 수 있습니다.
+
+- `scope` : 해당 스코프 내에서 데이터를 수집하고, 요소를 전송하는 코루틴을 시작합니다. 이 스코프는 코루틴이 종료될 때까지 유지됩니다.
+- `started` : `SharedFlow`가 어느 시점에 데이터를 수신할 지 결정합니다.
+- `replay` : `SharedFlow`에 의해 저장되고 새로운 구독자에게 전송할 최근 값의 수, 즉 버퍼를 결정합니다.
+
+이 중 `started`에 여러 옵션을 적용할 수 있스며, 이러한 옵션들은 여러 상황에서 유용합니다.
+
+##### SharingStarted.Eagerly 
+
+`SharedFlow`가 즉시 데이터를 수신하며, 별도의 수신자가 구독을 시작하기 전에도 원본 `Flow`에서 데이터를 수신합니다.
+
+단, `replay = 0`일 경우 새로운 수신자가 구독을 시작하기 전 발행된 데이터는 저장되지 않고 손실되지만,
+`replay = 2`인 경우 최근 2개의 데이터를 저장하고 새로운 수신자가 구독을 시작하면 저장된 데이터를 전송합니다.
+
+##### SharingStarted.Lazily
+
+`SharedFlow`가 첫 번째 구독자가 등장하기 전까지 데이터 수신을 지연합니다.
+
+이 옵션은 첫 번째 구독자가 발행된 모든 값을 얻는 것을 보장하며, 그 후에 구독자들은 `replay` 설정 값에 따라 최근 데이터만 받을 수 있습니다.
+또한 모든 구독자가 `SharedFlow`의 구독을 중단하더라도 원본 `Flow`는 계속 활성화되어 데이터를 수신할 수 있습니다.
+
+##### SharingStarted.WhileSubscribed
+
+`SharedFlow`의 동작을 구독자 존재에 따라 동적으로 제어됩니다.
+
+최초 구독자가 등장하면 `SharedFlow`는 원본 `Flow`로 부터 데이터 수신을 시작하며,  
+마지막 구독자가 사라지면 `SharedFlow`는 데이터 수신을 일시 중지합니다.  
+데이터 수신이 중지된 상태에서 구독자가 등장하면, `SharedFlow`는 다시 데이터 수신을 시작합니다.
+
+또한 2가지 파라미터를 제공하여 더욱 세밀하게 조절할 수 있습니다.
+
+- `stopTimeoutMillis` : 마지막 구독자가 사라진 후, 데이터 수신 허용의 시간을 결정하며 기본 값은 `0` 입니다.
+- `replayExpriationMillis` : `SharedFlow`가 중지된 후 버퍼를 유지 시간을 결정하며 기본 값은 `Long.MAX_VLAUE` 입니다.
+
+----
+
+## StateFlow
+
+`StateFlow`는 `SharedFlow` 개념의 확장으로, 항상 최신 값을 저장하고 있는 특성을 지닙니다.  
+
+이는 `StateFlow`의 `value` 프로퍼티를 통해 현재 상태를 읽거나 설정할 수 있습니다.
+또한 `value`의 값이 변경되면 자동으로 업데이트 알림을 보내며, 이 알림을 통해 구독자는 항상 최신 상태의 값을 받을 수 있습니다.
+
+`StateFlow`는 `MutableStateFlow`를 통해 가변성을 지니며, 
+`MutableStateFlow` 사용 시 생성자에 초기 값을 설정해야 합니다.
+이 초기 값은 나중에 다양한 구독자에게 전파됩니다.
+
+Android 플랫폼에서는 `LiveData` 대신 `StateFlow`을 대안으로 사용할 수 있는데 이는
+`StateFlow`가 코루틴을 지원하며 초기 값이 있기에 `LiveData`의 `nullable` 상태를 대안할 수 있기 때문입니다.
+
+단점으로 `StateFlow`는 `conflated`되어 있어 값이 빠르게 여러 번 변경되는 경우 일부를 놓칠 수 있습니다.
+만약 모든 이벤트를 수신하려면 `SharedFlow`를 사용해야 합니다.
+
+#### stateIn
+
+`stateIn`은 `Flow`에서 발생되는 이벤트, 값의 스트림을 지속적인 상태로 변환하는 데 사용됩니다.
+이 변환을 통해 `Flow`의 최신 값에 쉽게 접근하고 관찰할 수 있습니다.
+
+`stateIn`은 코루틴 스코프와 함께 호출될 수 있으며, 2가지 타입으로 나뉘어 집니다.
+
+- 초기 값을 지정하지 않으면 첫 번째 값이 계산될 떄까지 코루틴을 일시 중지 합니다.
+- 초기 값 제공 시 코루틴이 일시 중지 되지 않으며, `started` 파라미터와 함께 사용합니다. (`shareIn`에서 사용되는 `started`와 동일한 옵션과 동일하게 사용됩니다.)
