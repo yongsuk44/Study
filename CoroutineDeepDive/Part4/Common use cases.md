@@ -200,3 +200,64 @@ suspend fun setUserName(name: String) =
         userNameView.text = name
     }
 ```
+
+### Observing with Flow
+
+일시 중지 함수는 단일 값을 생성하거나 가져오는 과정에 적합하지만, 여러 값을 생성하거나 가져오는 경우에는 `Flow`를 사용해야 합니다.
+
+Room 라이브러리에서는 단일 데이터베이스 작업을 수행하기 위해 `suspend`가 붙은 함수를 사용하고,
+테이블의 변경 사항을 관찰하기 위해 `Flow` 타입을 사용합니다.
+
+```kotlin
+@Dao
+interface LocationDao {
+    @Query("DELETE FROM location_table")
+    suspend fun deleteLocations()
+    
+    @Query("SELECT * FROM location_table")
+    fun getAll(): Flow<List<Location>>
+}
+```
+
+API에서 단일 값을 가져올 땐 `suspend` 함수 사용시 최선이지만,  실시간 메시지 수신과 같은 지속적인 데이터 스트림에도 `Flow`를 사용하는 것이 좋습니다.  
+`callbackFlow`나 `channelFlow`는 기존의 콜백 방식의 API나 이벤트를 `Flow` 형태로 변환할 때 사용됩니다.
+
+```kotlin
+fun listenMessages(): Flow<List<Message>> = callbackFlow {
+    socket.on("NewMessage") { args -> trySendBlocking(args.toMessage()) }
+    awaitClose()
+}
+```
+
+`Flow`는 버튼 클릭이나 텍스트 변경과 같은 UI 이벤트를 관찰하는데도 효과적입니다.
+
+```kotlin
+fun EditText.listenTextChange(): Flow<String> = callbackFlow {
+    val watcher = doAfterTextChanged { text -> trySendBlocking(text.toString()) }
+    awaitClose { removeTextChangedListener(watcher) }
+}
+```
+
+또한 다른 콜백 함수들에도 사용될 수 있으며, 콜백이 여러 값을 생성할 수 있을 때 사용될 수 있습니다.
+
+```kotlin
+fun flowFrom(api: CallbackBasedApi): Flow<T> = callbackFlow {
+    
+    val callback = object : Callback {
+        override fun onNextValue(value: T) { 
+            trySendBlocking(value)
+        }
+        
+        override fun onApiError(error: Throwable) {
+            cancel(CancellationException("Api Error", error))
+        }
+        
+        override fun onCompleted() {
+            channel.close()
+        }
+    }
+    
+    api.register(callback)
+    awaitClose { api.unregister(callback) }
+}
+```
