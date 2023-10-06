@@ -28,4 +28,12 @@
 `suspendCancellableCoroutine`을 사용하여 콜백 함수를 일시 중지 함수로 변환할 수 있습니다.
 
 콜백 호출 시 `resume`을 통해 코루틴을 재개할 수 있으며, 콜백이 취소 가능한 경우 `invokeOnCancellation`을 통해 취소 로직을 정의할 수 있습니다.
-또한 콜백 호출의 성공과 예외를 명확하게 해야하는 경우 `resume`과 `resumeWithException`을 사용할 수 있습니다. 
+또한 콜백 호출의 성공과 예외를 명확하게 해야하는 경우 `resume`과 `resumeWithException`을 사용할 수 있습니다.
+
+#### Blocking functions
+
+코루틴 내에서 블로킹 함수 호출 시 스레드가 차단되어 해당 스레드는 다른 코루틴 작업에 사용할 수 없게 됩니다.  
+이처럼 코루틴에서 블로킹 작업이 필요한 경우 `withContext`와 `Dispatchers`를 지정해서 사용할 수 있습니다.
+
+만약 디스패처에서 사용되는 스레드 풀의 크기를 조절하고 싶으면 `limitedParallelism`을 통해 조절할 수 있습니다.  
+이를 통해 스레드의 수를 제한하거나 늘려 특정 작업에 맞는 사용자 정의 디스패처를 만들 수 있습니다. 

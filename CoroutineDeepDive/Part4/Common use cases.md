@@ -105,3 +105,98 @@ suspend fun requestNews(): News {
     }
 }
 ```
+
+### Blocking functions
+
+코루틴의 핵심 원칙 중 하나는 스레드를 효과적으로 활용하여 동시성을 처리하는 것입니다.  
+이 원칙을 지키기 위해 일시 중지 함수는 백그라운드에서 블로킹 없이 실행됩니다.  
+그러나 블로킹 함수를 호출하면 해당 스레드가 차단되어 다른 코루틴 작업에 사용할 수 없게 됩니다.
+
+특히, Android의 `Dispatcher.Main`에서 스레드를 차단하면 ANR 상태에 빠질 수 있습니다.  
+또한 `Dispatchers.Default`에서 스레드를 차단하면 프로세서를 효율적으로 사용하지 못하게 됩니다.  
+이 때문에 디스패처를 먼저 지정하지 않고 스레드 블로킹을 하면 안됩니다.
+
+따라서 블로킹 호출이 필요할 때는 `withContext`를 사용하여 디스패처를 지정해야 합니다.  
+대부분의 경우 저장소를 구현할 때 `Dispatchers.IO`를 사용합니다.
+
+```kotlin
+class DiscSaveRepository(
+    private val discReader: DiscReader
+): SaveRepository {
+    override suspend fun loadSave(name: String): SaveData =
+        withContext(Dispatchers.IO) {
+            discReader.read("save/$name")
+        }
+}
+```
+
+`Dispatchers.IO`는 I/O 작업에 최적화된 디스패처로 스레드 풀 크기가 기본적으로 64개로 제한되어 있습니다.  
+이는 대부분의 작업에 충분하지만, 블로킹 호출을 동시에 여러번 발생하는 높은 부하 시나리오에서는 제한될 수 있습니다.
+
+이 문제를 해결하기 위해 `limitedParallelism`을 사용하면 특정 수의 최대 스레드를 사용하여 사용자 정의 디스패처를 생성할 수 있습니다.  
+이를 통해 주어진 상황에 맞게 디스패처의 스레드 풀 크기를 조정할 수 있습니다.
+
+```kotlin
+class LibraryGoogleAccountVerifier: GoogleAccountVerifier {
+    private val dispatcher = Dispatchers.IO.limitParallelism(100)
+    
+    private var verifier = 
+        GoogleIdTokenVerifier.Builder(..., ...)
+            .setAudience(...)
+            .build()
+    
+    override suspend fun getUserData(googleToken: String): GoogleUserData? =
+        withContext(dispatcher) {
+            verifier.verify(googleToken)
+                ?.payload
+                ?.let {
+                    GoogleUserData(
+                        email = it.email,
+                        name = it.getString("given_name"),
+                        surname = it.getString("family_name"),
+                        pictureUrl = it.getString("picture")
+                    )
+                }
+        }
+}
+```
+
+하지만 `Dispatchers.IO`에 너무 많은 코루틴이 동시에 할당되면, 모든 스레드가 사용될 위험이 있습니다.   
+이 때문에 특정 작업에 많은 스레드를 사용할 것으로 예상되면, `Dispatchers.IO`와는 별개로 제한이 잇는 디스패처를 사용하여 스레드 사용을 관리하는 것이 좋습니다.
+
+라이브러리를 만들 때 다양한 사용자와 상황에서 어떻게 활용될 지 예측하기가 어렵습니다.  
+따라서 최적의 성능과 자원 사용을 보장하기 위해 독립적인 스레드 풀을 가진 디스패처를 사용하는 것이 좋습니다.  
+하지만 이 디스패처의 스레드 수를 결정하는 것은 중요한 결정이므로, 신중하게 고려해야 합니다.
+
+스레드 수의 제한이 너무 작은 경우 스레드가 부족하여 여러 코루틴이 동시에 실행되지 못하고 대기 상태에 머물 수 있어 성능 저하를 초래할 수 있고,
+스레드 수의 제한이 너무 큰 경우 활성 스레드의 수가 많아지게 되어, 메모리와 CPU 자원이 증가함에 따라 시스템 전반적인 영향을 줄 수 있습니다.
+
+```kotlin
+class CertificateGenerator {
+    private val dispatcher = Dispatchers.Default.limitParallelism(4)
+    
+    suspend fun generateCertificate(): UserData =
+        withContext(dispatcher) {
+            Runtime.getRuntime().exec("generateCertificate "+ data.toArgs())
+        }
+}
+```
+
+이에 코루틴은 다양한 디스패처를 제공하여 특정 타입의 작업을 적절한 스레드에서 실행할 수 있도록 지원합니다.
+
+```kotlin
+suspend fun calculateModel() = 
+    withContext(Dispatchers.Default) {
+        model.fit(
+            dataset = newTrain,
+            epochs = 10,
+            verbose = false,
+            batchSize = 128
+        )
+    }
+
+suspend fun setUserName(name: String) = 
+    withContext(Dispatchers.Main.immediate) {
+        userNameView.text = name
+    }
+```
