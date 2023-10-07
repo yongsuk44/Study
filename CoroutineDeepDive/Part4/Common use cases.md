@@ -407,3 +407,74 @@ suspend fun notifyAnalytics(actions: List<UserAction>) = supervisorScope {
 suspend fun getUserOrNull(): User? = 
     withTimeoutOrNull(5000) { fetchUser() }
 ```
+
+### Flow transformations
+
+`Flow` 처리 시 주로 사용하는 함수는 `map`, `filter`, `onEach` 등의 기본적힌 함수입니다.  
+`map`은 각 요소를 변환, `filter`는 조건에 맞는 요소만 선택, `onEach`는 각 요소에 작업을 수행하는 등의 역할을 합니다.
+
+특별한 상황에서 유용한 함수로는 `scan`과 `flatMapMerge`가 있습니다.  
+`scan`은 누적 결과를 생성하고, `flatMapMerge`는 병렬 처리를 가능하게 합니다.
+
+```kotlin
+class UserStateProvider(
+    private val userRepository: UserRepository
+) {
+    fun userStateFlow(): Flow<User> = userRepository
+        .observeUserChanges()
+        .filter { it.isSignificantChange }
+        .scan(userRepository.currentUser()) { user, update -> 
+            user.with(update)
+        }
+        .map { it.toDomainUser() }
+}
+```
+
+두 개의 `Flow`를 합치고 싶을 때 `merge`, `zip`, `combine`과 같은 함수를 사용할 수 있습니다. 
+
+`merge`는 각 `Flow`에서 발생하는 아이템을 순서에 상관없이 하나의 `Flow`로 합칩니다.  
+`zip`은 두 `Flow`의 아이템을 쌍으로 묶어서 하나의 아이템으로 만듭니다.  
+`combine`은 각 `Flow`의 최신 아이템을 사용하여 새로운 아이템을 생성합니다. 
+
+```kotlin
+class ArticlesProvider(
+    private val blog: ArticleRepository,
+    private val news: ArticleRepository
+) {
+    fun observeArticles(): Flow<Article> = merge(
+        blog.observeArticles().map { it.toArticle() },
+        news.observeArticles().map { it.toArticle() }
+    )
+}
+
+class NotificationStatusProvider(
+    private val userStateProvider: UserStateProvider,
+    private val notificationsProvider: NotificationsProvider,
+    private val statusFactory: NotificationStatusFactory
+) {
+    fun notificationStatusFlow(): NotificationStatus =
+        notificationsProvider.observeNotifications()
+            .filter { it.status == Notification.UNSEEN }
+            .combine(userStateProvider.userStateFlow()) { notifications, user ->
+                statusFactory.produce(notifications, user)
+            }
+}
+```
+
+하나의 `Flow`를 여러 코루틴에서 관찰하려면 `SharedFlow`를 사용하는 것이 좋습니다.  
+이를 위해 `shareIn`을 사용하여 특정 스코프 내에서 `Flow`를 공유하게 해줍니다.
+
+```kotlin
+class LocationService(
+    locationDao: LocationDao,
+    scope: CoroutineScope
+) {
+    private val locations = locationDao.observeLocations()
+        .shareIn(
+            scope = scope,
+            started = SharingStarted.WhileSubscribed(),
+        )
+    
+    fun observeLocations(): Flow<List<Location>> = locations
+}
+```
