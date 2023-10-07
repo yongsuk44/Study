@@ -261,3 +261,35 @@ fun flowFrom(api: CallbackBasedApi): Flow<T> = callbackFlow {
     awaitClose { api.unregister(callback) }
 }
 ```
+
+--------------------------------------------------------------------------------------------------
+
+## Domain layer
+
+도메인 계층은 비지니스 로직이 구현되는 곳이므로, 여기에서 UseCase, Services 등을 정의합니다.    
+또한 도메인 계층에서는 코루틴 스코프 객체에 직접 작업을 수행하거나, 일시 중단 함수를 외부에 노출하는 것을 피해야 합니다.  
+이러한 작업은 프레젠테이션 계층에서 수행되어야 합니다.
+
+실제로 도메인 계층에서 비지니스 로직을 구현할 때 여러 작업을 연속적으로 수행해야 할 경우가 많기 때문에 
+다른 suspend 함수를 호출하는 suspend 함수를 주로 가지고 있습니다.
+
+```kotlin
+class NetworkUserRepository(
+    private val api: UserApi
+): UserRepository {
+    override suspend fun getUser(): User = api.getUser().toDomainUser()
+}
+
+class NetworkNewsService(
+    private val newsRepo: NewsRepository,
+    private val settings: SettingsRepository
+) {
+    suspend fun getNews(): List<News> = 
+        newsRepo.getNews().map { it.toDomainNews() }
+    
+    suspend fun getNewsSummary(): List<News> {
+        val type = settings.getNewsSummaryType()
+        return newsRepo.getNewsSummary(type)
+    }
+}
+```
