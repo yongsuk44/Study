@@ -293,3 +293,117 @@ class NetworkNewsService(
     }
 }
 ```
+
+### Concurrent calls
+
+동시에 여러 프로세스를 실행하려면, `coroutineScope`를 사용하여 함수 본문을 감싸고 해당 스코프 내에서 시작된 모든 코루틴이 완료될 떄까지 기다릴 수 있습니다.
+병렬로 실행되어야 하는 각 프로세스는 `async` 빌더를 사용하여 비동기 작업을 시작할 수 있습니다.
+
+```kotlin
+suspend fun produceCurrentUser(): User = coroutineScope {
+    val profile = async { repo.getProfile() }
+    val friends = async { repo.getFriends() }
+    User(
+        profile = profile.await(),
+        friends = friends.await()
+    )
+}
+```
+
+병렬 처리 시 주의할 점으로 기존에 있던 취소, 예외 처리, 컨텍스트 전달 등의 메커니즘은 그대로 유지되어야 합니다.  
+예를 들어 `produceCurrentUserSeq`는 순차적으로 동작하는 반면, `produceCurrentUserPar`는 병렬로 동작합니다.
+
+이외의 모든 기능은 동일하게 작동해야 합니다.
+
+```kotlin
+suspend fun produceCurrentUserSeq(): User {
+    val profile = repo.getProfile()
+    val friends = repo.getFriends()
+    return User(profile = profile, friends = friends)
+}
+
+suspend fun produceCurrentUserPar(): User = coroutineScope {
+    val profile = async { repo.getProfile() }
+    val friends = async { repo.getFriends() }
+    User(profile = profile.await(), friends = friends.await())
+}
+```
+
+비동기 작업을 2개 시작할 때 선택할 수 있는 2가지 방법이 있습니다.  
+첫 번째는 각 작업에 `async`를 사용하는 것이고, 두 번째는 하나의 작업만 `async`를 사용하고 다른 하나를 같은 코루틴에서 실행하는것 입니다.
+
+첫 번째 방법은 코드의 가독성을 높이는 장점을 지니고, 두 번째 방법은 효율성이 높다는 장점이 있습니다.  
+어떤 방법을 선택할지는 개발자나 프로젝트의 특성에 따라 다를 수 있으므로 둘 중 하나 선택하면 됩니다.
+
+```kotlin
+suspend fun produceCurrentUserPar(): User = coroutineScope {
+    val profile = async { repo.getProfile() }
+    val friends = repo.getFriends() 
+    User(profile = profile.await(), friends = friends)
+}
+
+suspend fun getArticlesForUser(
+    userToken: String
+): List<ArticleJson> = coroutineScope {
+    val articles = async { articleRepository.getArticles() }
+    val user = userService.getUser(userToken)
+    
+    articles.await()
+        .filter { canSeeOnList(user, it) }
+        .map { toArticleJosn(it) }
+}
+```
+
+`async`를 컬렉션 함수와 함께 사용하여 리스트의 각 요소에 대한 비동기 프로세스를 시작할 수 있습니다.  
+이러한 경우 `awaitAll()`을 사용하여 모든 비동기 작업의 완료를 기다리는 것이 좋습니다.
+
+`awaitAll`은 여러 `Deferred` 객체의 완료를 동시에 기다리고, 모든 작업이 완료되면 그 결과를 한 번에 가져옵니다.
+
+```kotlin
+suspend fun getOffers(
+    categories: List<Category>
+): List<Offer> = coroutineScope { 
+    categories
+        .map { async { api.requestOffers(it) } }
+        .awaitAll()
+        .flatten()
+}
+```
+
+만약 동시 호출 수를 제한하려면 리스트를 `Flow`로 변환하고 `flatMapMerge`를 사용하는 방법이 있습니다.  
+`flatMapMerge`는 `concurrency` 파라미터를 통해 동시 호출의 수를 제한할 수 있습니다.
+
+```kotlin
+fun getOffers(
+    categories: List<Category>
+): Flow<List<Offer>> = 
+    categories.asFlow()
+        .flatMapMerge(concurrency = 20) {
+            suspend { api.requestOffers(it) }.asFlow()
+            // or flow { emit(api.requestOffers(it)) }
+        }
+        
+```
+
+`coroutineScope`를 사용할 때는 자식 코루틴에서 발생한 예외가 전체 코루틴을 중단시키고 다른 자식 코루틴들을 취소시키는 점을 주의해야 합니다.  
+이는 모든 작업이 독립적으로 수행되어야 하는 경우에 문제가 될 수 있기에 이런 상황에서 `supervisorScope`를 사용하면 됩니다.
+
+`supervisorScope`는 자식 코루틴에서 발생하는 예외를 무시하므로, 독립적인 병렬 작업을 안전하게 수행할 수 있습니다.
+
+```kotlin
+suspend fun notifyAnalytics(actions: List<UserAction>) = supervisorScope {
+    actions.forEach { action -> 
+        launch { sendNotifyAnalytics(action) } 
+    }
+}
+```
+
+작업의 실행 시간을 제한하고 싶을 때, `withTimeout` 또는 `withTimeoutOrNull` 함수를 사용할 수 있습니다.  
+두 함수 모두 지정된 시간을 초과하면 작업을 자동으로 취소합니다.
+
+`withTimeout`은 시간 초과시 예외를 발생시키고 `withTimeoutOrNull`은 `null`을 반환합니다.
+
+```kotlin
+suspend fun getUserOrNull(): User? = 
+    withTimeoutOrNull(5000) { fetchUser() }
+```
