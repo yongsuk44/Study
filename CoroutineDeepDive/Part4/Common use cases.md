@@ -478,3 +478,61 @@ class LocationService(
     fun observeLocations(): Flow<List<Location>> = locations
 }
 ```
+
+--------------------------------------------------------------------------------------------------
+
+## Presentation / UI layer
+
+코루틴은 주로 Presentation 계층에서 실행됩니다.
+
+안드로이드에서는 WorkManager를 통해 백그라운드 작업을 쉽게 예약하고 관리할 수 있습니다.  
+이떄 코루틴은 `CoroutineWorker`를 제공하며 이 클래스의 `doWork`를 구현하면 해당 작업이 어떤일을 해야 하는지 지정할 수 있습니다.
+
+여기서 `doWork`는 suspend 함수로 라이브러리 자체가 이 함수를 코루틴에서 자동으로 실행해주기 때문에, 별도로 코루틴을 시작할 필요가 없습니다.
+
+```kotlin
+class CoroutineDownloadWorker(
+    context: Context,
+    params: WorkerParameters
+): CoroutineWork(context, params) {
+    
+    override suspend fun doWork(): Result {
+        val data = downloadSyncronously()
+        saveData(data)
+        return Result.success()
+    }
+}
+```
+
+그러나 대부분의 상황에서 라이브러리나 프레임워크가 코루틴을 자동으로 시작하지 않습니다.  
+이런 경우 `scope` 객체에 `launch` 함수를 사용하여 코루틴을 시작합니다. 
+
+안드로이드에서는 `lifecycle-viewmodel-ktx` 라이브러리를 통해 `viewModelScope`나 `lifecycleScope`를 대부분의 경우에 사용할 수 있습니다.  
+이를 통해 코루틴의 생명주기를 안드로이드의 생명주기와 쉽게 연동할 수 있어 비동기 작업을 더욱 효율적으로 관리할 수 있습니다.
+
+```kotlin
+class UserProfileViewModel(
+    private val loadProfileUseCase: LoadProfileUseCase,
+    private val updateProfileUseCase: UpdateProfileUseCase
+) {
+    private val userProfile = MutableSharedFlow<UserProfileData>()
+    
+    val userName: Flow<String> = userProfile.map { it.name }
+    val userSurName: Flow<String> = userProfile.map { it.surname }
+    
+    fun onCreate() {
+        viewModelScope.launch {
+            val userProfileData = loadProfileUseCase.execute()
+            userProfile.value = userProfileData
+        }
+    }
+    
+    fun onNameChange(newName: String) { 
+        viewModelScope.launch {
+            val newProfileData = userProfile.value.copy(name = newName)
+            userProfile.value = newProfileData
+            updateProfileUseCase.execute(newProfileData)
+        }
+    }
+}
+```
