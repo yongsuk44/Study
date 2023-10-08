@@ -92,3 +92,10 @@ class DiscSaveRepository(
         withContext(dispatcher) { discReader.read("save/$name") }
 }
 ```
+
+----
+
+## Use Dispatchers.Main.immediate instead of Dispatchers.Main
+
+`Dispatchers.Main.immediate`는 `Dispatchers.Main`의 최적화 버전으로 필요하지 않는 경우 코루틴의 재배치를 피할 수 있습니다.  
+이로 인해 성능이 향상되고, 일반적으로 UI 업데이트와 같은 작업에서 사용됩니다.
