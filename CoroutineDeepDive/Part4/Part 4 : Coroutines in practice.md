@@ -84,3 +84,14 @@
 이런 경우 `scope` 객체에 코루틴 빌더를 사용하여 코루틴을 시작합니다.
 
 안드로이드에서는 `viewModelScope`, `lifecycleScope`를 통해 안드로이드의 생명주기와 쉽게 연동하여 비동기 작업을 더욱 효율적으로 관리할 수 있습니다.
+
+#### Creating custom scope
+
+코루틴 스코프를 직접 만들어 사용하면 코루틴의 생명주기를 더욱 세밀하게 관리할 수 있습니다.  
+또한 직접 만들어 사용하면 디스패처나 예외 핸들러를 설정할 수 있어 더욱 유연하게 사용할 수 있습니다.
+
+```kotlin
+private val exceptionHandler = CoroutineExceptionHandler { _, e -> Log.e(e) }
+private val ctx = Dispatchers.Main + exceptionHandler + SupervisorJob()
+val scope = CoroutineScope(ctx)
+```

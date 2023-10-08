@@ -536,3 +536,60 @@ class UserProfileViewModel(
     }
 }
 ```
+
+### Creating custom scope
+
+라이브러리나 클래스가 코루틴을 자동으로 시작하지 않는 상황에서는 개발자가 직접 `scope`를 생성하여 코루틴을 시작할 수 있습니다.  
+이 방법은 라이브러리나 프레임워크의 지원이 없는 상황에서 유용하며 이를 통해 코루틴의 생명주기를 더욱 세밀하게 관리할 수 있습니다.
+
+```kotlin
+class NotificationSender(
+    private val client: NotificationClient,
+    private val notificationScope: CoroutineScope
+) {
+    fun sendNotifications(notifications: List<Notification>) {
+        notifications.forEach { notification ->
+            notificationScope.launch { 
+                client.send(notification)
+            }
+        }
+    }
+}
+
+class LatestNewsViewModel(
+    private val newsRepo: NewsRepository
+): BaseViewModel() {
+    private val _uiState = MutableStateFlow<NewsState>(LoadingNews)
+    val uiState: StateFlow<NewsState> = _uiState
+    
+    fun create() {
+        scope.alunch {
+            _uiState.value = NewsLoaded(newsRepo.getNews())
+        }
+    }
+}
+```
+
+`CoroutineScope` 정의 시 디스패처나 예외 핸들러를 설정할 수 있습니다.  
+이러한 스코프는 안드로이드에서는 특정 조건 아래 자식 코루틴을 취소할 수 있습니다.
+
+예를 들어 ViewModel은 자신이 클리어될 때 스코프를 취소하고, WorkManager는 관련 작업이 취소될 때 스코프를 취소합니다.  
+이렇게 해서 코루틴의 생명주기와 예외 상황을 효과적으로 관리할 수 있습니다.
+
+```kotlin
+abstract class BaseViewModel: ViewModel() {
+    private val _failure = MutableLiveData<Throwable>()
+    val failure: LiveData<Throwable> = _failure
+    
+    private val exceptionHandler = CoroutineExceptionHandler { _, exception ->
+        _failure.value = exception
+    }
+    
+    private val ctx = Dispatchers.Main + exceptionHandler + SupervisorJob()
+    protected val scope = CoroutineScope(ctx)
+    
+    override fun onCleared() {
+        ctx.cancelChildren()
+    }
+}
+```
