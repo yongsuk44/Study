@@ -3,6 +3,7 @@
 ## 목차
 
 - [Common use cases](#part-41--common-use-cases)
+- [Launching coroutine vs suspending functions](#part-42--launching-coroutine-vs-suspending-functions)
 
 ---
 
@@ -95,3 +96,16 @@ private val exceptionHandler = CoroutineExceptionHandler { _, e -> Log.e(e) }
 private val ctx = Dispatchers.Main + exceptionHandler + SupervisorJob()
 val scope = CoroutineScope(ctx)
 ```
+
+------------------------------------------------------------------
+
+## [Part 4.2 : Launching coroutine vs suspending functions](Launching%20coroutine%20vs%20suspending%20functions.md)
+
+코루틴에서 다수의 작업을 동시에 처리하는 방법에는 일반 함수와 일시 중지 함수 2가지 방법이 있습니다.
+
+일반 함수는 코루틴 시작 시 외부 스코프 객체가 필요하며, 코루틴의 완료를 기다리지 않습니다.  
+또한 코루틴의 예외는 외부 스코프에서 처리되며, 대부분 전송되고 무시됩니다.  
+이렇게 시작된 코루틴은 외부 스코프 객체로부터 컨텔스트를 상속받기에 코루틴을 취소하려면 외부 스코프 자체를 취소해야 합니다.
+
+일시 중지 함수는 모든 코루틴이 완료될 때까지 종료되지 않습니다.  
+또한 부모 코루틴을 취소하지 않고도 예외를 던지거나 무시할 수 있어 독립적이며, 예외 처리에 있어서도 더욱 유연합니다.
