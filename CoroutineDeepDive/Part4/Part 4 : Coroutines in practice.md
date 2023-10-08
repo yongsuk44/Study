@@ -118,3 +118,4 @@ val scope = CoroutineScope(ctx)
 - 스코프가 필요한 경우 `async { ... }.await()` 대신 `coroutineScope { ... }`를 사용
 - 컨텍스트 변경이 필요한 경우 `withContext`를 사용
 - 여러 개의 `async` 작업 시 가독성을 위해 모든 작업에 `async`를 적용
+- `withContext(EmptyCoroutineContext)` 대신 `coroutineScope`를 사용

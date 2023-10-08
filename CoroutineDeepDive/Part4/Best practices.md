@@ -36,3 +36,12 @@ fun showNews() {
     }
 }
 ```
+
+----
+
+## Use coroutineScope instead of withContext(EmptyCoroutineContext)
+
+코루틴 사용 시 `withContext`와 `coroutineScope` 사이에서 선택해야 할 수 잇습니다.
+
+`withContext`는 컨텍스트를 오버라이드 할 수 있지만, 컨텍스트 변경이 필요하지 않는 경우 `withContext(EmptyCoroutineContext)`를 사용하는 경우에는
+`coroutineScope`를 사용하는 것이 코드가 더 명확해지고 의미가 분명해집니다.
