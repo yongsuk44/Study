@@ -3,6 +3,8 @@
 ## 목차
 
 - [Common use cases](#part-41--common-use-cases)
+- [Launching coroutine vs suspending functions](#part-42--launching-coroutine-vs-suspending-functions)
+- [Best practices](#part-43--best-practices)
 
 ---
 
@@ -70,3 +72,55 @@
 이 때 `supervisorScope`를 사용하면 여러 코루틴 작업을 독립적으로 수행되어 하나의 코루틴이 취소되어도 전체 코루틴에 영향을 주지 않습니다.
 
 `withTimeout` 또는 `withTimeoutOrNull`을 사용하면 작업 실행 시간을 제한하고 지정된 시간을 초과하면 작업을 자동으로 취소합니다.
+
+---
+
+### Presentation / UI Layer
+
+코루틴은 주로 이 계층에서 실행됩니다.
+
+안드로이드에서는 WorkManager를 통해 백그라운드 작업을 쉽게 관리하고 예약할 수 있습니다.
+이떄 코루틴은 `CoroutineWorker`를 제공하여 자동으로 코루틴에서 실행하기에 별도로 코루틴을 시작할 필요가 없습니다.
+
+이처럼 특정 라이브러리는 코루틴을 자동으로 시작해주지만, 대부분의 경우에는 그렇지 않습니다.  
+이런 경우 `scope` 객체에 코루틴 빌더를 사용하여 코루틴을 시작합니다.
+
+안드로이드에서는 `viewModelScope`, `lifecycleScope`를 통해 안드로이드의 생명주기와 쉽게 연동하여 비동기 작업을 더욱 효율적으로 관리할 수 있습니다.
+
+#### Creating custom scope
+
+코루틴 스코프를 직접 만들어 사용하면 코루틴의 생명주기를 더욱 세밀하게 관리할 수 있습니다.  
+또한 직접 만들어 사용하면 디스패처나 예외 핸들러를 설정할 수 있어 더욱 유연하게 사용할 수 있습니다.
+
+```kotlin
+private val exceptionHandler = CoroutineExceptionHandler { _, e -> Log.e(e) }
+private val ctx = Dispatchers.Main + exceptionHandler + SupervisorJob()
+val scope = CoroutineScope(ctx)
+```
+
+------------------------------------------------------------------
+
+## [Part 4.2 : Launching coroutine vs suspending functions](Launching%20coroutine%20vs%20suspending%20functions.md)
+
+코루틴에서 다수의 작업을 동시에 처리하는 방법에는 일반 함수와 일시 중지 함수 2가지 방법이 있습니다.
+
+일반 함수는 코루틴 시작 시 외부 스코프 객체가 필요하며, 코루틴의 완료를 기다리지 않습니다.  
+또한 코루틴의 예외는 외부 스코프에서 처리되며, 대부분 전송되고 무시됩니다.  
+이렇게 시작된 코루틴은 외부 스코프 객체로부터 컨텔스트를 상속받기에 코루틴을 취소하려면 외부 스코프 자체를 취소해야 합니다.
+
+일시 중지 함수는 모든 코루틴이 완료될 때까지 종료되지 않습니다.  
+또한 부모 코루틴을 취소하지 않고도 예외를 던지거나 무시할 수 있어 독립적이며, 예외 처리에 있어서도 더욱 유연합니다.
+
+------------------------------------------------------------------
+
+## [Part 4.3 : Best practices](Best%20practices.md)
+
+- 스코프가 필요한 경우 `async { ... }.await()` 대신 `coroutineScope { ... }`를 사용
+- 컨텍스트 변경이 필요한 경우 `withContext`를 사용
+- 여러 개의 `async` 작업 시 가독성을 위해 모든 작업에 `async`를 적용
+- `withContext(EmptyCoroutineContext)` 대신 `coroutineScope`를 사용
+- 여러 비동기 작업 시 `awaitAll` 사용 시 작업에 예외가 발생하면 불필요한 대기 시간을 줄임
+- 일시 중지 함수 호출 시 `Disaptchers.Main`을 자주 사용하기에 어떤 스레드에서든 안전하게 호출되어야 함
+- 컨텍스트 변경 시 `withContext`를 사용하며, 스레드 블로킹이 예상되는 경우 `IO`, CPU 집약 작업의 경우 `Default`, `Flow`의 경우 `flowOn` 사용
+- `Dispatchers.Main.immediate`는 `Dispatchers.Main`의 최적화 버전으로, 코루틴 재배치가 필요하지 않는 경우 회피
+- CPU 집약적인 작업을 하는 경우에 `yield()` 사용 시 하나의 코루틴이 시스템 리소스 독점을 방지할 수 있음 

@@ -478,3 +478,118 @@ class LocationService(
     fun observeLocations(): Flow<List<Location>> = locations
 }
 ```
+
+--------------------------------------------------------------------------------------------------
+
+## Presentation / UI layer
+
+코루틴은 주로 Presentation 계층에서 실행됩니다.
+
+안드로이드에서는 WorkManager를 통해 백그라운드 작업을 쉽게 예약하고 관리할 수 있습니다.  
+이떄 코루틴은 `CoroutineWorker`를 제공하며 이 클래스의 `doWork`를 구현하면 해당 작업이 어떤일을 해야 하는지 지정할 수 있습니다.
+
+여기서 `doWork`는 suspend 함수로 라이브러리 자체가 이 함수를 코루틴에서 자동으로 실행해주기 때문에, 별도로 코루틴을 시작할 필요가 없습니다.
+
+```kotlin
+class CoroutineDownloadWorker(
+    context: Context,
+    params: WorkerParameters
+): CoroutineWork(context, params) {
+    
+    override suspend fun doWork(): Result {
+        val data = downloadSyncronously()
+        saveData(data)
+        return Result.success()
+    }
+}
+```
+
+그러나 대부분의 상황에서 라이브러리나 프레임워크가 코루틴을 자동으로 시작하지 않습니다.  
+이런 경우 `scope` 객체에 `launch` 함수를 사용하여 코루틴을 시작합니다. 
+
+안드로이드에서는 `lifecycle-viewmodel-ktx` 라이브러리를 통해 `viewModelScope`나 `lifecycleScope`를 대부분의 경우에 사용할 수 있습니다.  
+이를 통해 코루틴의 생명주기를 안드로이드의 생명주기와 쉽게 연동할 수 있어 비동기 작업을 더욱 효율적으로 관리할 수 있습니다.
+
+```kotlin
+class UserProfileViewModel(
+    private val loadProfileUseCase: LoadProfileUseCase,
+    private val updateProfileUseCase: UpdateProfileUseCase
+) {
+    private val userProfile = MutableSharedFlow<UserProfileData>()
+    
+    val userName: Flow<String> = userProfile.map { it.name }
+    val userSurName: Flow<String> = userProfile.map { it.surname }
+    
+    fun onCreate() {
+        viewModelScope.launch {
+            val userProfileData = loadProfileUseCase.execute()
+            userProfile.value = userProfileData
+        }
+    }
+    
+    fun onNameChange(newName: String) { 
+        viewModelScope.launch {
+            val newProfileData = userProfile.value.copy(name = newName)
+            userProfile.value = newProfileData
+            updateProfileUseCase.execute(newProfileData)
+        }
+    }
+}
+```
+
+### Creating custom scope
+
+라이브러리나 클래스가 코루틴을 자동으로 시작하지 않는 상황에서는 개발자가 직접 `scope`를 생성하여 코루틴을 시작할 수 있습니다.  
+이 방법은 라이브러리나 프레임워크의 지원이 없는 상황에서 유용하며 이를 통해 코루틴의 생명주기를 더욱 세밀하게 관리할 수 있습니다.
+
+```kotlin
+class NotificationSender(
+    private val client: NotificationClient,
+    private val notificationScope: CoroutineScope
+) {
+    fun sendNotifications(notifications: List<Notification>) {
+        notifications.forEach { notification ->
+            notificationScope.launch { 
+                client.send(notification)
+            }
+        }
+    }
+}
+
+class LatestNewsViewModel(
+    private val newsRepo: NewsRepository
+): BaseViewModel() {
+    private val _uiState = MutableStateFlow<NewsState>(LoadingNews)
+    val uiState: StateFlow<NewsState> = _uiState
+    
+    fun create() {
+        scope.alunch {
+            _uiState.value = NewsLoaded(newsRepo.getNews())
+        }
+    }
+}
+```
+
+`CoroutineScope` 정의 시 디스패처나 예외 핸들러를 설정할 수 있습니다.  
+이러한 스코프는 안드로이드에서는 특정 조건 아래 자식 코루틴을 취소할 수 있습니다.
+
+예를 들어 ViewModel은 자신이 클리어될 때 스코프를 취소하고, WorkManager는 관련 작업이 취소될 때 스코프를 취소합니다.  
+이렇게 해서 코루틴의 생명주기와 예외 상황을 효과적으로 관리할 수 있습니다.
+
+```kotlin
+abstract class BaseViewModel: ViewModel() {
+    private val _failure = MutableLiveData<Throwable>()
+    val failure: LiveData<Throwable> = _failure
+    
+    private val exceptionHandler = CoroutineExceptionHandler { _, exception ->
+        _failure.value = exception
+    }
+    
+    private val ctx = Dispatchers.Main + exceptionHandler + SupervisorJob()
+    protected val scope = CoroutineScope(ctx)
+    
+    override fun onCleared() {
+        ctx.cancelChildren()
+    }
+}
+```
