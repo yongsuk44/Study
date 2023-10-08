@@ -99,3 +99,24 @@ class DiscSaveRepository(
 
 `Dispatchers.Main.immediate`는 `Dispatchers.Main`의 최적화 버전으로 필요하지 않는 경우 코루틴의 재배치를 피할 수 있습니다.  
 이로 인해 성능이 향상되고, 일반적으로 UI 업데이트와 같은 작업에서 사용됩니다.
+
+----
+
+## Remember to use yield in heavy functions
+
+CPU 집중적인 작업을 하는 경우 `yield`를 사용하는 것이 좋습니다.  
+
+`yield`는 코루틴을 일시 중지시키고 즉시 재개시켜 현재 코루틴이 현재 수행 중인 작업을 일시적으로 중단하고 다른 코루틴에게 실행을 양보하도록 합니다.  
+이는 다른 코루틴이나 스레드가 실행될 수 있는 기회를 만들어 하나의 코루틴이 시스템 리소스를 독점하는 것을 방지할 수 있습니다.
+
+즉, `yield` 호출 시 코루틴 스케줄러는 필요한 경우 코루틴을 다른 스레드로 이동시킬 수 있으며, 이는 하나의 프로세스나 코루틴이 너무 많은 시간을 차지하여 다른 작업들이 실행 되지 못하도록 하는것을 방지합니다.
+
+```kotlin
+suspend fun cpuIntensiveOperations() = withContext(Dispatchers.Default) {
+    cpuIntensiveOperation1()
+    yield()
+    cpuIntensiveOperation2()
+    yield()
+    cpuIntensiveOperation3()
+}
+```
