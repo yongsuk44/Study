@@ -4,6 +4,7 @@
 
 - [Common use cases](#part-41--common-use-cases)
 - [Launching coroutine vs suspending functions](#part-42--launching-coroutine-vs-suspending-functions)
+- [Best practices](#part-43--best-practices)
 
 ---
 
@@ -109,3 +110,11 @@ val scope = CoroutineScope(ctx)
 
 일시 중지 함수는 모든 코루틴이 완료될 때까지 종료되지 않습니다.  
 또한 부모 코루틴을 취소하지 않고도 예외를 던지거나 무시할 수 있어 독립적이며, 예외 처리에 있어서도 더욱 유연합니다.
+
+------------------------------------------------------------------
+
+## [Part 4.3 : Best practices](Best%20practices.md)
+
+- 스코프가 필요한 경우 `async { ... }.await()` 대신 `coroutineScope { ... }`를 사용
+- 컨텍스트 변경이 필요한 경우 `withContext`를 사용
+- 여러 개의 `async` 작업 시 가독성을 위해 모든 작업에 `async`를 적용
