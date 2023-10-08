@@ -54,3 +54,41 @@ fun showNews() {
 반면에 `map { it.await() }` 사용 시 각 작업을 순차적으로 기다리게 되므로, 하나의 작업에서 문제가 발생하면 그 이전의 모든 작업이 완료될 떄까지 대기해야 합니다.
 
 따라서 `awaitAll`을 사용하면 시스템 리소스를 더 효율적으로 활용할 수 있습니다.
+
+----
+
+## Suspending functions should be safe to call from any thread
+
+일시 중지 함수 호출 시 어떤 스레드에서든 안전하게 호출되어야 합니다.  
+이는 Android에서 `Dispatchers.Main`을 자주 사용하기에 중요합니다.
+
+스레드 블로킹이 필요한 경우에는 `Dispatchers.IO`나 블로킹을 위해 설계된 사용자 정의 디스패처를 사용해야 합니다.  
+또한 CPU 집중적 작업을 하는 경우 `Dispatchers.Default`를 사용해야 합니다.
+
+이러한 디스패처 설정은 `withContext`를 통해 이루어져야 하므로, 함수 호출에서 디스패처를 직접 설정할 필요가 없습니다.
+
+```kotlin
+class DiscSaveRepository(
+    private val discReader: DiscReader
+): SaveRepository {
+    override suspend fun loadSave(name: String): SaveData = 
+        withContext(Dispatchers.IO) { discReader.read("save/$name") }
+}
+```
+
+`Flow`를 반환하는 함수는 `flowOn`을 통해 디스패처를 지정해야 하며, 일반적으로 이는 함수의 마지막 단계에서 이루어집니다.
+
+Android View를 업데이트 하는 일시 중지 함수에서 `Dispatchers.Main.immediate`를 사용하는 경우는 프로젝트의 정책에 따라야 하며,
+일반적으로 Presentation 계층과 같이 `Dispatchers.Main`가 기본적으로 간주되는 경우에는 사용할 필요가 없습니다.
+
+만약 위 클래스를 단위 테스트하려면 디스패처를 주입해야 하므로, 다음과 같이 테스트 환경에서 디스패처를 쉽게 오버라이드 할 수 있습니다.
+
+```kotlin
+class DiscSaveRepository(
+    private val discReader: DiscReader,
+    private val dispatcher: CoroutineContext = Dispatchers.IO
+): SaveRepository {
+    override suspend fun loadSave(name: String): SaveData = 
+        withContext(dispatcher) { discReader.read("save/$name") }
+}
+```

@@ -120,3 +120,5 @@ val scope = CoroutineScope(ctx)
 - 여러 개의 `async` 작업 시 가독성을 위해 모든 작업에 `async`를 적용
 - `withContext(EmptyCoroutineContext)` 대신 `coroutineScope`를 사용
 - 여러 비동기 작업 시 `awaitAll` 사용 시 작업에 예외가 발생하면 불필요한 대기 시간을 줄임
+- 일시 중지 함수 호출 시 `Disaptchers.Main`을 자주 사용하기에 어떤 스레드에서든 안전하게 호출되어야 함
+- 컨텍스트 변경 시 `withContext`를 사용하며, 스레드 블로킹이 예상되는 경우 `IO`, CPU 집약 작업의 경우 `Default`, `Flow`의 경우 `flowOn` 사용
