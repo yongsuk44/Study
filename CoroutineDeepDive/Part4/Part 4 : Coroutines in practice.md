@@ -124,3 +124,4 @@ val scope = CoroutineScope(ctx)
 - 컨텍스트 변경 시 `withContext`를 사용하며, 스레드 블로킹이 예상되는 경우 `IO`, CPU 집약 작업의 경우 `Default`, `Flow`의 경우 `flowOn` 사용
 - `Dispatchers.Main.immediate`는 `Dispatchers.Main`의 최적화 버전으로, 코루틴 재배치가 필요하지 않는 경우 회피
 - CPU 집약적인 작업을 하는 경우에 `yield()` 사용 시 하나의 코루틴이 시스템 리소스 독점을 방지할 수 있음 
+- 코루틴은 부모-자식 관계를 형성하며, 부모 코루틴은 자식 코루틴이 완료될 때까지 완료되지 않음

@@ -120,3 +120,34 @@ suspend fun cpuIntensiveOperations() = withContext(Dispatchers.Default) {
     cpuIntensiveOperation3()
 }
 ```
+
+## Understand that suspending functions await completion of their children
+
+코루틴은 부모-자식 관계를 형성하며, 부모 코루틴은 자식 코루틴이 완료될 때까지 완료되지 않습니다.
+
+이런 관계는 `coroutineScope`나 `withContext`와 같은 스코프 함수를 통해 명시적으로 형성될 수 있습니다.  
+이 함수들은 자식 코루틴이 완료될 때까지 부모 코루틴을 일시 중지시키고, 복잡한 비동기 작업을 동기화하는 데 유용할 수 있습니다.
+
+```kotlin
+suspend fun longTask() = coroutineScope {
+    launch {
+        delay(1000)
+        println("Done 1")
+    }
+    
+    launch {
+        delay(2000)
+        println("Done 2")
+    }
+}
+
+suspend fun main() {
+    println("Before")
+    longTask()
+    println("After")
+}
+// Before
+// 1s delay Done 1
+// 1s delay Done 2
+// After
+```
