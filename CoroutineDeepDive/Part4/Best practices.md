@@ -120,3 +120,136 @@ suspend fun cpuIntensiveOperations() = withContext(Dispatchers.Default) {
     cpuIntensiveOperation3()
 }
 ```
+
+## Understand that suspending functions await completion of their children
+
+코루틴은 부모-자식 관계를 형성하며, 부모 코루틴은 자식 코루틴이 완료될 때까지 완료되지 않습니다.
+
+이런 관계는 `coroutineScope`나 `withContext`와 같은 스코프 함수를 통해 명시적으로 형성될 수 있습니다.  
+이 함수들은 자식 코루틴이 완료될 때까지 부모 코루틴을 일시 중지시키고, 복잡한 비동기 작업을 동기화하는 데 유용할 수 있습니다.
+
+```kotlin
+suspend fun longTask() = coroutineScope {
+    launch {
+        delay(1000)
+        println("Done 1")
+    }
+    
+    launch {
+        delay(2000)
+        println("Done 2")
+    }
+}
+
+suspend fun main() {
+    println("Before")
+    longTask()
+    println("After")
+}
+// Before
+// 1s delay Done 1
+// 1s delay Done 2
+// After
+```
+
+---
+
+## Understand that Job is not inherited: it is used as a parent
+
+코루틴 컨텍스트 중 `Job`은 상속되지 않는 유일한 컨텍스트 요소입니다.  
+대신, 코루틴을 생성할 때 부모 코루틴의 `Job`이 자식 코루틴의 `Job`의 상위 `Job`으로 설정됩니다.  
+이렇게 되면 부모 코루틴이 취소될 경우 자식 코루틴도 취소될 수 있습니다.
+
+이 특성을 이해하지 못하면 코루틴의 생명주기 관리에 문제가 발생될 수 있습니다.  
+예를 들어 `SupervisorJob`을 코루틴 빌더의 인수로 전달하는 것은 아무런 효과가 없으므로 이러한 실수를 피해야 합니다.
+
+```kotlin
+// Don't
+fun main() = runBlocking(SupervisorJob()) { ... }
+```
+
+`Job`은 코루틴의 생명주기를 관리하는 중요한 컨텍스트 요소입니다.
+
+자식 코루틴에서 예외가 발생되면 이는 부모 코루틴까지 전파되어 부모와 모든 자식 코루틴이 취소됩니다.  
+이러한 맥락에서 `SupervisorJob`을 부모 `Job`으로 사용하는 것은 실질적으로 의미가 없습니다.
+
+<img src="SupervisorJobCancel.png" width="600"/>
+
+`SupervisorJob`을 `withContext` 또는 `runBlocking`과 같이 함께 사용하는 것은 자식 코루틴에서의 예외를 무시하려는 의도로 보이지만, 효과가 없습니다.
+
+올바른 접근 방식은 `supervisorScope`를 사용하여 새로운 코루틴 스코프를 생성하며, 이 스코프 내에서 발생한 예외가 부모 코루틴에게 전파되지 않습니다.  
+따라서 자식 코루틴에서 안전하게 예외를 처리할 수 있습니다.
+
+---
+
+## Don’t break structured concurrency
+
+구조화된 동시성은 코루틴의 안전한 관리를 위해 중요한 개념입니다.  
+그러나 명시적인 `Job`을 코루틴 컨텍스트로 설정하면, 이 코루틴은 부모 코루틴과 연결이 끊어지게 됩니다.
+
+이로 인해 코루틴의 취소가 제대로 이루어지지 않고, 리소스를 낭비하게 될 수 있습니다. 더 나악, 메모리 누수의 위험도 증가합니다.  
+따라서 `Job`을 코루틴에 명시적으로 설정하는 것은 피해야 하며, 구조화된 동시성을 유지해야 합니다.
+
+```kotlin
+// Don't
+suspend fun getNews() = withContext(Job()) { ... }
+```
+
+---
+
+## Use SupervisorJob when creating CoroutineScope
+
+코루틴 스코프 생성 시 `SupervisorJob`을 사용하면, 한 코루틴에서 발생한 예외가 스코프 내의 다른 코루틴들에게 전파되지 않습니다.  
+이는 각 코루틴이 독립적으로 실패할 수 있게 하며, 한 코루틴의 문제가 전체 시스템에 영향을 미치는 것을 방지합니다.
+
+따라서 여러 코루틴이 독립적으로 작동해야 하는 경우, 스코프 생성 시 `SupervisorJob`을 사용하는 것이 좋습니다.
+
+```kotlin
+// Don't
+val scope = CoroutineScope(Job())
+
+// Do
+val scope = CoroutineScope(SupervisorJob())
+```
+
+---
+
+## Consider cancelling scope children
+
+코루틴 스코프는 한 번 취소되면 재사용이 불가능합니다.  
+따라서 스코프에서 시작된 모든 작업을 종료하고자 하지만 스코프 자체는 유지하고 싶다면, 스코프의 자식 코루틴들만 취소할 수 있습니다.  
+이렇게 하면 스코프는 여전히 활성화된 상태로 남아 있으며, 추가적인 비용이 들지 않습니다.
+
+```kotlin
+fun onCleared() {
+    // scope.cancel() 대신
+    scope.coroutineContext.cancelChildren()
+}
+```
+
+안드로이드에서는 사용자 정의 스코프를 정의하고 취소하는 대신, `viewModelScope` 및 `lifecycleScope`를 사용하는 것이 좋습니다.  
+이 스코프들은 자동으로 취소되므로 별도의 스코프가 관리가 필요하지 않습니다.
+
+---
+
+## Before using a scope, consider under which conditions it is cancelled
+
+코루틴 스코프를 선택하기 전에 해당 스코프가 언제 취소되는지를 반드시 고려해야 합니다.  
+안드로이드에서는 각 ViewModel 과 Lifecycle 소유자가 자체적인 스코프를 가지고 있으며, 이들은 특정 라이프사이클 이벤트에 다라 자동으로 취소됩니다.
+
+따라서 `GlobalScope` 대신 이러한 스코프를 사용하는 것이 좋습니다.  
+`GlobalScope`에서 시작된 코루틴은 자동으로 취소되지 않고 앱이 종료되었을 때 취소됩니다. 이 때문에 사용할 떄 주의해야 합니다.
+
+```kotlin
+class MainViewModel: ViewModel() {
+    val scope = CoroutineScope(SupervisorJob())
+    
+    fun onCreate() {
+        viewModelScope.launch {
+            launch { task1() } // MainViewModel
+            GlobaLScope.launch { task2() } // Application
+            scope.launch { task2() } // scope
+        }
+    }
+}
+```

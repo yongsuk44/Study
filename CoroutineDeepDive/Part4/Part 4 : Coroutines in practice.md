@@ -124,3 +124,10 @@ val scope = CoroutineScope(ctx)
 - 컨텍스트 변경 시 `withContext`를 사용하며, 스레드 블로킹이 예상되는 경우 `IO`, CPU 집약 작업의 경우 `Default`, `Flow`의 경우 `flowOn` 사용
 - `Dispatchers.Main.immediate`는 `Dispatchers.Main`의 최적화 버전으로, 코루틴 재배치가 필요하지 않는 경우 회피
 - CPU 집약적인 작업을 하는 경우에 `yield()` 사용 시 하나의 코루틴이 시스템 리소스 독점을 방지할 수 있음 
+- 코루틴은 부모-자식 관계를 형성하며, 부모 코루틴은 자식 코루틴이 완료될 때까지 완료되지 않음
+- `Job`은 상속되지 않는 컨텍스트로, 새로운 코루틴 생성 시 부모 코루틴의 `Job`을 상속이 아닌, 부모 `Job`을 그대로 사용
+- 자식 코루틴 예외를 캐치할 때, `withContext`에 `SupervisorJob`을 사용하면 아무런 효과가 없고, `supervisorScope`를 사용하는 것이 효과적
+- `withContext`를 통해 `Job`을 명시적으로 설정하면, 구조화된 동시성을 깨드리게 되어 코루틴의 취소가 이루어지지 않을 수 있기에 주의
+- `CoroutineScope` 생성 시 여러 코루틴을 독립적으로 작동해야 하는 경우 `SupervisorJob`을 사용해야 함
+- 코루틴 스코프는 한 번 취소되면 재사용이 불가능하기에 스코프를 활성화된 상태로 남기고 하위 작업을 취소하려면 `cancelChildren`을 사용
+- 안드로이드에서 자동으로 스코프를 관리하려면 `viewModelScope` 혹은 `lifecycleScope` 사용이 편함
