@@ -125,3 +125,5 @@ val scope = CoroutineScope(ctx)
 - `Dispatchers.Main.immediate`는 `Dispatchers.Main`의 최적화 버전으로, 코루틴 재배치가 필요하지 않는 경우 회피
 - CPU 집약적인 작업을 하는 경우에 `yield()` 사용 시 하나의 코루틴이 시스템 리소스 독점을 방지할 수 있음 
 - 코루틴은 부모-자식 관계를 형성하며, 부모 코루틴은 자식 코루틴이 완료될 때까지 완료되지 않음
+- `Job`은 상속되지 않는 컨텍스트로, 새로운 코루틴 생성 시 부모 코루틴의 `Job`을 상속이 아닌, 부모 `Job`을 그대로 사용
+- 자식 코루틴 예외를 캐치할 때, `withContext`에 `SupervisorJob`을 사용하면 아무런 효과가 없고, `supervisorScope`를 사용하는 것이 효과적

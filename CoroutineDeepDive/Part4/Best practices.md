@@ -151,3 +151,31 @@ suspend fun main() {
 // 1s delay Done 2
 // After
 ```
+
+---
+
+## Understand that Job is not inherited: it is used as a parent
+
+코루틴 컨텍스트 중 `Job`은 상속되지 않는 유일한 컨텍스트 요소입니다.  
+대신, 코루틴을 생성할 때 부모 코루틴의 `Job`이 자식 코루틴의 `Job`의 상위 `Job`으로 설정됩니다.  
+이렇게 되면 부모 코루틴이 취소될 경우 자식 코루틴도 취소될 수 있습니다.
+
+이 특성을 이해하지 못하면 코루틴의 생명주기 관리에 문제가 발생될 수 있습니다.  
+예를 들어 `SupervisorJob`을 코루틴 빌더의 인수로 전달하는 것은 아무런 효과가 없으므로 이러한 실수를 피해야 합니다.
+
+```kotlin
+// Don't
+fun main() = runBlocking(SupervisorJob()) { ... }
+```
+
+`Job`은 코루틴의 생명주기를 관리하는 중요한 컨텍스트 요소입니다.
+
+자식 코루틴에서 예외가 발생되면 이는 부모 코루틴까지 전파되어 부모와 모든 자식 코루틴이 취소됩니다.  
+이러한 맥락에서 `SupervisorJob`을 부모 `Job`으로 사용하는 것은 실질적으로 의미가 없습니다.
+
+<img src="SupervisorJobCancel.png" width="600"/>
+
+`SupervisorJob`을 `withContext` 또는 `runBlocking`과 같이 함께 사용하는 것은 자식 코루틴에서의 예외를 무시하려는 의도로 보이지만, 효과가 없습니다.
+
+올바른 접근 방식은 `supervisorScope`를 사용하여 새로운 코루틴 스코프를 생성하며, 이 스코프 내에서 발생한 예외가 부모 코루틴에게 전파되지 않습니다.  
+따라서 자식 코루틴에서 안전하게 예외를 처리할 수 있습니다.
