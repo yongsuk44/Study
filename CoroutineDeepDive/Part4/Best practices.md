@@ -229,3 +229,27 @@ fun onCleared() {
 
 안드로이드에서는 사용자 정의 스코프를 정의하고 취소하는 대신, `viewModelScope` 및 `lifecycleScope`를 사용하는 것이 좋습니다.  
 이 스코프들은 자동으로 취소되므로 별도의 스코프가 관리가 필요하지 않습니다.
+
+---
+
+## Before using a scope, consider under which conditions it is cancelled
+
+코루틴 스코프를 선택하기 전에 해당 스코프가 언제 취소되는지를 반드시 고려해야 합니다.  
+안드로이드에서는 각 ViewModel 과 Lifecycle 소유자가 자체적인 스코프를 가지고 있으며, 이들은 특정 라이프사이클 이벤트에 다라 자동으로 취소됩니다.
+
+따라서 `GlobalScope` 대신 이러한 스코프를 사용하는 것이 좋습니다.  
+`GlobalScope`에서 시작된 코루틴은 자동으로 취소되지 않고 앱이 종료되었을 때 취소됩니다. 이 때문에 사용할 떄 주의해야 합니다.
+
+```kotlin
+class MainViewModel: ViewModel() {
+    val scope = CoroutineScope(SupervisorJob())
+    
+    fun onCreate() {
+        viewModelScope.launch {
+            launch { task1() } // MainViewModel
+            GlobaLScope.launch { task2() } // Application
+            scope.launch { task2() } // scope
+        }
+    }
+}
+```
