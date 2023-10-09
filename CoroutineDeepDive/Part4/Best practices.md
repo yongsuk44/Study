@@ -211,3 +211,21 @@ val scope = CoroutineScope(Job())
 // Do
 val scope = CoroutineScope(SupervisorJob())
 ```
+
+---
+
+## Consider cancelling scope children
+
+코루틴 스코프는 한 번 취소되면 재사용이 불가능합니다.  
+따라서 스코프에서 시작된 모든 작업을 종료하고자 하지만 스코프 자체는 유지하고 싶다면, 스코프의 자식 코루틴들만 취소할 수 있습니다.  
+이렇게 하면 스코프는 여전히 활성화된 상태로 남아 있으며, 추가적인 비용이 들지 않습니다.
+
+```kotlin
+fun onCleared() {
+    // scope.cancel() 대신
+    scope.coroutineContext.cancelChildren()
+}
+```
+
+안드로이드에서는 사용자 정의 스코프를 정의하고 취소하는 대신, `viewModelScope` 및 `lifecycleScope`를 사용하는 것이 좋습니다.  
+이 스코프들은 자동으로 취소되므로 별도의 스코프가 관리가 필요하지 않습니다.

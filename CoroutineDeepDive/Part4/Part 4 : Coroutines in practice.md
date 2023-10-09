@@ -129,3 +129,5 @@ val scope = CoroutineScope(ctx)
 - 자식 코루틴 예외를 캐치할 때, `withContext`에 `SupervisorJob`을 사용하면 아무런 효과가 없고, `supervisorScope`를 사용하는 것이 효과적
 - `withContext`를 통해 `Job`을 명시적으로 설정하면, 구조화된 동시성을 깨드리게 되어 코루틴의 취소가 이루어지지 않을 수 있기에 주의
 - `CoroutineScope` 생성 시 여러 코루틴을 독립적으로 작동해야 하는 경우 `SupervisorJob`을 사용해야 함
+- 코루틴 스코프는 한 번 취소되면 재사용이 불가능하기에 스코프를 활성화된 상태로 남기고 하위 작업을 취소하려면 `cancelChildren`을 사용
+- 안드로이드에서 자동으로 스코프를 관리하려면 `viewModelScope` 혹은 `lifecycleScope` 사용이 편함
