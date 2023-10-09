@@ -194,3 +194,20 @@ fun main() = runBlocking(SupervisorJob()) { ... }
 // Don't
 suspend fun getNews() = withContext(Job()) { ... }
 ```
+
+---
+
+## Use SupervisorJob when creating CoroutineScope
+
+코루틴 스코프 생성 시 `SupervisorJob`을 사용하면, 한 코루틴에서 발생한 예외가 스코프 내의 다른 코루틴들에게 전파되지 않습니다.  
+이는 각 코루틴이 독립적으로 실패할 수 있게 하며, 한 코루틴의 문제가 전체 시스템에 영향을 미치는 것을 방지합니다.
+
+따라서 여러 코루틴이 독립적으로 작동해야 하는 경우, 스코프 생성 시 `SupervisorJob`을 사용하는 것이 좋습니다.
+
+```kotlin
+// Don't
+val scope = CoroutineScope(Job())
+
+// Do
+val scope = CoroutineScope(SupervisorJob())
+```
