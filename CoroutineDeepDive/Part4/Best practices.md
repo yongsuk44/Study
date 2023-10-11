@@ -396,3 +396,38 @@ suspend fun main() {
     flow.collect { println(it) }
 }
 ```
+
+----
+
+## Prefer a suspending function instead of Flow when you expect only one value
+
+`Flow`는 시간에 따라 여러 값을 방출할 수 있는 데이터 스트림을 나타내므로, 상태가 변경될 때마다 새로운 값을 방출하는 것이 일반적입니다.
+
+그러나 단일 지연된 값을 나타내고자 하는 경우에는 일시 중지 함수를 사용하는 것이 더 적절합니다.   
+이러한 차이점을 이해하면 `Flow`와 일시 중지 함수의 사용 사기를 명확하게 알 수 있습니다.
+
+```kotlin
+interface UserRepository {
+    // fun getUser(): Flow<User>
+    suspend fun getUser(): User
+}
+```
+
+그러나 이 규칙과 반대로, 많은 안드로이드 프로젝트에서는 일시 중지 함수 대신 `Flow`를 사용하려는 경향이 있습니다.  
+이는 `RxJava`의 영향, 개발자의 개인적인 선호, `StateFlow`와의 쉬운 호환성 때문입니다.
+
+그러나 이러한 선택이 항상 최적의 방법은 아닐 수 있으므로, 각 사용 사례에 따라 적절한 기술을 선택해야 합니다.
+
+```kotlin
+class LocationsViewmodel(
+    locationService: LocationService
+): ViewModel() {
+    private val location = locationService.observeLocations()
+        .map { it.toLocationsDisplay() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Lazily,
+            initialValue = LocationsDisplay.Loading
+        )
+}
+```
