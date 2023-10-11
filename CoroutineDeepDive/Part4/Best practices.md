@@ -353,3 +353,46 @@ class SomeService {
     }
 }
 ```
+
+----
+
+## Functions that return Flow should not be suspending
+
+`Flow`는 일시 중지 함수와 각각 다른 실행 모델과 목적을 가집니다.  
+`Flow`는 `collect`를 통해 나중에 실행되는 데이터 스트림을 나타내며, 일시 중지 함수는 호출 시점에 작업을 수행합니다.
+
+이 2가지 개념을 섞어 사용하면 코드가 복잡해지고 직관성이 떨어질 수 있습니다.  
+따라서 `Flow`를 반환하는 함수는 일시 중지 함수가 아니어야 합니다.
+
+```kotlin
+// Don't use suspending functions returning Flow
+suspend fun observeNewsServices(): Flow<News> {
+    val newsService = fetchNewsServices()
+    return newsService.asFlow().flatMapMerge { it.observe() }
+}
+
+suspend fun main() {
+    val flow = observeNewsServices() // Fetching services
+    // ...
+    flow.collect { println(it) } // Start observing
+}
+```
+
+`Flow`를 반환하는 함수는 그 자체로 완전한 프로세스를 나타내야 하며 `Flow`가 수집될 때 실행되어야 합니다.
+
+위 예제를 보면 `observeNewsServices()`가 호출될 때 프로세스의 일부가 실행되고, 수집을 시작할 때 일부가 실행되는 것은 직관적이지 않습니다.
+또한 나중에 `Flow`를 수집하게 되면, 과거에 가져온 데이터가 혼합될 가능성이 있어 예상치 못한 결과를 초래할 수 있습니다.
+
+위 함수를 개선하기 위해서는 일시 중지 함수 호출을 `Flow` 내로 이동시켜, `Flow`가 수집될 때 해당 로직이 실행되도록 하는 것이 좋습니다.
+
+```kotlin
+fun observeNewsServices(): Flow<News> = 
+    flow { emitAll(fetchNewsServices().asFlow()) }
+        .flatMapMerge { it.observe() }
+
+suspend fun main() {
+    val flow = observeNewsServices()
+    // ..
+    flow.collect { println(it) }
+}
+```
