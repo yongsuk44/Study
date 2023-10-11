@@ -281,3 +281,75 @@ public object GlobalScope : CoroutineScope {
 }
 ```
 
+----
+
+## Avoid using Job builder, except for constructing a scope
+
+`Job()`을 이용하여 코루틴 생성 시, 해당 `Job`은 자동으로 `ACTIVE` 상태가 됩니다.  
+여기서 주의할 점은 자식 코루틴이 완료되었다고 해서 부모 코루틴도 완료되는 것이 아닙니다.  
+따라서 `Job` 빌더는 주로 코루틴 스코프를 구성할 때만 사용하고, 그 외의 경우에는 가능한 피하는 것이 좋습니다.
+
+아래 예제에서 `join`은 부모 `Job` 객체가 완료될 때까지 대기합니다.  
+이 경우에는 `job`이 수동으로 관리되므로, 그 상태가 `COMPLITEING` 또는 `COMPLETED`로 자동으로 바뀌지 않습니다.  
+따라서 `job.join()`은 영원히 반환되지 않습니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    val job = Job()
+    launch(job) {
+        delay(1000)
+        println("Text 1")
+    }
+    
+    launch(job) {
+        delay(2000)
+        println("Text 2")
+    }
+    
+    job.join() // Here we will await forever
+    println("Will not be printed")
+}
+// 1s delay 
+// Text 1
+```
+
+`Job`을 완료하려면 `complete()`를 호출하여 상태를 `COMPLITEING`로 변경해야 합니다.  
+`COMPLITEING` 상태에서는 자식 코루틴들이 모두 완료될 떄까지 기다립니다.
+
+그러나, `COMPLITEING` 또는 `COMPLITED` 상태의 `Job`에서는 새로운 코루틴을 시작할 수 없습니다.  
+이럴 때 일반적으로 `job.children.forEach { it.join() }` 코드를 사용하여 자식 코루틴 들이 모두 완료될 때까지 기다립니다.
+
+일반적으로는 코루틴 빌더에서 반환된 `Job`을 변수에 저장하거나 시작된 모든 코루틴의 `Job`을 수집하여 관리하는 것이 가장 간단합니다.
+
+```kotlin
+class SomeService {
+    private var job: Job? = null
+    private val scope = CoroutineScope(SupervisorJob())
+
+    fun startTask() {
+        cancelTask()
+        job = scope.launch {
+            // ...
+        }
+    }
+
+    fun cancelTask() {
+        job?.cancel()
+    }
+}
+
+class SomeService {
+    private var jobs: List<Job> = emptyList()
+    private val scope = CoroutineScope(SupservisorJob())
+
+    fun startTask() {
+        jobs += scope.launch {
+            // ...
+        }
+    }
+
+    fun cancelTask() {
+        jobs.forEach { it.cancel() }
+    }
+}
+```
