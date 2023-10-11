@@ -253,3 +253,181 @@ class MainViewModel: ViewModel() {
     }
 }
 ```
+
+---
+
+## Don't use GlobalScope
+
+`GlobalScope`는 코루틴을 간단하게 시작할 수 있지만 여러 문제점이 있습니다.  
+이는 부모 코루틴이 없기에 자동 취소가 없고, 테스트를 위한 오버라이딩이 어렵습니다.
+
+따라서 `SupervisorJob`을 컨텍스트로 사용하여 사용자 정의 스코프를 생성하는 것이 좋습니다.
+
+```kotlin
+val scope = CoroutineScope(SupervisorJob())
+fun exmaple() {
+    // Don't do
+    GlobalScope.launch { task() }
+    
+    // Do
+    scope.launch { task() }
+}
+```
+
+```kotlin
+public object GlobalScope : CoroutineScope {
+    override val coroutineContext: CoroutineContext
+        get() = EmptyCoroutineContext
+}
+```
+
+----
+
+## Avoid using Job builder, except for constructing a scope
+
+`Job()`을 이용하여 코루틴 생성 시, 해당 `Job`은 자동으로 `ACTIVE` 상태가 됩니다.  
+여기서 주의할 점은 자식 코루틴이 완료되었다고 해서 부모 코루틴도 완료되는 것이 아닙니다.  
+따라서 `Job` 빌더는 주로 코루틴 스코프를 구성할 때만 사용하고, 그 외의 경우에는 가능한 피하는 것이 좋습니다.
+
+아래 예제에서 `join`은 부모 `Job` 객체가 완료될 때까지 대기합니다.  
+이 경우에는 `job`이 수동으로 관리되므로, 그 상태가 `COMPLITEING` 또는 `COMPLETED`로 자동으로 바뀌지 않습니다.  
+따라서 `job.join()`은 영원히 반환되지 않습니다.
+
+```kotlin
+suspend fun main() = coroutineScope {
+    val job = Job()
+    launch(job) {
+        delay(1000)
+        println("Text 1")
+    }
+    
+    launch(job) {
+        delay(2000)
+        println("Text 2")
+    }
+    
+    job.join() // Here we will await forever
+    println("Will not be printed")
+}
+// 1s delay 
+// Text 1
+```
+
+`Job`을 완료하려면 `complete()`를 호출하여 상태를 `COMPLITEING`로 변경해야 합니다.  
+`COMPLITEING` 상태에서는 자식 코루틴들이 모두 완료될 떄까지 기다립니다.
+
+그러나, `COMPLITEING` 또는 `COMPLITED` 상태의 `Job`에서는 새로운 코루틴을 시작할 수 없습니다.  
+이럴 때 일반적으로 `job.children.forEach { it.join() }` 코드를 사용하여 자식 코루틴 들이 모두 완료될 때까지 기다립니다.
+
+일반적으로는 코루틴 빌더에서 반환된 `Job`을 변수에 저장하거나 시작된 모든 코루틴의 `Job`을 수집하여 관리하는 것이 가장 간단합니다.
+
+```kotlin
+class SomeService {
+    private var job: Job? = null
+    private val scope = CoroutineScope(SupervisorJob())
+
+    fun startTask() {
+        cancelTask()
+        job = scope.launch {
+            // ...
+        }
+    }
+
+    fun cancelTask() {
+        job?.cancel()
+    }
+}
+
+class SomeService {
+    private var jobs: List<Job> = emptyList()
+    private val scope = CoroutineScope(SupservisorJob())
+
+    fun startTask() {
+        jobs += scope.launch {
+            // ...
+        }
+    }
+
+    fun cancelTask() {
+        jobs.forEach { it.cancel() }
+    }
+}
+```
+
+----
+
+## Functions that return Flow should not be suspending
+
+`Flow`는 일시 중지 함수와 각각 다른 실행 모델과 목적을 가집니다.  
+`Flow`는 `collect`를 통해 나중에 실행되는 데이터 스트림을 나타내며, 일시 중지 함수는 호출 시점에 작업을 수행합니다.
+
+이 2가지 개념을 섞어 사용하면 코드가 복잡해지고 직관성이 떨어질 수 있습니다.  
+따라서 `Flow`를 반환하는 함수는 일시 중지 함수가 아니어야 합니다.
+
+```kotlin
+// Don't use suspending functions returning Flow
+suspend fun observeNewsServices(): Flow<News> {
+    val newsService = fetchNewsServices()
+    return newsService.asFlow().flatMapMerge { it.observe() }
+}
+
+suspend fun main() {
+    val flow = observeNewsServices() // Fetching services
+    // ...
+    flow.collect { println(it) } // Start observing
+}
+```
+
+`Flow`를 반환하는 함수는 그 자체로 완전한 프로세스를 나타내야 하며 `Flow`가 수집될 때 실행되어야 합니다.
+
+위 예제를 보면 `observeNewsServices()`가 호출될 때 프로세스의 일부가 실행되고, 수집을 시작할 때 일부가 실행되는 것은 직관적이지 않습니다.
+또한 나중에 `Flow`를 수집하게 되면, 과거에 가져온 데이터가 혼합될 가능성이 있어 예상치 못한 결과를 초래할 수 있습니다.
+
+위 함수를 개선하기 위해서는 일시 중지 함수 호출을 `Flow` 내로 이동시켜, `Flow`가 수집될 때 해당 로직이 실행되도록 하는 것이 좋습니다.
+
+```kotlin
+fun observeNewsServices(): Flow<News> = 
+    flow { emitAll(fetchNewsServices().asFlow()) }
+        .flatMapMerge { it.observe() }
+
+suspend fun main() {
+    val flow = observeNewsServices()
+    // ..
+    flow.collect { println(it) }
+}
+```
+
+----
+
+## Prefer a suspending function instead of Flow when you expect only one value
+
+`Flow`는 시간에 따라 여러 값을 방출할 수 있는 데이터 스트림을 나타내므로, 상태가 변경될 때마다 새로운 값을 방출하는 것이 일반적입니다.
+
+그러나 단일 지연된 값을 나타내고자 하는 경우에는 일시 중지 함수를 사용하는 것이 더 적절합니다.   
+이러한 차이점을 이해하면 `Flow`와 일시 중지 함수의 사용 사기를 명확하게 알 수 있습니다.
+
+```kotlin
+interface UserRepository {
+    // fun getUser(): Flow<User>
+    suspend fun getUser(): User
+}
+```
+
+그러나 이 규칙과 반대로, 많은 안드로이드 프로젝트에서는 일시 중지 함수 대신 `Flow`를 사용하려는 경향이 있습니다.  
+이는 `RxJava`의 영향, 개발자의 개인적인 선호, `StateFlow`와의 쉬운 호환성 때문입니다.
+
+그러나 이러한 선택이 항상 최적의 방법은 아닐 수 있으므로, 각 사용 사례에 따라 적절한 기술을 선택해야 합니다.
+
+```kotlin
+class LocationsViewmodel(
+    locationService: LocationService
+): ViewModel() {
+    private val location = locationService.observeLocations()
+        .map { it.toLocationsDisplay() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Lazily,
+            initialValue = LocationsDisplay.Loading
+        )
+}
+```
