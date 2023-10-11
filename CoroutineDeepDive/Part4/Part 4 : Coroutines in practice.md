@@ -131,3 +131,4 @@ val scope = CoroutineScope(ctx)
 - `CoroutineScope` 생성 시 여러 코루틴을 독립적으로 작동해야 하는 경우 `SupervisorJob`을 사용해야 함
 - 코루틴 스코프는 한 번 취소되면 재사용이 불가능하기에 스코프를 활성화된 상태로 남기고 하위 작업을 취소하려면 `cancelChildren`을 사용
 - 안드로이드에서 자동으로 스코프를 관리하려면 `viewModelScope` 혹은 `lifecycleScope` 사용이 편함
+- `GlobalScope`는 코루틴을 간단하게 시작할 수 있지만, 자동 취소와 오버라이딩이 어렵기에 사용을 지양

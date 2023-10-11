@@ -253,3 +253,31 @@ class MainViewModel: ViewModel() {
     }
 }
 ```
+
+---
+
+## Don't use GlobalScope
+
+`GlobalScope`는 코루틴을 간단하게 시작할 수 있지만 여러 문제점이 있습니다.  
+이는 부모 코루틴이 없기에 자동 취소가 없고, 테스트를 위한 오버라이딩이 어렵습니다.
+
+따라서 `SupervisorJob`을 컨텍스트로 사용하여 사용자 정의 스코프를 생성하는 것이 좋습니다.
+
+```kotlin
+val scope = CoroutineScope(SupervisorJob())
+fun exmaple() {
+    // Don't do
+    GlobalScope.launch { task() }
+    
+    // Do
+    scope.launch { task() }
+}
+```
+
+```kotlin
+public object GlobalScope : CoroutineScope {
+    override val coroutineContext: CoroutineContext
+        get() = EmptyCoroutineContext
+}
+```
+
