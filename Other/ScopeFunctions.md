@@ -61,3 +61,37 @@ val modifiedFirstItem = numbers.first().let { firstItem ->
 
 println("First item after modifications : '$modifiedFirstItem'")
 ```
+
+---
+
+### with
+
+> - 객체 참조는 리시버(`this`) 사용, 반환 값은 람다의 결과 
+> - 컨텍스트 객체에 대한 여러 작업을 묶어 코드의 가독성을 높이는 경우에 주로 사용
+> - 일반적인 가이드라인은 반환 값을 사용할 필요가 없을 때 `with` 사용, 반환 값을 활용해도 무방함
+
+`with` 함수 람다 블록에서 컨텍스트 객체를 `this`로 사용하며, `this`를 통해 컨텍스트 객체의 속성이나 메서드에 직접 접근할 수 있습니다.
+
+`with` 블록의 마지막 표현식의 결과가 `with` 함수의 반환 값이 되지만, **일반적으로 `with`은 반환 값을 사용하지 않을 때 주로 사용됩니다.**  
+또한 컨텍스트 객체에 대한 여러 작업을 묶을 때 유용하므로, 코드의 가독성을 높이는 데 도움이 됩니다. 
+
+```kotlin
+val numbers = mutableListOf("one", "two", "three")
+with(numbers) {
+    println("'with' is called with argument $this")
+    println("It contains $size elements")
+}
+```
+
+`with`을 사용하여 속성이나 함수가 값 계산에 사용되는 도우미 객체를 도입할 수도 있습니다.
+
+`with` 함수는 컨텍스트 객체를 리시버(`this`)로 사용하므로, 컨텍스트 객체의 속성이나 메서드를 직접 호출할 수 있습니다.  
+이런식으로 여러 속성이나 함수를 한 번에 쉽게 사용할 수 있어 코드 가독성과 유지보수성이 향상됩니다.
+
+```kotlin
+val numbers = mutableListOf("one", "two", "three")
+val firstAndLast = with(numbers) { 
+    "The first element is ${first()}, the last element is ${last()}"
+}
+println(firstAndLast)
+```
