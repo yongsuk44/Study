@@ -94,3 +94,48 @@ val firstAndLast = with(numbers) {
 }
 println(firstAndLast)
 ```
+
+---
+
+### run
+
+> - 객체 참조는 리시버(`this`)로 사용, 반환 값은 람다의 결과
+> - 객체의 속성을 초기화하고 동시에 어떤 값을 계산하고 반환할 때 주로 사용
+> - 컨텍스트 객체의 확장 함수 또는 컨텍스트 객체가 없는 비확장 함수로 사용 가능
+
+`run`은 `with`과 같은 기능을 하지만, 확장 함수로 구현되어 있어 컨텍스트 객체에서 `.` 표기법을 사용하여 호출할 수 있습니다.  
+람다 블록내에서 `this`를 사용하여 컨텍스트 객체의 속성과 메서드에 접근할 수 있습니다.
+
+또한 람다 블록의 마지막 표현식이 `run`의 반환 값이 됩니다.
+
+```kotlin
+val service = MultiportService("https://example.kotlinlang.org", 80)
+val result = service.run {
+    port = 8080
+    query(prepareRequest() + " to port $port")
+}
+
+// the same code written with let() function:
+val letResult = service.let {
+    it.port = 8080
+    it.query(it.prepareRequest() + " to port ${it.port}")
+}
+```
+
+`run`을 비확장 함수로도 호출할 수 있습니다. 비확장 버전의 `run`은 컨텍스트 객체가 없으며 람다 블록의 결과를 반환합니다.
+
+비확장 `run`을 사용하면 하나의 표현식 위치에서 여러 문장을 실행할 수 있습니다. 예를 들어 변수를 초기화할 때 여러 계산을 수행해야 하는 경우 유용합니다.
+
+```kotlin
+val hexNumberRegex = run {
+    val digits = "0-9"
+    val hexDigits = "A-Fa-f"
+    val sign = "+-"
+    
+    Regex("[$sign]?[$digits$hexDigits]+")
+}
+
+for (match in hexNumberRegex.findAll("+123 -FFFF !%*& 88 XYZ")) {
+    println(match.value)
+}
+```
