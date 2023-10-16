@@ -158,3 +158,43 @@ val ys = Person("YongSuk").apply {
 }
 println(ys)
 ```
+
+---
+
+### also
+
+> - 객체 참조는 인자(`it`) 사용, 반환 값은 객체 자신
+> - 객체의 속성이나 함수를 사용할 필요 없이 객체 자체에 대한 참조만 필요할 때 주로 사용
+> - `also` 내부에서 외부 범위의 `this` 참조 시 유용하게 사용 가능
+
+`also`는 컨텍스트 객체가 인자(`it`)로 제공되어 객체의 속성과 메서드보다는 객체 자체에 대한 참조가 필요한 작업을 할때 유용합니다.  
+또한 `also`는 작업을 수행한 후에도 원래 객체를 반환하기에 호출 체인을 계속 유지할 수 있습니다.
+
+```kotlin
+val numbers = mutableListOf("one", "two", "three")
+numbers
+    .also { println("The list elements before adding new one: $it") }
+    .add("four")
+```
+
+`also`는 외부 범위의 `this`를 참조하고 싶을 때에도 유용하게 사용할 수 있습니다.
+
+```kotlin
+class Outer {
+    val name = "YongSuk"
+
+    Inner().apply {
+        println(this.name) // KimYongSuk
+        println(this@Outer.name) // YongSuk
+    }
+    
+    Inner().also {
+        println(it.name) // KimYongSuk
+        println(this.name) // YongSuk
+    }
+    
+    inner class Inner {
+        val name = "KimYongSuk"
+    }
+}
+```
