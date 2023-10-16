@@ -1,10 +1,34 @@
 # Scope functions
 
+## function selection
+
+| 함수    | 객체 참조 방식 | 반환 값     | 확장 함수인지?               |
+|:------|:---------|:---------|:-----------------------|
+| let   | it       | 람다 블록 결과 | Yes                    |
+| run   | this     | 람다 블록 결과 | Yes                    | 
+| run   | -        | 람다 블록 결과 | No - 컨텍스트 객체 없이 사용한 경우 |
+| with  | this     | 람다 블록 결과 | No - 컨텍스트 객체를 인자로 사용   |
+| apply | this     | 객체 자신    | Yes                    |
+| also  | it       | 객체 자신    | Yes                    |
+
+### 일반적인 사용 가이드라인
+
+- [let](#let) : `null`이 아닌 객체나 스코프 내에서 로컬 변수를 지정하여 사용할 때 사용합니다.
+- [apply](#apply) : 객체를 설정할 때 사용합니다.
+- [run](#run) : 객체를 구성하고 그 결과를 계산할 때 사용됩니다.
+- [비확장 run](#run-비확장) : 표현식 대신 여러 문장을 실행할 때 사용합니다.
+- [also](#also) : 객체를 그대로 반환하면서 추가적인 작업을 할 때 사용합니다.
+- [with](#with) : 객체에서 여러 메서드를 연속으로 호출할 때 사용됩니다.
+
+<img src="resources/Scope Function Guide.jpg" width="500"/>
+---
+
 ### let
 
 > - 객체 참조는 인자(`it`) 사용, 반환 값은 람다의 결과
 > - 연속적인 연산의 결과를 변수에 할당하지 않고 처리하는 경우에 주로 사용
 > - `?.` 연산자와 함께 사용하여 `null` 검사를 자동으로 수행할 때 사용
+> - 스코프 내에서 새로운 로컬 변수를 사용할 때 사용
 
 `let`은 주로 연속적인 연산의 결과를 변수에 할당하지 않고 처리할 경우에 사용됩니다.  
 예를 들어 아래 코드는 컬렉션에 대한 2번의 연산 결과를 출력합니다.
@@ -22,13 +46,13 @@ val numbers = mutableListOf("one", "two", "three", "four", "five")
 numbers
     .map { it.length }
     .filter { it > 3 }
-    .let { 
+    .let {
         println(it)
         // and more function calss if needed
     }
 ```
 
-`let`에 전달된 코드 블록에서 단일 함수만 호출하고, 그 함수의 인자로 `it`을 사용한다면 메서드 참조(`::`)를 사용할 수 있습니다. 
+`let`에 전달된 코드 블록에서 단일 함수만 호출하고, 그 함수의 인자로 `it`을 사용한다면 메서드 참조(`::`)를 사용할 수 있습니다.
 
 ```kotlin
 val numbers = mutableListOf("one", "two", "three", "four", "five")
@@ -41,7 +65,7 @@ numbers.map { it.length }.filter { it > 3 }.let(::println)
 ```kotlin
 val str: String? = "Hello"
 // processNonNullString(str) // compilation error: str can be null
-val length = str?.let { 
+val length = str?.let {
     println("let() called on $it")
     processNonNullSting(it) // OK: 'it' is not null inside '?.let { }'
     it.length
@@ -65,14 +89,14 @@ println("First item after modifications : '$modifiedFirstItem'")
 
 ### with
 
-> - 객체 참조는 리시버(`this`) 사용, 반환 값은 람다의 결과 
+> - 객체 참조는 리시버(`this`) 사용, 반환 값은 람다의 결과
 > - 컨텍스트 객체에 대한 여러 작업을 묶어 코드의 가독성을 높이는 경우에 주로 사용
 > - 일반적인 가이드라인은 반환 값을 사용할 필요가 없을 때 `with` 사용, 반환 값을 활용해도 무방함
 
 `with` 함수 람다 블록에서 컨텍스트 객체를 `this`로 사용하며, `this`를 통해 컨텍스트 객체의 속성이나 메서드에 직접 접근할 수 있습니다.
 
 `with` 블록의 마지막 표현식의 결과가 `with` 함수의 반환 값이 되지만, **일반적으로 `with`은 반환 값을 사용하지 않을 때 주로 사용됩니다.**  
-또한 컨텍스트 객체에 대한 여러 작업을 묶을 때 유용하므로, 코드의 가독성을 높이는 데 도움이 됩니다. 
+또한 컨텍스트 객체에 대한 여러 작업을 묶을 때 유용하므로, 코드의 가독성을 높이는 데 도움이 됩니다.
 
 ```kotlin
 val numbers = mutableListOf("one", "two", "three")
@@ -89,7 +113,7 @@ with(numbers) {
 
 ```kotlin
 val numbers = mutableListOf("one", "two", "three")
-val firstAndLast = with(numbers) { 
+val firstAndLast = with(numbers) {
     "The first element is ${first()}, the last element is ${last()}"
 }
 println(firstAndLast)
@@ -122,6 +146,7 @@ val letResult = service.let {
 }
 ```
 
+#### run 비확장
 `run`을 비확장 함수로도 호출할 수 있습니다. 비확장 버전의 `run`은 컨텍스트 객체가 없으며 람다 블록의 결과를 반환합니다.
 
 비확장 `run`을 사용하면 하나의 표현식 위치에서 여러 문장을 실행할 수 있습니다. 예를 들어 변수를 초기화할 때 여러 계산을 수행해야 하는 경우 유용합니다.
@@ -131,7 +156,7 @@ val hexNumberRegex = run {
     val digits = "0-9"
     val hexDigits = "A-Fa-f"
     val sign = "+-"
-    
+
     Regex("[$sign]?[$digits$hexDigits]+")
 }
 
@@ -183,16 +208,18 @@ numbers
 class Outer {
     val name = "YongSuk"
 
-    Inner().apply {
+    Inner().apply
+    {
         println(this.name) // KimYongSuk
         println(this@Outer.name) // YongSuk
     }
-    
-    Inner().also {
+
+    Inner().also
+    {
         println(it.name) // KimYongSuk
         println(this.name) // YongSuk
     }
-    
+
     inner class Inner {
         val name = "KimYongSuk"
     }
@@ -204,7 +231,7 @@ class Outer {
 ### takeIf and TakeUnless
 
 > - 객체 참조는 인자(`it`) 사용, 반환 값은 객체 자신 또는 `null`
-> - 단일 객체의 상태를 체크할 때 주로 사용하며, 스코프 함수에 연결하여 사용할 때 유용 
+> - 단일 객체의 상태를 체크할 때 주로 사용하며, 스코프 함수에 연결하여 사용할 때 유용
 
 `takeIf`와 `takUnless`는 단일 객체의 상태를 체크하는 로직을 함수 호출 체인에서 유용하게 사용됩니다.
 
