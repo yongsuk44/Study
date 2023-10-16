@@ -198,3 +198,59 @@ class Outer {
     }
 }
 ```
+
+---
+
+### takeIf and TakeUnless
+
+> - 객체 참조는 인자(`it`) 사용, 반환 값은 객체 자신 또는 `null`
+> - 단일 객체의 상태를 체크할 때 주로 사용하며, 스코프 함수에 연결하여 사용할 때 유용 
+
+`takeIf`와 `takUnless`는 단일 객체의 상태를 체크하는 로직을 함수 호출 체인에서 유용하게 사용됩니다.
+
+객체와 함께 조건(`predicate`)를 호출하면, `takeIf`는 주어진 조건을 만족하면 해당 객체를 반환하고 그렇지 않으면 `null`을 반환합니다.  
+`takeUnless`는 `takeIf`와 반대의 로직을 지니며 주어진 조건을 만족하면 `null`을 반환하고 그렇지 않으면 해당 객체를 반환합니다.
+
+`takeIf`와 `takeUnless` 사용 시, 객체는 람다 인자(`it`)로 사용할 수 있습니다.
+
+```kotlin
+val number = Random.nextInt(100)
+
+val evenOrNull = number.takeIf { it % 2 == 0 }
+val oddOrNull = number.takeUnless { it % 2 == 0 }
+
+println("even: $evenOrNull, odd: $oddOrNull")
+```
+
+`takeIf`와 `takeUnless`는 스코프 함수들(`let`, `also`, `run`, `apply` 등등)과 사용할 때 유용합니다.
+
+`takeIf`와 `let`을 함께 사용하면 코드가 더 깔끔하고 가독성이 좋아집니다.  
+아래 예제에서는 `takeIf`가 조건을 만족하는지 검사하고, 만족할 경우 `let` 블록을 실행합니다.  
+이 방식을 사용하면 조건에 일치하는 경우에만 특정 로직을 실행할 수 있으며, 코드가 더 간결해집니다.
+
+```kotlin
+fun displaySubstringPosition(input: String, sub: String) {
+    input.indexOf(sub).takeIf { it >= 0 }?.let {
+        println("The substring $sub is found in $input.")
+        println("Its start position is $it.")
+    }
+}
+
+displaySubstringPosition("010000011", "11")
+displaySubstringPosition("010000011", "12")
+```
+
+비교를 위해 아래는 `takeIf`나 스코프 함수를 사용하지 않고 같은 기능을 하는 함수 구현입니다.
+
+```kotlin
+fun displaySubstringPosition(input: String, sub: String) {
+    val index = input.indexOf(sub)
+    if (index >= 0) {
+        println("The substring $sub is found in $input.")
+        println("Its start position is $index.")
+    }
+}
+
+displaySubstringPosition("010000011", "11")
+displaySubstringPosition("010000011", "12")
+```
