@@ -139,3 +139,22 @@ for (match in hexNumberRegex.findAll("+123 -FFFF !%*& 88 XYZ")) {
     println(match.value)
 }
 ```
+
+---
+
+### apply
+
+> - 객체 참조는 리시버(`this`) 사용, 반환 값은 객체 자신
+> - 리시버 객체 속성을 설정할 때 주로 사용
+
+`apply`는 컨텍스트 객체 자신을 반환하기에 객체 속성을 작업하는 코드 블록에 사용하는 것이 좋습니다.
+
+즉, `apply`는 반환 값이 없고, 객체의 상태를 변경하는 코드에 사용됩니다. 그래서 반환 값을 사용할 필요가 없을 때 적합합니다.
+
+```kotlin
+val ys = Person("YongSuk").apply {
+    age = 32
+    city = "Korea"
+}
+println(ys)
+```
