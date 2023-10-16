@@ -1,11 +1,10 @@
 # Scope functions
 
-To help you choose the right scope function for your use case, we describe them in detail and provide recommendations for use. Technically, scope functions are interchangeable in many cases, so the examples show conventions for using them.
-
 ### let
 
-- context object를 `it` 인자로 사용 가능
-- 람다의 결과를 반환 값으로 처리 가능
+> - 객체 참조는 인자(`it`) 사용, 반환 값은 람다의 결과
+> - 연속적인 연산의 결과를 변수에 할당하지 않고 처리하는 경우에 주로 사용
+> - `?.` 연산자와 함께 사용하여 `null` 검사를 자동으로 수행할 때 사용
 
 `let`은 주로 연속적인 연산의 결과를 변수에 할당하지 않고 처리할 경우에 사용됩니다.  
 예를 들어 아래 코드는 컬렉션에 대한 2번의 연산 결과를 출력합니다.
