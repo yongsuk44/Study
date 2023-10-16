@@ -1,0 +1,63 @@
+# Scope functions
+
+To help you choose the right scope function for your use case, we describe them in detail and provide recommendations for use. Technically, scope functions are interchangeable in many cases, so the examples show conventions for using them.
+
+### let
+
+- context object를 `it` 인자로 사용 가능
+- 람다의 결과를 반환 값으로 처리 가능
+
+`let`은 주로 연속적인 연산의 결과를 변수에 할당하지 않고 처리할 경우에 사용됩니다.  
+예를 들어 아래 코드는 컬렉션에 대한 2번의 연산 결과를 출력합니다.
+
+```kotlin
+val numbers = mutableListOf("one", "two", "three", "four", "five")
+val resultList = numbers.map { it.length }.filter { it > 3 }
+println(resultList)
+```
+
+이 떄 `let`을 사용하면 컬렉션에 대한 연산 결과를 별도의 변수에 할당하지 않아도 됩니다:
+
+```kotlin
+val numbers = mutableListOf("one", "two", "three", "four", "five")
+numbers
+    .map { it.length }
+    .filter { it > 3 }
+    .let { 
+        println(it)
+        // and more function calss if needed
+    }
+```
+
+`let`에 전달된 코드 블록에서 단일 함수만 호출하고, 그 함수의 인자로 `it`을 사용한다면 메서드 참조(`::`)를 사용할 수 있습니다. 
+
+```kotlin
+val numbers = mutableListOf("one", "two", "three", "four", "five")
+numbers.map { it.length }.filter { it > 3 }.let(::println)
+```
+
+`let`은 종종 `null`이 아닌 값에 대한 연산을 SafeCallOperator(`?.`)와 함께 사용하여 `null` 검사를 자동으로 수행할 때 사용됩니다.  
+이 때 `let` 블록 내에서 객체 참조 `it`은 `non-null`이므로, 안전하게 처리할 수 있습니다.
+
+```kotlin
+val str: String? = "Hello"
+// processNonNullString(str) // compilation error: str can be null
+val length = str?.let { 
+    println("let() called on $it")
+    processNonNullSting(it) // OK: 'it' is not null inside '?.let { }'
+    it.length
+}
+```
+
+`let` 함수 내부에서 람다 인자의 이름을 지정하여 컨텍스트 객체에 대한 새로운 로컬 변수를 생성할 수 있습니다.  
+이렇게 하면, 코드 블록 내에서 생성된 변수를 `it` 대신 사용할 수 있어 코드 가독성이 향상됩니다.
+
+```kotlin
+val numbers = listOf("one", "two", "three", "four")
+val modifiedFirstItem = numbers.first().let { firstItem ->
+    println("The first item of the list is '$firstItem'")
+    if (firstItem.length >= 5) firstItem else "!$firstItem!"
+}.uppercase()
+
+println("First item after modifications : '$modifiedFirstItem'")
+```
