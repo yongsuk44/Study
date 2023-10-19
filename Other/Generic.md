@@ -16,6 +16,15 @@ val box1 = Box(1)
 
 ## Variance
 
+> - 공변 : 해당 타입이나 타입의 하위 객체를 읽을 수 있지만, 쓸 수는 없음 - '읽기 전용' 작업(get)에 적합 
+> - 반공변 : 해당 타입이나 타입의 상위 객체를 쓸 수 있지만, 읽을 수 없음 - '쓰기 전용' 작업(set)에 적합 
+> 
+> Java의 타입 시스템은 기본적으로 공변성을 지원하지 않기에 직접 와일드 카드를 구현 해줘야함,  
+> 그러나 Kotlin은 이런 공변성을 `out`, `in` 키워드로 지원하기에 더 간단하게 구현할 수 있음
+> 
+> - `out` : 선언된 타입 또는 그 하위 타입의 객체를 읽을 수 있지만, 새롭게 정의할 수 없음
+> - `in` : 선언된 타입 또는 그 상위 타입의 객체를 새로이 정의할 수 있지만, 타입을 정확히 알지 못해 읽을 수 없음
+
 Java의 제네릭은 클래스, 인터페이스, 함수 등에서 동일한 코드를 재사용하고 싶을 때 여러 타입을 지원하는 중요한 기능 중 하나입니다.  
 이처럼 중요한 기능 중 하나인 제네릭 타입을 사용할 때, Java 타입 시스템은 와일드카드 타입을 필요로 합니다.  
 (Kotlin은 와일드카드 대신 [declaration-site variance](#declaration-site-variance)와 [Type projection](#type-projections)가 존재합니다.)
@@ -75,3 +84,72 @@ interface Collection<E> {
 이 와일드카드는 `add(String)`, `set(int, String)`을 호출할 수 있습니다.
 
 그러나 `List<T>`에서 `T`를 반환을 호출하면 `String`이 아닌, `Object`를 얻게 됩니다.
+
+---
+
+### Declaration-site variance
+
+Java에서 오직 `T`를 반환하는 메서드만 있는 제네릭 인터페이스 `Source<T>`가 있다고 가정해보면 다음과 같을 것입니다.
+
+```java
+interface Source<T> {
+    T nextT();
+}
+```
+
+여기서 `Source<T>`가 `T`를 파라미터로 취급하는 메서드가 없고, 오직 `T`를 반환하는 메서드만 존재하기에  
+`Source<String>`의 인스턴스에 대한 참조를 `Source<Object>` 타입의 변수에 저장하는 것은 안전할 수 있습니다.
+
+그러나 **Java의 타입 시스템은 기본적으로 공변성을 지원하지 않기에** 아래 구현은 금지하고 있습니다.
+
+```java
+void demo(Source<String> strs){
+        Source<Object> objects=strs; // !!! Not allowed in Java
+        }
+```
+
+이러한 제약을 해결하기 위해 `Source<? extends Object>`와 같은 타입을 사용하면 컴파일러의 타입 안전성 체크를 통과할 수 있을겁니다.
+
+Kotlin에서는 이런 종류의 문제를 컴파일러에게 간단히 설명할 수 있는 방법이 있으며 이를 **Declaration-site variance**라고 합니다.
+
+---
+
+### out
+
+`Source`의 타입 파라미터 `T`에 `out` 수정자를 달아 `Source<T>`의 멤버들을 오직 생산만 하고 소비되지 않도록 할 수 있습니다.
+
+```kotlin
+interface Source<out T> {
+    fun nextT(): T
+}
+
+fun demo(strs: Source<String>) {
+    val objects: Source<Any> = strs // This is OK, since T is an out-parameter
+}
+```
+
+`out`은 공변성을 나타내는 키워드로 타입 파라미터가 생산자로만 동작하고, 소비자로 동작하지 않음을 의미합니다.
+
+이로 인해, 상속 관계에 있는 타입 간에도 안전하게 할당이 가능해집니다.  
+예를 들어, `class C<out T>`으로 선언되면 `C<Drived>`의 인스턴스를 `C<Base>`타입에 안전하게 할당할 수 있습니다.
+
+이처럼 공변을 적용할 때 Kotlin에서의 **Declaration-site variance**는 Java의 와일드카드 보다 더 간단하고 직관적입니다.
+
+### in
+
+Kotlin에서는 공변성을 정의하는 `in` 수정자도 지원합니다.   
+`in`은 타입 파라미터가 오직 소비되기만 하고 생산되지 않음을 의미합니다.
+
+반공변 타입의 좋은 예시는 아래 `Comparable` 입니다.
+
+```kotlin
+interface Comparable<in T> {
+    operator fun compareTo(other: T): Int
+}
+
+fun demo(x: Comparable<Number>) {
+    x.compareTo(1.0) // 1.0 has type Double, which is a subtype of Number
+    // Thus, we can assign x to a variable of type Comparable<Double>
+    val y: Comparable<Double> = x // OK!
+}
+```
