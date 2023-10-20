@@ -12,6 +12,11 @@ val box: Box<Int> = Box(1)
 val box1 = Box(1)
 ```
 
+- [Variance](#variance)
+- [Type projections](#type-projections)
+- [Generic constraints](#generic-constraints)
+- [Type erasure](#type-erasure)
+
 ---
 
 ## Variance
@@ -327,6 +332,14 @@ fun <T> copyWhenGreater(
 
 ## Type erasure
 
+> - 제네릭 코드는 컴파일 타임에 타입 안전성 검사를 진행하여 '타입 소거'를 통해 런타임에 안전하게 실행될 수 있도록 함  
+>   - 타입 소거 전 : `Result<Success>`, `Result<Failed>`
+>   - 타입 소거 후 : `Result<?>`
+> - 'star-projections'(`<*>`)을 사용하면 제네릭 타입 자체 만을 검사할 수 있어 타입 검사(`is`)와 캐스팅(`as`) 사용이 가능함
+> - `inline` + `reified` 사용 시 제네릭 타입 인수를 런타임까지 유지할 수 있어 타입 검사(`is`)와 캐스팅(`as`)이 가능
+> - 'Unchecked-cast'는 타입 소거 후 제네릭 타입에 대한 런타임 캐스팅이 안전한지 컴파일러가 확인할 수 없을 때 나오는 경고
+>   - 로직이 안전하다고 판단되면 @Suppress("UNCHECKED_CAST")로 무시 가능
+
 Kotlin에서 제네릭 코드에 대한 타입 안전성 검사는 컴파일 시간에 이루어져 프로그램이 안전하게 실행될 수 있도록 합니다.
 하지만, 런타임에서는 '제네릭 타입 정보가 소거'되므로 실제로 실행되는 코드에서는 제네릭 인수에 대한 정보를 알 수 없습니다.
 
@@ -388,7 +401,45 @@ val stringToSomething = somePair.asPairOf<String, Any>()
 val stringToInt = somePair.asPairOf<String, Int>()
 val stringToList = somePair.asPairOf<String, List<*>>()
 val stringToStringList = somePair.asPairOf<String, List<String>>() // Compiles but breaks type safety!
-// Expand the sample for more details
+
+// stringToSomething = (items, [1, 2, 3])
+// stringToInt = null
+// stringToList = (items, [1, 2, 3])
+// stringToStringList = (items, [1, 2, 3])
+```
+
+### Unchecked casts
+
+런타임에서는 `foo as List<String>`과 같이 구체적인 타입 인수를 가진 제네릭으로의 캐스팅을 확인할 수 없습니다.
+이런 상황을 'Unchecked-cast'라고 부르며, 보통은 컴파일러가 판단하기 어렵지만, 로직 상으로 안전한 경우에 사용됩니다.
+
+예를 들어 `Map<String, *>`을 `Map<String, Int>`로 캐스팅하는 경우 컴파일러가 경고를 띄웁니다.
+이는 런타임에서 해당 캐스팅이 안전한지 확실하지 않기 때문입니다.
+
+```kotlin
+fun readDictionary(file: File): Map<String, *> = file.inputStream().use {
+    TODO("Read a mapping of strings to arbitrary elements")
+}
+
+// We saved a map with `Int`s into this file
+val intsFile = File("ints.dictionary")
+
+// Warning: Unchecked cast: `Map<String, *>` to `Map<String, Int>`
+val intsDictionary: Map<String, Int> = readDictionary(intsFile) as Map<String, Int>
+```
+
+이러한 'Unchecked-cast'를 피하려면 프로그램 구조를 재설계하는 것이 좋습니다.   
+예를 들어 `DictionaryReader<T>`나 `DictionaryWriter<T>` 같은 타입 안전한 인터페이스를 활용할 수 있습니다.
+
+제네릭 함수에서는 `reified` 타입 파라미터를 사용하면 `arg as T` 같은 캐스팅에도 타입 체크가 가능해집니다.  
+단, `arg`가 자체적으로 타입 인수를 가진 제네릭인 경우에는 불가능합니다.
+
+'Unchecked-cast' 경고는 `@Suppress("UNCHECKED_CAST)`를 통해 무시할 수 있습니다.
+
+```kotlin
+inline fun <reified T> List<*>.asListOfType(): List<T>? = 
+    if (all { it is T}) @Suppress("UNCHECKED_CAST") (this as List<T>) 
+    else null
 ```
 
 ----
