@@ -287,6 +287,42 @@ val readData: Any? = fooInt.data // OK
 - `Function<Int, *>` means `Function<Int, out Any?>`.
 - `Function<*, *>` means `Function<in Nothing, out Any?>`.
 
+---
+
+## Generic constraints
+
+제네릭 제약 조건은 특정 타입 파라미터가 받을 수 있는 타입의 범위를 제한할 수 있습니다.
+
+### Upper bounds
+
+가장 일반적인 제네릭 제약 조건은 상한으로, Java의 `extends` 키워드가 해당됩니다. (= Kotlin의 `:`)
+
+```kotlin
+fun <T : Comparable<T>> sort(list: List<T>) {  ... }
+```
+
+`:` 뒤에 명시된 타입은 상한을 나타내며, `T` 대신에 `Comparable<T>`의 하위 타입만이 올 수 있습니다.
+
+```kotlin
+sort(listOf(1, 2, 3)) // OK. Int is a subtype of Comparable<Int>
+sort(listOf(HashMap<Int, String>())) // Error: HashMap<Int, String> is not a subtype of Comparable<HashMap<Int, String>>
+```
+
+상한이 명시되지 않은 경우 기본 상한 값은 `Any?` 입니다.  
+만약 같은 타입 파라미터가 둘 이상의 상한을 필요로 한다면, 별도의 `where` 절을 사용할 수 있습니다.
+
+```kotlin
+fun <T> copyWhenGreater(
+    list: List<T>,
+    threshold: T
+): List<String> where T : CharSequence, T : Comparable<T> {
+    return list.filter { it > threshold }.map { it.toString() }
+}
+```
+
+전달된 타입은 `where` 절의 모든 조건을 동시에 만족해야 합니다.  
+위 예제에서 `T` 타입은 `CharSequence`와 `Comparable` 둘 모두를 구현 해야 합니다.
+
 ----
 
 ### 상한
