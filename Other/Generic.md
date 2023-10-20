@@ -18,7 +18,7 @@ val box1 = Box(1)
 
 > Java의 타입 시스템은 기본적으로 공변성을 지원하지 않기에 직접 와일드 카드를 구현 해줘야함,  
 > 그러나 Kotlin은 이런 공변성을 `out`, `in` 키워드로 지원하기에 더 간단하게 구현할 수 있음
-> 
+>
 > - `out`(공변) : 선언된 타입 또는 그 하위 타입의 객체를 읽을 수 있지만, 새롭게 정의할 수 없음 -- '읽기 전용' 작업
 > - `in`(반공변) : 선언된 타입 또는 그 상위 타입의 객체를 새로이 정의할 수 있지만, 타입을 정확히 알지 못해 읽을 수 없음 -- '쓰기 전용' 작업
 
@@ -27,16 +27,16 @@ Java의 제네릭은 클래스, 인터페이스, 함수 등에서 동일한 코�
 (Kotlin은 와일드카드 대신 [declaration-site variance](#declaration-site-variance)와 [Type projection](#type-projections)가 존재합니다.)
 
 자세히 알아보면 Java의 제네릭 타입은 불변(invariance)입니다.  
-타입 불변성은 제네릭 타입을 사용하는 클래스, 인터페이스에는 해당 타입의 상위, 하위를 대입할 수 없고 오직 일치하는 타입만을 대입하는 것을 의미합니다. 
+타입 불변성은 제네릭 타입을 사용하는 클래스, 인터페이스에는 해당 타입의 상위, 하위를 대입할 수 없고 오직 일치하는 타입만을 대입하는 것을 의미합니다.
 
 이처럼 Java의 `List<T>`를 활용한 `List<String>`와 `List<Object>`는 서로 다른 타입으로 취급됩니다.  
 만약 `List<String>`과 `List<Object>`가 같은 타입으로 취급된다면, 런타임에서 문제가 발생할 수 있기 때문입니다.
 
 ```java
-List<String> strs = new ArrayList<String>();
-List<Object> objs=strs; // A compile-time error here saves us from runtime exception later.
-objs.add(1); // Put an Integer into a list of Strings
-String s=strs.get(0); // ClassCastException: Cannot cast Integer to String
+List<String> strs=new ArrayList<String>();
+        List<Object> objs=strs; // A compile-time error here saves us from runtime exception later.
+        objs.add(1); // Put an Integer into a list of Strings
+        String s=strs.get(0); // ClassCastException: Cannot cast Integer to String
 ```
 
 위 상황와 같이 Java는 런타임 안전성을 확보하기 위해 일부 타입 관련 작업을 제한합니다.  
@@ -54,8 +54,8 @@ interface Collection<E> {
 
 ```java
 void copyAll(Collection<Object> to,Collection<String> from){
-    to.addAll(from);
-}
+        to.addAll(from);
+        }
 ```
 
 왜냐하면 `Collection<String>`은 `Collection<Object>`의 하위 타입임을 확인할 수 없기 때문입니다.  
@@ -150,3 +150,77 @@ fun demo(x: Comparable<Number>) {
     val y: Comparable<Double> = x // OK!
 }
 ```
+
+---
+
+## Type projections
+
+> Type projections : 클래스, 인터페이스에서 `in`과 `out`을 통해 타입 파라미터의 사용을 제한하는 것
+
+### Use-site variance: type projections
+
+> User-site variance : 클래스, 인터페이스를 정의할 때가 아닌, 실제로 그 타입을 사용하는 코드에서 제네릭 타입의 공변성 or 반공변성을 지정
+
+클래스와 인터페이스를 정의할 때 타입 파라미터 `T`를 `out`으로 선언하여 사용지점에서 하위 타입 문제를 피할 수 있지만,   
+`Array`와 같은 클래스들은 타입 파라미터 `T`에 대해 공변성(`out`)과 반공변성(`in`)을 둘 다 가질 수 없습니다.
+
+```kotlin
+class Array<T>(vak size: Int) {
+    operator fun get(index: Int): T {
+        ...
+    }
+    operator fun set(index: Int, value: T) {
+        ...
+    }
+}
+```
+
+이처럼 공변성과 반공변성을 가질 수 없다는 점은 다음과 같은 유연성을 제한합니다.
+
+아래 `copy()`는 하나의 배열에서 다른 배열로 아이템을 복사하는 것을 목표로 합니다.
+
+```kotlin
+fun copy(from: Array<Any>, to: Array<Any>) {
+    assert(from.size == to.size)
+
+    for (i in from.indices) {
+        val fromValue = from.get(index = i)
+        to.set(index = i, value = fromValue)
+    }
+}
+
+val ints: Array<Int> = arrayOf(1, 2, 3)
+val any = Array<Any>(3) { "" }
+copy(from = ints, to = any) // type is Array<Int> but Array<Any> was expected
+```
+
+위와 같이 `Int` → `Any` 타입으로 복사할 때 제네릭 타입의 불변성에 문제가 발생됩니다.
+
+`Array<T>`는 `T`에 대해 불변성이 있어서 서로 다른 타입의 배열 간에는 호환성을 가질 수 없습니다.  
+즉, `Array<Int>`와 `Array<Any>`는 서로 호환되지 않습니다.
+
+이러한 문제를 해결하기 위해 다음과 같이 `copy()`를 변경할 수 있습니다.
+
+```kotlin
+fun copy(from: Array<out Any>, to: Array<Any>) {
+    ...
+}
+```
+
+이것을 **Type projection**(타입 투영)이라 부릅니다.
+
+여기서 `from`은 단순한 배열이 아니라 제한된(projections) 배열을 의미합니다.  
+이는 `copy()`의 `from` 파라미터는 `Array<T>`에서 **타입 파라미터 `T`와 그 하위 타입을 반환**하는 메서드(`get()`)만 호출할 수 있게 됩니다.
+
+이와 같이 제네릭 타입의 공변성이나 반공변성을 실제로 타입이 사용되는 코드 위치에서 지정하는 것을 **use-site variance**라고 합니다.
+
+또한 `in`을 사용한 Type projection도 가능합니다.
+
+```kotlin
+fun fill(dest: Array<in String>, value: String) {
+    ...
+}
+```
+
+`Array<in String>`은 Java의 `Array<? super String>`에 해당됩니다.  
+이는 `fill()`에 `CharSequence`의 배열이나 `Object`의 배열을 전달할 수 있음을 의미합니다.
