@@ -73,7 +73,7 @@ interface Collection<E> {
 알려지지 않은 `E`의 하위 타입에 어떤 객체가 부합하는지 알 수 없기에 쓸 수는(write) 없게 만듭니다.
 
 `Collection<String>`은 `Collection<? extends Object>`의 하위 타입으로 취급되기 때문에,  
-상한(extends-bound)을 가진 와일드카드는 타입을 공변(covariance)으로 만듭니다.
+[상한](#상한)을 가진 와일드카드는 타입을 공변(covariance)으로 만듭니다.
 
 반대로 컬렉션에 항목을 추가만 할 수 있다면, `Collection<? super String>`로 선언하여 `String`또는 그 상위 타입만을 수용할 수 있도록 할 수 있습니다.
 
@@ -155,11 +155,11 @@ fun demo(x: Comparable<Number>) {
 
 ## Type projections
 
-> Type projections : 클래스, 인터페이스에서 `in`과 `out`을 통해 타입 파라미터의 사용을 제한하는 것
+> - Type projections : 클래스, 인터페이스에서 `in`과 `out`을 통해 타입 파라미터의 사용을 제한하는 것
+> - User-site variance : 클래스, 인터페이스를 정의할 때가 아닌, 실제로 그 타입을 사용하는 코드에서 제네릭 타입의 공변성 or 반공변성을 지정
+> - Star-projections `<*>` : 제네릭 타입을 모를 때 해당 타입을 안전하게 사용할 수 있도록 하는 문법
 
 ### Use-site variance: type projections
-
-> User-site variance : 클래스, 인터페이스를 정의할 때가 아닌, 실제로 그 타입을 사용하는 코드에서 제네릭 타입의 공변성 or 반공변성을 지정
 
 클래스와 인터페이스를 정의할 때 타입 파라미터 `T`를 `out`으로 선언하여 사용지점에서 하위 타입 문제를 피할 수 있지만,   
 `Array`와 같은 클래스들은 타입 파라미터 `T`에 대해 공변성(`out`)과 반공변성(`in`)을 둘 다 가질 수 없습니다.
@@ -224,3 +224,73 @@ fun fill(dest: Array<in String>, value: String) {
 
 `Array<in String>`은 Java의 `Array<? super String>`에 해당됩니다.  
 이는 `fill()`에 `CharSequence`의 배열이나 `Object`의 배열을 전달할 수 있음을 의미합니다.
+
+---
+
+### Star-projections
+
+때때로 타입 인자에 대해 아무런 정보가 없지만, 안전한 방법으로 사용하고 싶을 수 있습니다.  
+여기서 안전한 방법이란, 제네릭 타입에 '**Star-projections**'을 정의하는 것입니다.
+
+'Star-projections'은 해당 제네릭 타입의 구체적인 인스턴스가 'Star-projections'의 하위 타입이 됩니다.
+
+Kotlin은 'Star-projections'을 다음과 같은 목적으로 문법을 제공합니다.
+
+`Foo<out T : TUpper>`와 같이 `T`가 상한 `TUpper`를 가진 공변 타입 파라미터일 때,  
+`Foo<out T : Upper>`가 `Foo<*>`로 바뀌면, 이는 `Foo<out TUpper>`으로 해석됩니다.  
+이는 `Foo<*>`를 통해 `TUpper` 타입의 값을 안전하게 얻을 수(`get()`) 있습니다.
+
+```kotlin
+class Foo<out T: Number> constructor(
+    private val data: T
+) {
+    fun getData(): T = data
+}
+
+val fooInt: Foo<Int> = Foo(42)
+val fooAny: Foo<*> = fooInt // OK
+val data: Number = fooAny.getData() // OK
+```
+
+`Foo<in T>`와 같이 `T`가 반공변 타입 파라미터일 때,  
+`Foo<in T>`가 `Foo<*>`로 바뀌면 이는 `Foo<in Nothing>`으로 해석됩니다.  
+`Nothing`은 값이 존재할 수 없는 타입으로 의미되어 쓰기(`set()`)가 불가능해집니다.
+
+```kotlin
+class Foo<in T> {
+    fun setData(value: T) { 
+        println("value receiver : $value")
+    }
+}
+
+val fooAny: Foo<*> = Foo<Any>()
+// fooAny.setData(42) // Type mismatch. 'Required: Nothing' 'Found: Int' Compile Error
+```
+
+`Foo<T : TUpper>`와 같이 `T`가 상한 `TUpper`를 가진 불변 타입 파라미터라면,  
+값 읽기 : `Foo<*>`와 `Foo<out TUpper>`와 동일하고,  
+값 쓰기 : `Foo<*>`와 `Foo<in Nothing>`와 동일합니다.
+
+```kotlin
+class Foo<T> constructor(var data: T)
+
+val fooInt: Foo<*> = Foo(42)
+// fooInt.data = 22 // Compile Error
+val readData: Any? = fooInt.data // OK
+```
+
+제네릭 타입이 여러 타입 파라미터를 가지고 있다면, 각각은 독립적으로 프로젝션될 수 있습니다.  
+예를 들어 타입이 `interface Function<in T, out U>`로 선언되어 있다면,
+다음과 같이 'Star-projections'을 사용할 수 있습니다.
+
+- `Function<*, String>` means `Function<in Nothing, String>`.
+- `Function<Int, *>` means `Function<Int, out Any?>`.
+- `Function<*, *>` means `Function<in Nothing, out Any?>`.
+
+----
+
+### 상한
+
+타입 파라미터 `T`가 가질 수 있는 타입의 범위를 제한하는 역할을 합니다.  
+예를 들어 `<T : Any>`와 같이 타입 파라미터를 정의할 때, `T`는 `Any` 또는 그 하위 타입만 될 수 있습니다.
+여기서 `Any`가 `T`의 '상한'이 됩니다.
