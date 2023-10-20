@@ -336,6 +336,61 @@ Kotlin에서 제네릭 코드에 대한 타입 안전성 검사는 컴파일 시
 이는 Java와 유사하며, 런타임에 타입 정보가 유지되지 않는 문제점이 있을 수 있지만, 
 이런 type erasure는 JVM과의 호환성을 유지하기 위함입니다.
 
+### Generics type checks and casts
+
+런타임에 타입 정보가 소거되기에 실제로 어떤 타입으로 제네릭 타입의 인스턴스가 생성되는지 알 수 없습니다.  
+그래서 컴파일러는 `ints is List<Int>`나 `list is T`와 같은 `is` 체크를 금지합니다.
+
+예를 들어 `List<Int>`와 `List<String>`은 런타임에서 둘 다 `List<*>`로 타입 소거됩니다.  
+따라서 `is List<Int>`와 같은 검사를 하면 정확한 타입 정보를 알 수 없어 오류가 발생될 수 있습니다.
+
+그러나 'star-projections'을 사용하면 어떤 타입인지가 아닌, 제네릭 타입 자체만을 검사할 수 있기에 타입 소거에 영향을 받지 않고, 
+위 문제를 우회하여 타입 검사를 안전하게 할 수 있습니다.
+
+```kotlin
+if (something is List<*>) {
+    something.forEach { 
+        println(it) // The items are typed as `Any?`
+    } 
+}
+```
+
+또한 이미 컴파일 시간에 제네릭 인스턴스의 타입 정보가 정적으로 확인되면, 제네릭이 아닌 해당 타입에 대한 `is` 체크나 캐스팅(`as`)을 할 수 있습니다.
+
+```kotlin
+fun handleStrings(list: MutableList<String>) {
+    if (list is ArrayList) {
+        // `list` is smart-cast to `ArrayList<String>`
+    }
+}
+```
+
+제네릭이 아닌 부분만을 대상으로 캐스팅을 할 때 `list as ArrayList`와 같이 타입 인수를 생략할 수 있습니다.
+
+제네릭 함수에서 타입 인수는 컴파일 시간에만 검사됩니다. 
+이 말은 런타임에서 타입 소거로 인해 함수 내부에서 타입 파라미터(`T`)를 사용한 타입 검사(`is`)나 캐스팅 (`as`)이 불가능하다는 것입니다. 
+
+단, `inline` 함수와 `reified` 타입 파라미터를 함께 사용하면 이러한 제약을 일부 극복할 수 있습니다.  
+`reified` 키워드가 붙은 타입 파라미터는 런타임에서도 실제 타입 정보가 각 함수에 inline 되기에 타입 검사나 캐스팅이 가능합니다.
+
+그러나 이 경우에도 주의할 점이 있습니다. 
+예를 들어 `arg is T`와 같은 타입 검사를 할 때 `arg`가 이미 제네릭 타입의 인스턴스라면, 그 내부의 타입 인수는 여전히 런타임에서 알 수 없습니다.
+
+```kotlin
+inline fun <reified A, reified B> Pair<*, *>.asPairOf(): Pair<A, B>? {
+    if (first !is A || second !is B) return null
+    return first as A to second as B
+}
+
+val somePair: Pair<Any?, Any?> = "items" to listOf(1, 2, 3)
+
+val stringToSomething = somePair.asPairOf<String, Any>()
+val stringToInt = somePair.asPairOf<String, Int>()
+val stringToList = somePair.asPairOf<String, List<*>>()
+val stringToStringList = somePair.asPairOf<String, List<String>>() // Compiles but breaks type safety!
+// Expand the sample for more details
+```
+
 ----
 
 ### 상한
