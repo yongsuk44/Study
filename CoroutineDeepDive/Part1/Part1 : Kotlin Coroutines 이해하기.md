@@ -247,14 +247,10 @@ class PrintUserContinuation(
 
 ## [Part 1.5 : Coroutine: Built-in support vs library](코루틴의%20구조%20지원%20vs%20라이브러리.md)
 
-코루틴은 하나의 개념으로 참조하는 것이 일반적이지만, 내부적으로는 2가지 구성요소로 이루어져 있습니다.
+Coroutine은 'Built-in Support'와 'kotlinx.coroutine library' 구성요소로 이루어져 있습니다.
 
-### 구조 지원(Built-in Support)
+'Built-in Support'는 Kotlin 언어 자체에서 제공하는 기능으로 매우 기본적이고 유연합니다.  
+그러나 이러한 유연성으로 인해 직접 사용하기 복잡하며 일반적으로 오픈소스 라이브러리 개발자들이 사용합니다.
 
-Kotlin 언어 자체에서 제공하는 기능으로 매우 기본적이고 유연합니다.
-그러나 이러한 유연성으로 인해 직접 사용하기 복잡하며 일반적으로 라이브러리 개발자들이 사용합니다.
-
-### Kotlinx.coroutine
-
-프로젝트에 별도로 추가해야하며, 구조 지원 보다 더 높은 수준의 추상화를 제공하고 있습니다.  
+'kotlinx.coroutine library'는 프로젝트에 별도로 추가하며, 'Built-in Support' 보다 더 높은 수준의 추상화를 제공합니다. 
 일반 개발자들이 사용하기 간편하고 편리하게 동시성을 다룰 수 있는 구체적인 방법을 제공합니다.
