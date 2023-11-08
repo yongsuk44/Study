@@ -88,32 +88,22 @@ Kotlin은 'Generator' 대신 'Sequence Builder'를 제공하여 'Sequence'를 �
 요소가 필요할 때 계산된다는 것은 'Sequence'가 이전 요소를 출력 후 '중단된 시점으로 이동'하여 '다음 요소를 출력'하는 것입니다. 
 일반 함수의 경우 '중단'된 후 '중단된 시점'으로 돌아가 다음 작업을 수행할 수 없기에 이러한 '일시 정지 메커니즘'은 'Sequence'에서 중요한 메커니즘으로 작용합니다.
 
-## [Part 1.3 : How does suspendsion work?](코루틴에서%20일시정지는%20어떻게%20동작될까%3F.md)
+## [Part 1.3 : How does suspension work?](코루틴에서%20일시정지는%20어떻게%20동작될까%3F.md)
 
-코루틴의 일시 정지와 재개는 게임의 일시 정지와 이어하기와 비슷한 맥락을 가집니다.  
-**게임 일시 정지 시 현재 상태를 저장**하고 잠시 멈춘 뒤 나중에 **게임을 다시 시작할 때 다시 그 지점에서 이어서** 플레이 할 수 있습니다.
+> - Coroutine 중단 시 `Continuation`이 발생되고, 이를 통해 다시 '재개'할 수 있음 
+> - `Continuation`의 `resume()`, `resumeWithException()`으로 Coroutine 재개 시 '결과 또는 예외'를 얻음
+> - `dealy`, `suspendCoroutine`와 같은 호출은 'suspend function' 중단 X, Coroutine의 중단 O
 
-### Continuation
+Thread는 작업을 일시 중단하고 저장하는 기능이 없으며, 작업이 중단될 때에는 'Blocking' 상태가 됩니다.  
+반면, Coroutine은 '중단' 상태일 때 자원을 사용하지 않으며, `Continuation` 객체를 통해 다른 Thread에서 Coroutine을 '재개'할 수 있습니다.
 
-코루틴에서 일시 정지 함수 호출 시 코루틴이 멈추게 되며, 이 때 `Continuation`이 반환 됩니다.  
-`Continuation`은 현재 코루틴의 상태를 나타내는 객체로 이를 통해 나중에 코루틴을 다시 재개할 수 있습니다.
+Coroutine은 `suspendCoroutine<T>`을 통해 '중단'될 수 있고, `Continuation`의 `resume(value: T)`을 통해 다시 '재개'할 수 있습니다.
+이 때 `resume(value: T)`에 전달되는 값은 `suspendCoroutine<T>`의 반환 타입과 일치해야 합니다.  
 
-스레드와 코루틴의 차이점으로 스레드는 차단된 경우 자원을 계속 소모하는 반면, 코루틴은 일시 정지 시 자원을 소모하지 않습니다.  
-또한 코루틴의 `Continuation`은 다른 스레드에서도 재개될 수 있습니다.
+추가로 Coroutine 재개 시 '결과' 또는 '예외' 전달이 필요한 경우, 
+`suspendCancelableCoroutine<T>`과 `resumeWithException(exception: Throwable)`을 통해 처리가 가능합니다.
 
-### Resume with value or Exception
-
-코루틴은 중단 후 재개될 때 새로운 데이터를 반환할 수 있으며,
-이를 통해 API와 같은 비동기 작업에서 데이터를 기다리는 동안 다른 작업을 수행할 수 있어 효율적입니다.
-
-`suspendCoroutine`을 통해 코루틴을 일시 정지할 수 있고 `Continuation`의 `resume()`을 통해 다시 재개할 수 있습니다.  
-이때 `resume()`에 전달되는 값은 `suspendCoroutine`의 반환 타입과 일치해야 합니다.  
-`resume`을 통해서 예외 처리 시 `resumeWithException`을 통해 예외를 전달하여 가능합니다.
-
-### suspend 함수를 중단하는 것이 아닌, 코루틴을 중단
-
-suspend 함수에서 일시 정지가 된 상황에서는 suspend 함수가 정지된 것이 아닌, 코루틴이 정지되었다는 점을 알고 있어야 합니다.  
-이때 코루틴을 외부에서 재개하는 것은 좋은 방법이 아니며, 이러한 방식으로 재개할 경우 메모리 누수와 같은 여러 문제를 일으킬 수 있습니다.
+주의할 점으로 `suspendCoroutine<T>`을 통한 '중단 상황'은 **'suspend function'의 중단이 아닌, Coroutine의 중단**입니다.  
 
 ## [Part 1.4 : Coroutines under the hood](코루틴%20내부%20동작.md)
 
