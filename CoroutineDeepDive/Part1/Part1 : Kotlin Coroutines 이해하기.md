@@ -15,29 +15,60 @@ Rxjava, Reactor와 같이 잘 정리된 기존 JVM 라이브러리들이 있습�
 - [Coroutines under the hood](#part-14--coroutines-under-the-hood)
 - [Coroutine - 'built in support' vs 'library'](#part-15--coroutine--built-in-support-vs-library)
 
-
 ## [Part 1.1 : Why Kotlin Coroutines](왜%20코루틴%20인가%3F.md)
 
-클라이언트 로직 구현 시 빈번하게 처리하는 작업 순서로는 다음과 같을 수 있습니다.
+> - Android에서 'View Update'는 'MainThread'에서만 가능, 만약 'MainThread' 차단 시 앱 크래쉬 발생
+> - 이를 위해 'Thread switching', 'Callback', 'Reactive Programming' 등 제시되었으나, 각각의 문제점 존재
+>   - Thread switching : 취소 메커니즘이 없고, Thread 생성은 비용이 많이 들고 Thread Switcthing의 관리가 어려움 
+>   - Callback : 자연스러운 병렬 처리 미 지원, 취소 메커니즘 구현 시 추가적인 구현이 필요, 'Callback Hell' 발생 가능
+>   - Reactive Programming : 코드 복잡성 증가, 명시적인 취소가 반드시 필요
+> - Coroutine 도입 핵심 기능은 'Coroutine을 특정 시점에 중단 후 재개'
+
+클라이언트 로직 중 빈번하게 처리하는 작업의 순서는 다음과 같습니다.
 
 1. 하나 or 여러 데이터 소스(API, Database, Preference, 다른 앱 등)에서 데이터를 얻어옴
 2. 데이터 처리 (파싱, 추출, 병합 등)
 3. 처리된 데이터를 통해 View Update, DB Update, API 요청 등 작업 수행
 
-그러나 Android 플랫폼에서는 View Update 시 메인 스레드에서만 가능하고, 메인 스레드에서 블로킹 작업을 피해야 합니다.  
-따라서 비동기 작업을 하는 경우에는 별도의 스레드를 통해 처리해야 하는것이 일반적이었습니다.
+여기서, 'ViewUpdate'는 Android 플랫폼에서 'MainThread'에서만 가능합니다.  
+만약 'MainThread'에서 'Blocking' 작업을 하는 경우 앱이 멈출 수 있으며, 이는 앱의 크래쉬로 이어질 수 있습니다.
 
-이에 따라 여러 방법이 제시되었고 여러 방법들과 코루틴을 비교 해보겠습니다.
+따라서 'Blocking' 작업을 하는 경우, 'Worker-Thread'를 통해 처리하는 것이 일반적인 관행이었습니다.  
+그러나 'Thread switching'의 경우에도 문제점이 나타나게 됩니다.
 
-|         | Thread Switching | Callbacks            | RxJava(및 기타 반응형 스트림)                | Kotlin Coroutines                                         |
-|---------|------------------|----------------------|-------------------------------------|-----------------------------------------------------------|
-| 스레드 전환  | 수동으로 처리하고 관리해야 함 | 콜백 안에서 수동으로 처리해야 함   | `.subscribeOn()`, `.observeOn()` 사용 | `Dispatchers`를 사용하여 관리                                    |
-| 메모리 관리  | 직접 관리해야 함        | 메모리 누수 위험 있음         | `Disposable`을 사용하여 자동 관리            | 자동으로 관리되며, scope에 따라 제한됨                                  |
-| 복잡성     | 낮음               | 중간 (콜백 지옥 위험)        | 높음 (학습 곡선이 가파름)                     | 중간                                                        |
-| 동시성     | 직접 관리 및 조절해야 함   | 제한적                  | `.zip()`, `.flatMap()` 등을 사용하여 지원   | `suspendCoroutine`, `launch`, `withContext`, `async` 등 사용 |
-| 취소 메커니즘 | 직접 구현해야 함        | 일반적으로 지원 안 됨         | `Disposable`을 사용하여 지원               | `cancel()` 및 `isActive` 사용                                |
-| 오류 처리   | 예외 처리 구현 필요      | 콜백 내에서 처리 필요         | `onError()`를 사용하여 중앙 집중 처리          | `try-catch` 또는 `CoroutineExceptionHandler` 사용             |
-| 응답성     | 직접 관리 및 조절해야 함   | 대기 시간 및 대기열 문제 발생 가능 | 스트림에 대한 반응형 처리 지원                   | 중단 및 재개 기능으로 높은 응답성 제공                                    |
+1. Thread 취소 메커니즘이 없어, 빈번한 메모리 누수 현상
+2. 많은 Thread 생성은 많은 비용이 발생
+3. 빈번한 Thread switching은 관리가 어려움
+4. 코드가 복잡해짐
+
+위 문제를 해결하기 위한 다른 패턴으로 'Callback'이 제시되었습니다.  
+'Callback' : 함수를 'non-blocking'으로 만들되, 'Callback' 프로세스가 완료되면 실행해야 하는 함수를 전달하는 것입니다.
+
+'Callback'에서도 문제점이 나타나게 되는데 이는 다음과 같습니다.
+
+1. 자연스러운 병렬 처리 미 지원
+2. 'Callback'의 취소를 위해, 이들을 추적하고 관리하는 추가적인 코드가 필요함
+3. 'Callback'의 중첩으로 인해, 'Callback Hell'이 발생할 수 있음
+4. 프로그램 진행 순서를 제어하기 어려움
+
+이를 위해 'Reactive Programming'이 제시되었으며, 이는 모든 '작업'의 시작과 처리를 'Observable DataStream' 내에서 이루어집니다.  
+이런 'DataStream'은 'Thread Switching'과 'Concurrency Processing'을 지원하여 앱에서 '작업'을 병렬로 수행하는데 자주 활용됩니다. 
+
+'Reactive Programming' 방식은 메모리 누수가 없고, 자연스러운 취소를 지원하며, 'Thread'를 효율적으로 사용하기에 'Callback' 보다 더 좋은 방법이 됩니다.  
+하지만, 다음과 같은 문제점들이 생길 수 있습니다. 
+
+1. '코드 복잡성' 커질 수 있음
+2. 'DataStream'의 취소가 반드시 명시적으로 이루어져야 함
+3. 'Reactive Programming' 도입 시 코드 상당 부분의 리팩토링 필요
+
+이를 위해 'Coroutine'이 만들어지게 됩니다.
+
+Coroutine 도입의 핵심 기능은 **Coroutine을 특정 시점에 중단 후 재개** 입니다.  
+이 덕분에 'MainThread'에서 Blocking 작업 시 Thread Blocking이 아닌, 'Coroutine 중단'이 가능해집니다.  
+Coroutine이 '중단'되면, 'Thread'는 'Blocking' 되지 않고, View Update 또는 다른 Coroutine을 처리하는 데 사용할 수 있습니다.
+
+특정 작업을 호출하여 데이터를 얻는 Coroutine이 중단 후 '데이터가 준비'되면 Coroutine은 'MainThread'를 기다립니다.  
+기다린 후 'MainThread'에서 Coroutine이 재개되면, '중단한 지점'부터 프로세스를 다시 진행할 수 있습니다.
 
 ## [Part 1.2 : Sequence builder](시퀀스%20빌더.md)
 
@@ -48,7 +79,7 @@ Rxjava, Reactor와 같이 잘 정리된 기존 JVM 라이브러리들이 있습�
 
 시퀀스 정의 시 `sequnece` 함수와 내부의 `yield` 함수를 사용하며, 시퀀스를 호출할 때 마다 `yield` 이후의 코드를 실행하여 다음 값을 제공합니다.  
 즉, 만약 중간에서 함수가 중단되는 경우, 다음 호출 시 `yield` 이후의 코드부터 다시 실행됩니다.  
-이렇게 중간에 중단되고 다시 시작하는 특성은 코루틴의 일시 정지 및 재개 메커니즘 덕분에 가능합니다.  
+이렇게 중간에 중단되고 다시 시작하는 특성은 코루틴의 일시 정지 및 재개 메커니즘 덕분에 가능합니다.
 
 주의할 점으로 시퀀스 빌더 내에서는 `yield` 외의 다른 일시 정지 함수를 사용할 수 없습니다.  
 만약 비동기 데이터를 가져와야 하는 경우, 코루틴의 `Flow`를 사용하는 것이 더 적합합니다.
@@ -80,7 +111,6 @@ Rxjava, Reactor와 같이 잘 정리된 기존 JVM 라이브러리들이 있습�
 suspend 함수에서 일시 정지가 된 상황에서는 suspend 함수가 정지된 것이 아닌, 코루틴이 정지되었다는 점을 알고 있어야 합니다.  
 이때 코루틴을 외부에서 재개하는 것은 좋은 방법이 아니며, 이러한 방식으로 재개할 경우 메모리 누수와 같은 여러 문제를 일으킬 수 있습니다.
 
-
 ## [Part 1.4 : Coroutines under the hood](코루틴%20내부%20동작.md)
 
 suspend 함수는 일시 정지, 특정 위치에 다시 재개될 수 있는 함수로, 상태 기계 모델과 유사하게 동작합니다.
@@ -106,7 +136,7 @@ suspend 함수를 컴파일한 코드를 보게되면 `continuation`을 마지�
 `label`의 초기값은 `0`으로 함수의 시작 위치를 말하며, 그 외 숫자들은 일시 정지 후 다시 재개되어야 할 시점을 의미합니다.
 
 코루틴이 `delay`로 일시 중단되면 `COROUTINE_SUSPENDED`를 반환하고, 이를 호출한 함수에도 `COROUTINE_SUSPENDED`를 반환하게 됩니다.
-이 `COROUTINE_SUSPENDED`가 호출 스택의 최상단까지 전파되어 코루틴 빌더 또는 `resume` 함수에 도달할 때 까지 이어지며, 
+이 `COROUTINE_SUSPENDED`가 호출 스택의 최상단까지 전파되어 코루틴 빌더 또는 `resume` 함수에 도달할 때 까지 이어지며,
 이러한 동작으로 현재 코루틴 작업을 하던 스레드가 코루틴이 일시정지 되었다는 것을 확인하고 다른 작업에 사용 가능하도록 처리됩니다.
 
 ## [Part 1.5 : Coroutine: Built-in support vs library](코루틴의%20구조%20지원%20vs%20라이브러리.md)
@@ -115,10 +145,10 @@ suspend 함수를 컴파일한 코드를 보게되면 `continuation`을 마지�
 
 ### 구조 지원(Built-in Support)
 
-Kotlin 언어 자체에서 제공하는 기능으로 매우 기본적이고 유연합니다. 
+Kotlin 언어 자체에서 제공하는 기능으로 매우 기본적이고 유연합니다.
 그러나 이러한 유연성으로 인해 직접 사용하기 복잡하며 일반적으로 라이브러리 개발자들이 사용합니다.
 
-### Kotlinx.coroutine 
+### Kotlinx.coroutine
 
 프로젝트에 별도로 추가해야하며, 구조 지원 보다 더 높은 수준의 추상화를 제공하고 있습니다.  
 일반 개발자들이 사용하기 간편하고 편리하게 동시성을 다룰 수 있는 구체적인 방법을 제공합니다.
