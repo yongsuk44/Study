@@ -107,31 +107,143 @@ Coroutine은 `suspendCoroutine<T>`을 통해 '중단'될 수 있고, `Continuati
 
 ## [Part 1.4 : Coroutines under the hood](코루틴%20내부%20동작.md)
 
-suspend 함수는 일시 정지, 특정 위치에 다시 재개될 수 있는 함수로, 상태 기계 모델과 유사하게 동작합니다.
-이는 일시 정지 호출 후 특정 상태를 지니게 되는데 이 상태를 통해 특정 지점에서 실행할 수 있습니다.
-이러한 방식은 복잡한 비동기 로직을 동기식 코드처럼 보이게 만들어 유지보수와 코드 가독성에 이점을 지닙니다.
+> - `Continuation`은 상태를 저장하며 이를 통해 Coroutine은 함수의 정확한 지점에서 재개가 가능
+>   - label : 'suspending function'이 중단된 후 재개되는 지점
+>   - local data : 'suspending function'의 파라미터 혹은 로컬 변수
+>   - parent continuation : 'suspending function'을 호출한 상위 `Continuation`
+> - `Continuation`은 자신을 호출한 'Parent Continuation'과 연결되어 'Continuation Chain'을 형성하며, 이는 'Call Stack'과 유사한 역할을 함
+> - CPS : `Continuation`을 마지막 인수로 함수에서 함수로 전달, 이를 통해 'Continuation Chain' 형성 
+> - Coroutine이 중단 상태일 경우 `COROUTINE_SUSPENDED`를 'Call Stack' 최상단까지 전파하여, Thread를 다른 작업에 사용 가능하도록 알릴 수 있음
+> - Continuation 재개 시 발생하는 과정
+>   1. 각 `Continuation`은 자신과 연결된 함수 호출
+>   2. 자신과 연결된 함수 작업 완료 시, 해당 `Continuation`은 자신을 호출한 `Continuation` 재개
+>   3. 이어서, 호출된 `Continuation`과 연결된 함수 호출, 위 과정을 반복
+>   4. 이러한 반복을 'Call Stack' 최상단에 도달할 때까지 계속 진행
 
-### Continuation 함수 호출 스택
+'suspending function'은 실행 중 중단되었다가 나중에 재개될 수 있는 함수입니다.  
+이 함수는 'suspend point'에서 실행을 중단할 수 있으며, 이를 통해 함수는 '여러 상태'를 가질 수 있습니다.
 
-코루틴은 함수의 호출과 재개를 다룰 때 연속성을 유지하기 위해 `Continuation` 객체를 사용합니다.
-하나의 함수가 다른 함수를 호출 할 때, 호출된 함수의 `continuation`은 호출하는 함수의 `continuation`을 decration 하게 됩니다.
-이로 인해 연결된 `continuation` 객체의 체인이 생성되며, 이 체인은 호출 스택을 나타내 활용됩니다.
+각 상태는 고유 '식별 번호'를 가지며, 함수의 '로컬 데이터'와 함께 `Continuation` 객체에 저장됩니다.   
+이렇게 저장된 정보는 함수 재개 시 필요한 모든 컨텍스트를 제공합니다.
 
-### Continuation passing style
+`Continuation` 객체는 자신을 호출한 '상위 suspending function'의 `Continuation` 객체와 연결됩니다.   
+이들은 'Continuation Chain'을 형성하고, 이는 전체 프로그램의 'Call Stack'과 유사한 역할을 합니다.
 
-`continuation`이 인수로 함수에서 함수로 전달되는 것을 의미하며 함수 파라미터의 마지막 위치에 놓이게 됩니다.
+'Continuation Chain'은 Coroutine이 중단 후 재개 시, 
+함수 실행을 정확한 지점에서 이어갈 수 있도록 하고, 이전에 중단된 상태를 복원하는 데 사용됩니다.
 
-suspend 함수를 컴파일한 코드를 보게되면 `continuation`을 마지막 파라미터로 받고 반환 값들을 `Any` | `Any?` 로 변환됨을 볼 수 있는데,
-이는 suspend 함수가 `COROUTINE_SUSPENDED`이라는 코루틴이 일시 중단될 때 반환되어야 하는 특별한 값을 반환 하기에 가장 근접한 상위 타입인 `Any`를 반환하는 것입니다.
+---
 
-### Continuation Label & COROUTINE_SUSPENDED
+'CPS(Continuation-passing-style)'는 `Continuation`을 인수로, 함수에서 함수로 전달되는 것을 의미하며 마지막 파라미터에 놓입니다.
 
-코루틴은 `continuation`을 통해 일시 정지 후 재개되는데, 이때 `continuation`은 `label`을 가지게 됩니다.
-`label`의 초기값은 `0`으로 함수의 시작 위치를 말하며, 그 외 숫자들은 일시 정지 후 다시 재개되어야 할 시점을 의미합니다.
+```kotlin
+suspend fun getUser(): User
+suspend fun setUser(user: User)
 
-코루틴이 `delay`로 일시 중단되면 `COROUTINE_SUSPENDED`를 반환하고, 이를 호출한 함수에도 `COROUTINE_SUSPENDED`를 반환하게 됩니다.
-이 `COROUTINE_SUSPENDED`가 호출 스택의 최상단까지 전파되어 코루틴 빌더 또는 `resume` 함수에 도달할 때 까지 이어지며,
-이러한 동작으로 현재 코루틴 작업을 하던 스레드가 코루틴이 일시정지 되었다는 것을 확인하고 다른 작업에 사용 가능하도록 처리됩니다.
+// under the hood is
+fun getUser(continuation: Continuation<*>): Any?
+fun setUser(user: User, continuation: Continuation<*>): Any
+
+// Intrinsics.kt
+val COROUTINE_SUSPENDED: Any get() = CoroutineSingletons.COROUTINE_SUSPENDED
+```
+
+'suspending function'이 변환된 코드를 보면, 반환 타입이 `Any?` 또는 `Any`로 변경됨을 알 수 있습니다.  
+
+이는 '중단'되어 선언된 타입으로 반환 되지 않을 수 있기에, 이런 경우 `CORUTINE_SUSPENDED`를 반환할 수 있게 됩니다. 
+그 결과 `getUser`의 반환 타입은 `User?`와 `Any`의 가장 가까운 상위 타입인 `Any?`가 됩니다.
+
+---
+
+Coroutine은 `Continuation`을 통해 함수의 정확한 지점으로 재개됩니다.
+
+이는 `Continuation`의 `label` 속성을 통해 'suspending function'의 재개 위치를 저장합니다.  
+`label`의 초기값은 `0`(함수 첫 시작 위치)으로 그 외 숫자들은 '중단 후 다시 재개되는 지점'을 의미합니다.
+
+만약 Coroutine이 중단되면, `COROUTINE_SUSPENDED`를 반환하고, 이를 'Call Stack' 최상단까지 전파되어 'Coroutine 빌더' 또는 `resume` 함수에 도달할 때 까지 이어집니다.
+이러한 동작으로 인해, Thread가 다른 작업(다른 coroutine)에 사용 가능하도록 처리됩니다.
+
+---
+
+Coroutine 중단 후 재개할 때 '로컬 데이터' 상태가 있다면, `Continuation`에 반드시 저장되어야 합니다.  
+'로컬 데이터'는 '중단 직전'에 `Continuation`에 '저장'되며, '재개' 시 데이터는 함수 시작 부분에서 '복원'됩니다.
+
+'suspending function'의 반환 값으로 '재개' 되는 경우에도 `Continuation`으로 관리해야 합니다.  
+이 경우 2가지로 나뉘는데, 반환이 값이라면 `Result.Success(value)`를 통해 재개되고, 반환이 예외라면 `Result.Failure(exception)`을 통해 재개됩니다. 
+
+---
+
+`Continuation`은 다음 3가지 정보를 저장합니다.
+
+- 고유 식별 번호(`label`)
+- 자신의 '로컬 데이터'
+- 자신을 호출한 '상위 suspending function'의 `Continuation`
+
+이처럼 상위 `Continuation`은 다른 `Continuation`을 참조하는 형식으로 'Continuation Chain'을 형성합니다. 
+결과적으로 이는 'Call Stack'과 유사한 역할을 할 수 있게 됩니다.
+
+`Continuation`이 '재개'될 때 발생하는 과정은 다음과 같습니다.
+
+1. 각 `Continuation`은 자신과 연결된 함수 호출
+2. 자신과 연결된 함수 작업 완료 시, 해당 `Continuation`은 자신을 호출한 `Continuation` 재개
+3. 이어서, 호출된 `Continuation`과 연결된 함수 호출, 위 과정을 반복
+4. 이러한 반복을 'Call Stack' 최상단에 도달할 때까지 계속 진행
+
+예외 처리도 이와 비슷한 메커니즘을 따릅니다.
+
+```kotlin
+fun printUser(
+    continuation: Continuation<*>
+) {
+    // ...
+    if(continuation.label == 1) {
+        continuation.label = 2 // setting next label
+        continuation.userId = userId // Storing state on continuation
+        val res = getUserName(userId, continuation) // Calling suspending function
+        if (res == COROUTINE_SUSPENDED) return COROUTINE_SUSPENDED // Suspension
+        result = Result.success(res) // Setting result if not suspended
+    }
+
+    if(continuation.label == 2) {
+        result!!.throwOnFailure() // Throwing is resumed with exception
+        userName = result.getOrNull() as String // Reading result value
+        // ...
+    }
+}
+
+class PrintUserContinuation(
+    val completion: Continuation<Unit>
+): Continuation<Unit> {
+    // ...
+    
+    override fun reusmeWith(result: Result<Any>) {
+        // ...
+        
+        val res = try {
+            val r = printUser(this)
+            if(r == COROUTINE_SUSPENDED) return
+            Result.success(r as Unit)
+        } catch (e : Throwable) {
+            Result.failure(e)
+        }
+        
+        completion.resumeWith(res)
+    }
+}
+
+```
+
+처리되지 않은 예외는 `resumeWith()`에서 포착되고, 그 후에 `Result.failure(e)`로 감싸져, 자신을 호출한 함수는 이 결과와 함께 재개 됩니다.
+
+---
+
+일반 함수 대비, 'suspending function'을 사용함으로 발생하는 비용은 다음 같이 크지 않습니다.
+
+- 'suspending function'을 여러 상태로 나누는 작업은 단순한 번호(`label`) 비교와 실행 점프로 인한 비용이 거의 들지 않음
+- `Continuation`에 '상태'를 저장하는 것도 로컬 변수를 복사하는 것이 아닌, 새로운 변수가 같은 메모리 주소를 가리키도록 만드는 것이기에 비용이 적음
+- `ContinuationClass`는 '중단과 재개'가 가능한 함수의 상태를 관리하기 위해 필요하며, 이는 1번만 생성되기에 전체적인 성능에 미치는 영향은 미미함
+
+---
 
 ## [Part 1.5 : Coroutine: Built-in support vs library](코루틴의%20구조%20지원%20vs%20라이브러리.md)
 
