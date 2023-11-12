@@ -17,86 +17,81 @@
 
 ## [Part 2.1 : Coroutine Builder](코루틴%20빌더.md)
 
-suspend 함수는 서로 `Continuation`을 전달하며 호출 스택을 쌓아야 합니다.
-이 때문에 suspend 함수 내부에서 일반 함수 호출은 문제가 없지만, 일반 함수에서 suspend 함수의 호출은 IDE에서 오류가 발생됩니다.
+> - '일반 함수' → 'suspending function' 호출 X, 'suspending function' → '일반 함수' 또는 'suspending function' 호출 O
+> - 일반적으로 'CoroutineBuilder'에서 'suspending function' 시작하며 종류는 다음과 같음
+>   - `launch` : '로직 실행'을 위한 'Coroutine' 실행, `Job`을 반환
+>   - `async` : '값 생성'을 위한 'Coroutine' 실행, `Deferred<T>`를 반환
+>   - `runBlocking` : Coroutine 중단 X, Thread Blocking O, 주로 'Unit Test' 또는 Thread Blocking이 필요한 경우 사용
+> - Structured Concurrency : Parent → Child CoroutineScope 제공, 'Child Coroutine'은 Parent CoroutineScope 내에서 '관리'
+>   - 'Child'는 'Parent CoroutineContext'를 상속 받거나, 덮어쓰기 가능
+>   - 'Parent'는 'Child'가 완료될 때까지 '중단'
+>   - 'Parent'가 '취소'되면, 'Child'도 '취소'
+>   - 'Child'에서 알 수 없는 '예외' 발생 시, 'Parent' 파괴
+> - <img src="../resources/StructuredConcurrency.jpg" width="50%">
 
-즉, suspend 함수는 다른 suspend 함수에서 호출되어야 하며, 이들은 코루틴 빌더로 시작되어야 합니다.
+'suspending function'에서 일반 함수를 호출하는데 문제는 없지만, 일반 함수에서 'suspending function'를 호출할 수 없습니다.   
+즉, 'suspending function'은 다른 'suspending function'에서 호출되어야 하며, 이들은 'Coroutine Builder'로 시작됩니다.
 
-### launch Builder
+---
 
-`launch`는 독립적으로 코루틴을 시작하는데 사용되며, 새로운 스레드를 시작하는 것과 유사한 역할을 합니다.  
-그러나 `Thead`와 `launch`는 일시 중단된 상황에서 다르게 처리됩니다.
+`launch`를 통해 시작된 'Coroutine'은 호출한 Thread와는 독립적으로 실행됩니다.  
+즉, 'MainTherad' 또는 '다른 Thread'의 실행 흐름에 영향을 주지 않고, 별도의 실행 경로를 갖습니다.
 
-- 스레드 : 스레드 차단 시 계속해서 비용이 발생
-- 코루틴 : 코루틴 정지 시 비용이 거의 발생되지 않음
+`launch`는 `CoroutineScope`의 확장 함수 입니다.   
+이는 `launch`를 호출한 'Parent Coroutine'과 `launch`를 통해 시작된 'Child Coroutine' 간에 'Structured Concurrency'이 형성됨을 의미합니다.
 
-위와 같이 코루틴 사용 시 비용이 거의 발생되지 않기에 더 효율적이게 됩니다.
+`launch`는 'Daemon Thread'와 비슷한 방식으로 작동하지만, 프로세스 진행 중 'Blocking'이 발생될 경우 차이점이 발생하게 됩니다.  
+'Daemon Thread'의 경우 'Blocking Thread'를 유지하는 데 비용이 발생하지만, 'Coroutine'의 경우 비용이 거의 발생하지 않습니다. 
 
-`launch`는 `CoroutineScope` 인터페이스의 확장함수로, [구조화된 동시성](../Structured%20Concurrency.md)을 형성합니다.
+---
 
-### runBlocking Builder
+일반적으로 'Coroutine'은 'Thread 'Blocking'을 목표로 하지 않지만, Thread를 일시적으로 차단해야 하는 상황이 생길 수 있습니다.  
+이런 경우에 `runBlocking`을 사용할 수 있습니다. 
 
-`runBlocking`은 코루틴이 중단될 때 시작된 스레드를 차단하는 특별한 빌더입니다.   
-이러한 특징은 `Thread.sleep(1000L)`과 `delay(1000L)`이 동일하게 동작하게 하므로, 메인 함수나 단위 테스트와 같이 프로그램이나 테스트가 너무 일찍 종료되는 것을 방지하고자 할 때
-유용합니다.
+`runBlocking`은 'Coroutine'이 중단될 때, 해당 'Coroutine'을 시작한 Thread를 'Blocking' 합니다. 
+즉, `runBlocking` 내에서 `Thread.sleep(1000L)`과 `delay(1000)`가 동일하게 동작함을 의미하며, 'Unit Test'시 유용하게 사용할 수 있습니다.
 
-최근에는 다음과 같은 변화가 있었습니다.
+`runBlocking`은 `CoroutineScope`의 확장 함수가 아니기에, 'Child Coroutine'이 될 수 없으며, 오직 'Root Coroutine' 만으로 사용됩니다.
 
-- 메인 함수의 경우, 자체를 `suspend` 함수로 정의하여 `runBlocking`을 대체할 수 있습니다.
-- 단위 테스트의 경우, `runBlocking` 대신 `runTest`를 사용하여 가상 시간에서 코루틴을 작동시킬 수 있습니다.
+---
 
-그럼에도 `runBlocking`을 계속 사용하는 주된 이유는, 이 빌더가 코루틴의 범위(scope)를 생성하며, 이 범위 내에서 코루틴이 완료될 때까지 현재 스레드를 차단하기 때문입니다.
+`async`는 `launch`와 유사하게 'Coroutine'을 시작하지만, `async`는 '값 생성'에 중점을 두고, `launch`는 '로직 실행'에 중점을 둡니다.  
 
-현대 프로그래밍에서는 드물게 사용되지만, 구조화된 동시성을 도입하게 되면 훨씬 더 유용해질 수 있으며, 특정 상황에서 필요한 동작을 제공합니다.
+`async`는 'lambda expression'을 통해 `Deferred<T>`를 반환합니다.  
+`Deferred<T>`는 내부에 값을 '저장'하고 내보낼 '준비'가 되면, `await()` 호출 시 값을 '반환'합니다.  
+만약 값이 준비가 되기 전에 `await()`을 호출하면, 값이 준비될 때까지 '중단'됩니다.
 
-### async Builder
+`async`는 2개의 프로세스를 '병렬'로 처리하여 동시에 값을 생성하는데 적합합니다. 
 
-- `async`는 람다 표현식에 의해 반환되며 `Deferred<T>`를 반환합니다.
-- `Deferred`는 값이 준비되면 `await`를 통해 값을 반환합니다.
-- `async`는 병렬 처리하기에 적합하며 값이 얻기 전에 `await`을 호출하면 값이 준비될 떄까지 중단됩니다.
-- `async`는 값을 생성 하는데 중점을 두고 `launch`는 로직만 실행하는 경우에 적합합니다.
+---
 
-### Structured Concurrency
+'Structured Concurrency'는 'Parent Coroutine'이 'Child Coroutine'에게 'CoroutineScope'를 제공하고, 
+'Child Coroutine'은 'Parent Coroutine'의 'CoroutineScope' 내에서 호출되는 메커니즘을 의미합니다.
 
-- `launch`는 `runBlocking`의 자식이 될 수 있으며, 부모 코루틴은 자식 코루틴이 끝날 때 까지 대기합니다.
-- 부모 코루틴은 자식 코루틴에게 `Scope`를 제공하고, 자식 코루틴은 이 `Scope`내에서 호출 되며 이로 인해 구조화된 동시성이 구축됩니다.
-- 자식 코루틴은 부모 코루틴으로부터 `CoroutineContext`를 상속받으며, 필요한 경우 덮어 쓸 수 있습니다.
-- 부모 코루틴 취소 시 자식 코루틴도 취소됨, 자식 코루틴 오류 발생 시 부모 코루틴도 파괴됩니다.
-- 다른 코루틴 빌더와 달리 `runBlocking`은 root 코루틴으로만 사용됩니다.
+'Structured Concurrency'는 다음과 같은 효과를 얻습니다.
 
-### The Big Picture
+1. 'Child Coroutine'은 'Parent Coroutine'으로부터 `CoroutineContext`를 상속 받거나 덮어 쓸 수 있습니다.
+2. 'Parent Coroutine'은 'Child Coroutine'이 '완료'될 때까지 '중단'됩니다.
+3. 'Parent Coroutine'이 '취소'되면, 'Child Coroutine'도 '취소'됩니다.
+4. 'Child Coroutine'에서 알 수 없는 '예외'가 발생하면, 'Parent Coroutine'은 파괴됩니다.
 
-- 모든 코루틴은 `CoroutineScope`에서 시작되어야 하며, 이는 `runBlocking` 또는 특정 프레임워크에 의해 제공됩니다.
-- suspend 함수 내에서 Scope가 없기에 `coroutineScope` 함수를 사용하여 Scope를 적용해야 합니다.
+---
 
-### using coroutineScope
+앞서 말했던것과 같이, 'suspending function'은 'Coroutine Builder'로 시작해야 하며, 
+`runBlocking`을 제외한 'Coroutine Builder'들은 `CoroutineScope`에서 시작되어야 합니다.
 
-- `coroutineScope`는 일시 정지 함수 내에서 필요한 Scope를 생성하고, 람다 식에서 반환된 값을 반환하는 일시 정지 함수입니다.
-- 이는 코드 구조화와 동시성을 관리하는데 유용하며, 코루틴의 효과적인 관리를 도와줍니다.
+그러나 'suspending function'에는 `CoroutineScope`가 없기에, `coroutineScope { ... } `를 통해 'suspending function'에 'Scope'를 생성할 수 있습니다.  
+
+즉, `coroutineScope { ... }`는 함수 자체가 'suspending function'으로 'lambda' 범위(`{ ... }`)에 `CoroutineScope`를 생성합니다.  
+추가로 'lambda expression'의 마지막 값을 반환할 수 있습니다.
 
 ```kotlin
-suspend fun main(): Unit = coroutineScope {
-    lanunch {
-        delay(1000L)
-        print("World!")
-    }
-
-    print("Hello,")
+suspend fun getArticle(
+  service: ApiService
+): List<Article> = coroutineScope {
+    return service.getArticle()
 }
 ```
-
-### Summary
-
-| Coroutine Builder | Description                                     |
-|-------------------|-------------------------------------------------|
-| launch            | 독립적인 코루틴을 시작하며, `Job`을 반환합니다.                   |
-| async             | 값을 반환할 때까지 중단되는 병렬 처리에 적합하며, `Deferred`를 반환합니다. |
-| runBlocking       | 현재 스레드를 차단하고, 코루틴이 완료될 때까지 대기합니다.               |
-
-- 코루틴은 [구조화된 동시성](../Structured%20Concurrency.md)을 위해 작성되며, 부모-자식 관계를 형성합니다.
-- 코루틴은 스레드에 비해 일시 중단되었을 때의 비용이 훨씬 저렴합니다.
-- 모든 코루틴은 `coroutineScope`에서 시작되어야 하며, 이는 `runBlocking` 또는 특정 프레임워크에 의해 제공됩니다.
-- `coroutineScope()`는 일시 정지 함수 내에서 필요한 Scope를 생성하고, 람다 식에서 반환된 값을 반환하는 일시 정지 함수입니다.
 
 ---
 
