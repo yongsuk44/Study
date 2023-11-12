@@ -41,31 +41,31 @@
 이는 `launch`를 호출한 'Parent Coroutine'과 `launch`를 통해 시작된 'Child Coroutine' 간에 'Structured Concurrency'이 형성됨을 의미합니다.
 
 `launch`는 'Daemon Thread'와 비슷한 방식으로 작동하지만, 프로세스 진행 중 'Blocking'이 발생될 경우 차이점이 발생하게 됩니다.  
-'Daemon Thread'의 경우 'Blocking Thread'를 유지하는 데 비용이 발생하지만, 'Coroutine'의 경우 비용이 거의 발생하지 않습니다. 
+'Daemon Thread'의 경우 'Blocking Thread'를 유지하는 데 비용이 발생하지만, 'Coroutine'의 경우 비용이 거의 발생하지 않습니다.
 
 ---
 
 일반적으로 'Coroutine'은 'Thread 'Blocking'을 목표로 하지 않지만, Thread를 일시적으로 차단해야 하는 상황이 생길 수 있습니다.  
-이런 경우에 `runBlocking`을 사용할 수 있습니다. 
+이런 경우에 `runBlocking`을 사용할 수 있습니다.
 
-`runBlocking`은 'Coroutine'이 중단될 때, 해당 'Coroutine'을 시작한 Thread를 'Blocking' 합니다. 
+`runBlocking`은 'Coroutine'이 중단될 때, 해당 'Coroutine'을 시작한 Thread를 'Blocking' 합니다.
 즉, `runBlocking` 내에서 `Thread.sleep(1000L)`과 `delay(1000)`가 동일하게 동작함을 의미하며, 'Unit Test'시 유용하게 사용할 수 있습니다.
 
 `runBlocking`은 `CoroutineScope`의 확장 함수가 아니기에, 'Child Coroutine'이 될 수 없으며, 오직 'Root Coroutine' 만으로 사용됩니다.
 
 ---
 
-`async`는 `launch`와 유사하게 'Coroutine'을 시작하지만, `async`는 '값 생성'에 중점을 두고, `launch`는 '로직 실행'에 중점을 둡니다.  
+`async`는 `launch`와 유사하게 'Coroutine'을 시작하지만, `async`는 '값 생성'에 중점을 두고, `launch`는 '로직 실행'에 중점을 둡니다.
 
 `async`는 'lambda expression'을 통해 `Deferred<T>`를 반환합니다.  
 `Deferred<T>`는 내부에 값을 '저장'하고 내보낼 '준비'가 되면, `await()` 호출 시 값을 '반환'합니다.  
 만약 값이 준비가 되기 전에 `await()`을 호출하면, 값이 준비될 때까지 '중단'됩니다.
 
-`async`는 2개의 프로세스를 '병렬'로 처리하여 동시에 값을 생성하는데 적합합니다. 
+`async`는 2개의 프로세스를 '병렬'로 처리하여 동시에 값을 생성하는데 적합합니다.
 
 ---
 
-'Structured Concurrency'는 'Parent Coroutine'이 'Child Coroutine'에게 'CoroutineScope'를 제공하고, 
+'Structured Concurrency'는 'Parent Coroutine'이 'Child Coroutine'에게 'CoroutineScope'를 제공하고,
 'Child Coroutine'은 'Parent Coroutine'의 'CoroutineScope' 내에서 호출되는 메커니즘을 의미합니다.
 
 'Structured Concurrency'는 다음과 같은 효과를 얻습니다.
@@ -77,7 +77,7 @@
 
 ---
 
-앞서 말했던것과 같이, 'suspending function'은 'Coroutine Builder'로 시작해야 하며, 
+앞서 말했던것과 같이, 'suspending function'은 'Coroutine Builder'로 시작해야 하며,
 `runBlocking`을 제외한 'Coroutine Builder'들은 `CoroutineScope`에서 시작되어야 합니다.
 
 그러나 'suspending function'에는 `CoroutineScope`가 없기에, `coroutineScope { ... } `를 통해 'suspending function'에 'Scope'를 생성할 수 있습니다.  
@@ -87,7 +87,7 @@
 
 ```kotlin
 suspend fun getArticle(
-  service: ApiService
+    service: ApiService
 ): List<Article> = coroutineScope {
     return service.getArticle()
 }
@@ -97,67 +97,100 @@ suspend fun getArticle(
 
 ## [Part 2.2 : Coroutine Context](코루틴%20컨텍스트.md)
 
-### CoroutienContext Interface
+> - `CoroutineContext` : Job, CoroutineName 등 `Element`를 관리하는 인터페이스
+> - `Elemnet` : `CoroutineContext.Element`로 구현, 그 `Element`는 다시 `CoroutineContext`로 구현
+> - `Key`를 통해 `Element`들을 고유하게 식별 및 관리
+>   - `get(Key)`, `[key]`를 통해 식별, 해당 `Element`가 없는 경우 `null` 반환
+>   - `plus()`, `+`를 통해 여러 `CoroutineContext`를 합쳐, 새로운 `CoroutineContext` 생성
+>   - `minusKey()`를 통해 특정 `Key`를 가진 `Element`를 제거
+> - `Element`가 비어있는 `EmptyCoroutineContext` 활용 가능
+> - 'Structured Concurrency'로 '상속'받은 `CoroutineContext`를 'Child'는 이를 override'하여 사용할 수 있음
+>   - CoroutineContext 간소화된 계산식 : `defaultContext + parentContext + childContext`
+> - `CoroutineContext` 접근 방법
+>   - CoroutineScope : `CoroutineScope.coroutineContext`를 통해 접근
+>   - 'suspending function' : `continuation`의 `CoroutineContext`를 통해 'Parent Coroutine'의 `coroutineContext` 접근
 
-- `CoroutineContext`는 요소와 요소의 집합을 나타내는 인터페이스로 `Job`, `CoroutineName`, `CoroutineDispatcher` 등과 같은 `Element` 인스턴스의 집합입니다.
-- 위 요소들은 그 자체로 `CoroutineContext`가 될 수 있으며 이러한 구조는 컨텍스트 관리를 유연하게 만들어 줍니다.
-- 위 요소들은 유니크 키를 가지며 이를 통해 요소를 식별하고 고유하게 관리할 수 있습니다.
+`CoroutineContext`는 'Coroutine'의 여러 `Element`(`Job`, `CoroutineName`, `CoroutineDispatcher` 등)을 관리하는 인터페이스입니다.
 
-### Finding elements in CoroutineContext
+```kotlin
+interface CoroutineContext {
+    // ...
 
-- `CoroutineContext`는 `map`과 유사한 `Key-Value` 구조와 유사하며, 요소는 `Unique Key`로 식별됩니다.
-- `CoroutineContext`는 `get`, `[]` 메서드와 `Key`를 통해 특정 요소를 찾을 수 있고, 찾는 요소가 없는 경우 `null`을 반환 합니다.
-- Kotlin에서 클래스 이름은 해당 클래스의 `companion object`에 대한 참조로 작동됩니다. (`ctx[CoroutineName] == ctx[CoroutineName.Key]`)
-- `kotlinx.coroutines` 라이브러리에서 `companion object`를 요소의 키로 사용하는 것이 일반적입니다.
-- 이름이 `Key`인 `companion object`는 특정 클래스(`CoroutineName`) 또는 인터페이스(`Job`)를 가리킬 수 있고,
-  동일한 Key를 사용하여 여러 클래스(`job`,`SupervisorJob` 등)을 가리킬 수 있습니다.
+    interface Element : CoroutineContext {
+        val key: Key<*>
+    }
+}
 
-### Adding Contexts
+val name: CoroutineName = CoroutineName("Test")
+val element: CoroutineContext.Element = name // OK
+val context: CoroutineContext = element // OK
+```
 
-- 앞서 말한것처럼 `CoroutineContext`은 2개의 컨텍스트를 합칠 수 있고 이를 통해 새로운 컨텍스트를 생성할 수 있습니다.
-- 2개의 서로 다른 키를 합칠 경우 2가지 키 모두 응답되며, 동일한 키를 가진 다른 요소가 추가되면 `map`과 같이 새로운 요소가 이전 요소를 대체 합니다.
+`Element`는 `CoroutineContext.Element`로 구현되며, `Element`은 다시 `CoroutineContext`로 구현됩니다.  
+이는 각 `Element`가 그 자체로 `CoroutineContext`가 될 수 있음을 말합니다.
 
-### Empty coroutine context
+'Kotlin'에서 '클래스의 이름' 자체가 해당 클래스의 `companion object` 참조로 작용하는 특징으로 다음과 같은 호출이 허용됩니다.
+이처럼 `companion object Key`는 `CoroutineName`, `Job` 등을 나타내며, '동일한 `Key`'를 가진 여러 클래스(`Job`, `SupervisorJob` 등)를 가리킬 수
+있습니다.
 
-- `EmptyCoroutineContext`는 그 자체로 어떠한 행동도 하지 않으며, 다른 컨텍스트와 결합하면 결합된 다른 컨텍스트는 원래의 컨텍스트와 동일하게 동작됩니다.
-- `EmptyCoroutineContext`는 초기 상태로 사용하거나, 필요에 따라 컨텍스트를 동적으로 확장하고자 할 때 유용합니다.
+```kotlin
+data class CoroutineName(
+    val name: String
+) : AbstracCoroutineContextElement(CoroutineName) {
+    companion object Key : CoroutineContext.Key<CoroutineName>
+}
 
-### Subtracting Elements
+val context: CoroutineContext = CoroutineName("Test")
+context.get(CoroutineName) // OK == context.get(CoroutineName.Key)
+```
 
-- `CoroutineContext`는 `map`과 유사한 `minusKey` 메서드를 제공하며, 이는 특정 키를 가진 요소를 제거합니다.
-- `minus` 연산자는 `CoroutineContext`에 대해서 연산자의 의미가 명확하지 않기에 오버로드 되지 않았습니다.
+`CoroutineContext`는 `Key`를 통해 `Element`를 '식별'하고 '고유'하게 관리 할 수 있습니다.
 
-### Coroutine context and builders
+- `get(Key)`, `[key]`를 통해 식별하고, 해당 `Element`가 없는 경우 `null` 반환
+- `plus()`, `+`를 통해 여러 `CoroutineContext`를 합쳐, 새로운 `CoroutineContext` 생성 가능  
+  단, `Key`가 서로 다른 경우 `Element`가 유지 되지만, 동일한 경우 새로운 `Element`가 이전 `Element`를 대체
+- `minusKey()`를 통해 특정 `Key`를 가진 `Element`를 제거 가능
 
-- 일반적으로 자식 코루틴은 부모 코루틴으로부터 컨텍스트를 상속받으며 이 컨텍스트를 override 하여 사용할 수 있습니다.
-- 보통 코루틴 컨텍스트 계산 시 특정 키에 대해서 여러 컨텍스트가 값이 존재하는 경우 '우선순위'(`child > parent > default`)에 따라 어떤 값을 사용할지 결정합니다.
-    - `childContext`와 `parentContext`가 동일한 키를 가지고 있으면, `childContext`의 값이 사용됩니다.
-    - `defaultContext`에는 기본 설정들이 존재하며 `ContinuationInterceptor` 값이 없으면 `Dispatchers.Default` 적용되며, 디버그 모드
-      시 `CoruotineId`를 적용 합니다.
-- `Job`은 코루틴 생명주기를 나타내는 특별한 컨텍스트 요소로, 부모-자식 간의 통신에 사용되는 Mutable한 컨텍스트입니다.
+`CoroutineContext`은 '컬렉션'과 같은 성격을 갖기에, 'Empty Context' 인 `EmptyCoroutineContext`를 제공합니다.
+또한 컬렉션의 `fold()`와 유사한 함수를 제공하여 `Element`에 대한 `fold` 연산을 수행할 수 있습니다.
 
-### Accessing context in a suspending function
+---
 
-- `CoroutineScope`는 `coroutineContext` 속성을 통해 현재 코루틴 컨텍스트에 접근할 수 있습니다.
-- 일반 suspend 함수는 `coroutineContext`에 [직접 접근하는 것이 불가능](suspend%20함수에서%20CoroutineScope%20직접%20접근을%20막은%20이유.md)
-  하므로 `continuation`을 통해 `coroutineContext`에 접근해야 합니다.
+기본적으로 'Parent Coroutine'은 'Child Coroutine'에게 `CoroutineContext`를 '상속'합니다.  
+또한 'Child Coroutine'은 '상속'받은 `CoroutineContext`를 'override'하여 사용할 수 있습니다.
 
-### Creating our own context
+`CoroutineContext`를 계산하는 간소화된 공식입니다. : `defaultContext + parentContext + childContext`
 
-- Custom `CoroutineContext`를 만들기 위해서는 `CoroutineContext.Element`를 구현하는 클래스를 생성하고 `CoroutineContext.Key<*>`
-  프로퍼티와 `compainon object Key`를 정의하여 사용하면 됩니다.
-- Custom `CoruotienContext`는 특별하게 따로 정의하지 않는 이상 `CoroutineName`과 유사하게
-  동작하며 [보통 코루틴 컨텍스트 계산하는 방식](#coroutine-context-and-builders)과 동일하게 적용됩니다.
+동일한 `Key`를 갖는 `Element`가 존재하는 경우, '기존 `Element`'를 '새로운 `Element`'가 'override' 합니다.  
+즉, 우선 순위로 따지면 default < parent < child 입니다.
 
-### Summary
+`defaultContext`에는 기본 설정들이 적용되어 있습니다.  
+`Dispatchers`의 경우 `Dispatchers.Default`가 적용, 디버그 모드에서는 `CoroutineId`가 적용됩니다.
 
-- `CoroutineContext`는 `Job`, `CoroutineName`, `CoroutineDispatcher` 등의 `Element` 요소들의 집합이며 이들은 유니크 키를 가지고 있어 식별과 관리가
-  가능합니다.
-- `CoroutineContext`는 `Key-Value` 구조로 되어있어 특정 요소를 키로 찾을 수 있습니다.
-- 2개의 `CoroutineContext`를 합쳐 새로운 컨텍스트를 만들 수 있으며, 같은 키를 가진 요소가 존재하면 새 요소가 이전 요소를 대체합니다.
-- `EmptyCoroutineContext`는 아무런 행동도 하지 않으며 다른 컨텍스트와 병합하여도 원래 컨텍스트의 특성을 유지합니다.
-- `CoroutineContext`에서 `minusKey()`를 통해 특정 키를 가진 요소를 제거할 수 있습니다.
-- 자식 코루틴은 부모 코루틴의 컨텍스트를 상속받으며, 여러 컨텍스트에 같은 키에 대해서 값이 존재하면 컨텍스트 우선순위에 따라 값이 적용됩니다.
+---
+
+`CoroutineScope`는 `coroutineContext`으로 현재 `CoroutineContext`에 접근할 수 있습니다.
+
+하지만, 'suspending function'의 경우 `CoroutineScope`에 직접 접근할 수 없으므로,
+`continuation`의 `CoroutineContext`를 통해 'Parent Coroutine'의 `CoroutineContext`에 접근이 가능합니다.
+
+---
+
+자체적인 `CoroutineContext` 생성 시, `CoroutineContext.Element`를 구현하는 클래스를 생성하면 됩니다.  
+생성된 클래스에 `CoroutineContext.Key<*>` 타입의 `Key`와 `companion object Key`를 추가로 정의하면 됩니다.
+
+```kotlin
+class CounterCoroutineContext(val name: String) : CoroutineContext.Element {
+    override val key: CoroutineContext.Key<*> = Key
+
+    private var counter = 0
+    fun printCounter() {
+        println("$name : ${counter++}")
+    }
+
+    companion object Key : CoroutineContext.Key<CounterCoroutineContext>
+}
+```
 
 ---
 
@@ -751,10 +784,10 @@ Java에서는 `synchronized`, `Atomics`를 사용하여 동시성 문제를 해�
 ```kotlin
 @Test
 fun test1() = runTest {
-    assertEquals(0, currentTime)
-    delay(1000)
-    assertEquals(1000, currentTime)
-}
+        assertEquals(0, currentTime)
+        delay(1000)
+        assertEquals(1000, currentTime)
+    }
 ```
 
 ```mermaid
@@ -778,10 +811,10 @@ graph LR
 ```kotlin
 @Test
 fun simPleTest() = runTest {
-    backgroundScope.launch {
-        // ...
+        backgroundScope.launch {
+            // ...
+        }
     }
-}
 ```
 
 ### Testing cancellation and context passing
@@ -793,7 +826,8 @@ fun simPleTest() = runTest {
 여기에서 코루틴의 현재 컨텍스트를 캡처하는 방법으로는 다음과 같습니다.
 
 1. suspending 함수의 컨텍스트 캡처 : `currentCoroutineContext()` 혹은 `coroutineContext` 프로퍼티 사용
-2. 코루틴 빌더 혹은 스코프 함수 내부 : `CoroutineScope.coroutineContext`는 현재 코루틴 컨텍스트를 제공하는 프로퍼티보다 우선순위가 있기에 `currentCoroutineContext()` 사용
+2. 코루틴 빌더 혹은 스코프 함수 내부 : `CoroutineScope.coroutineContext`는 현재 코루틴 컨텍스트를 제공하는 프로퍼티보다 우선순위가
+   있기에 `currentCoroutineContext()` 사용
 
 코루틴 취소를 테스트하는 방법으로는 자식 코루틴의 `Job`을 캡처하고 부모 코루틴을 취소하여 자식 코루틴이 취소 되었는지 검증하면 됩니다.
 
@@ -862,11 +896,11 @@ fun shutdown() {
 
 `JUnit4`의 규칙 기능을 사용하여 테스트 코드 실행 전,후 특정 동작이나 설정을 수행할 수 있습니다.
 
-코루틴 테스트 시, 테스트 실행 전 테스트 디스패처를 설정하고 테스트 후 원래 디스패처로 되돌리는 작업이 필요한데, 
+코루틴 테스트 시, 테스트 실행 전 테스트 디스패처를 설정하고 테스트 후 원래 디스패처로 되돌리는 작업이 필요한데,
 이때 `JUnit4`의 규칙을 사용하면 이를 자동화 할 수 있습니다.
 
 ```kotlin
-class MainCoroutineRule: TestWatcher() {
+class MainCoroutineRule : TestWatcher() {
     private val testDispatcher = UnconfinedTestDispatcher()
 
     override fun starting(description: Description) {
@@ -882,17 +916,19 @@ class MainCoroutineRule: TestWatcher() {
 ### Summary
 
 - `StandardTestDispatcher`를 이용하면 코루틴의 가상 시간을 조작할 수 있어 실제 오래 걸리는 작업도 거의 즉시 완료할 수 있습니다.
-- 코루틴 테스트 시 `TestCoroutineScheduler`는 다음과 같은 메서드를 지원합니다. 
-  - `advanceUntilIdle`: 가상 시간을 진행하고 해당 시간 동안 실제 호출되었을 작업을 호출합니다.
-  - `advanceTimeBy`: 지정한 시간까지의 모든 코루틴 작업 재개합니다.
-  - `runCurrent`: 현 시점까지 예정된 작업을 실행합니다.
+- 코루틴 테스트 시 `TestCoroutineScheduler`는 다음과 같은 메서드를 지원합니다.
+    - `advanceUntilIdle`: 가상 시간을 진행하고 해당 시간 동안 실제 호출되었을 작업을 호출합니다.
+    - `advanceTimeBy`: 지정한 시간까지의 모든 코루틴 작업 재개합니다.
+    - `runCurrent`: 현 시점까지 예정된 작업을 실행합니다.
 - `runTest` 사용하여 테스트 시 실제 시간을 기다리지 않고 코루틴 로직을 빠르게 테스트할 수 있습니다.
 - `backgroundScope`는 코루틴 테스트 중 장기 실행 작업이나 주요 흐름에 영향을 주지 않는 별도의 프로세스를 시작할 때 유용합니다.
 - `UnconfinedTestDispatcher`는 코루틴 테스트 시 첫 번째 `delay` 전까지 모든 작업을 즉시 실행합니다.
 - 코루틴의 현재 컨텍스트를 캡처하는 방법으로는 다음과 같습니다.
-  - suspending 함수의 컨텍스트 캡처: `currentCoroutineContext()` 혹은 `coroutineContext` 프로퍼티 사용
-  - 코루틴 빌더 혹은 스코프 함수 내부: `CoroutineScope.coroutineContext`는 현재 코루틴 컨텍스트를 제공하는 프로퍼티보다 우선순위가 있기에 `currentCoroutineContext()` 사용
-- Mocking은 테스트에서 외부 시스템 혹은 복잡한 객체를 대체하기 위해 사용되는 기법으로 원하는 동작을 정의할 수 있지만 클래스 혹은 인터페이스 구조 변경 시 모든 mock 객체 정의도 변경해야 할 수 있는 단점이 있습니다.
+    - suspending 함수의 컨텍스트 캡처: `currentCoroutineContext()` 혹은 `coroutineContext` 프로퍼티 사용
+    - 코루틴 빌더 혹은 스코프 함수 내부: `CoroutineScope.coroutineContext`는 현재 코루틴 컨텍스트를 제공하는 프로퍼티보다 우선순위가
+      있기에 `currentCoroutineContext()` 사용
+- Mocking은 테스트에서 외부 시스템 혹은 복잡한 객체를 대체하기 위해 사용되는 기법으로 원하는 동작을 정의할 수 있지만 클래스 혹은 인터페이스 구조 변경 시 모든 mock 객체 정의도 변경해야 할 수 있는
+  단점이 있습니다.
 - Fake는 실제 객체와 유사한 동작을 수행하는 간단한 객체로 구조 변경에 유연하게 대응할 수 있습니다.
 - 테스트 환경에서는 기본적으로 메인 디스패처가 제공되지 않으므로 필요한 경우 `Dispatcher.setMain` 및 `Dispatcher.resetMain`을 이용하여 설정할 수 있습니다.
 - `JUnit4`의 규칙 기능을 사용하여 테스트 전,후의 설정 및 동작을 수행할 수 있습니다.
