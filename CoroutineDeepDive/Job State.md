@@ -1,5 +1,5 @@
 ## Job State Flow
-![img.png](resources/job_state.png)
+![img.png](resources/JobState.jpg)
 
 ## COMPLETING / COMPLETED 상태에서 코루틴을 시작할 수 없는 이유
 

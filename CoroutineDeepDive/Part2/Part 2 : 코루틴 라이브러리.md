@@ -196,47 +196,105 @@ class CounterCoroutineContext(val name: String) : CoroutineContext.Element {
 
 ## [Part 2.3 : Jobs and awaiting children](Job과%20자식%20코루틴의%20대기.md)
 
-### What is Job?
+> - `Job`은 '상태'를 관리하고 추적하여 'Coroutine'의 'Lifecycle' 관리
+>   - <img src="../resources/JobState.jpg" width="400"> 
+>   - ACTIVE : 'Coroutine'의 작업 '실행 중'
+>   - NEW : `CoroutineStart.LAZY`가 적용된 'Coroutine'의 초기 상태, `Job.start()`로 'ACTIVE'로 전환 필요
+>   - COMPLETING : 작업이 완료되고 'Child Coroutine'을 '기다리는' 상태
+>   - COMPLETED : 'Child Coroutine'을 포함한 '모든 작업이 완료'된 상태
+>   - CANCELLING : '취소•실패'가 발생한 상태, 리소스 해제 작업 수행 필요
+>   - CANCELLED : 리소스 해제 작업을 끝내고 `Job`이 취소가 된 상태
+>   - isActive, isCompleted, isCancelled 등으로 '상태' 확인 가능
+> - `CoroutineContext.Element` 중 `Job`은 유일하게 'Parent'에서 'Child'로 '자동 상속'되지 않음
+>   - 'Structured Concurrency' 형성을 위해 'Child Job'은 'Parent Job'을 '참조'하여 생성
+> - `Job.join()`을 통해 `Job`이 완료될 때까지 'Coroutine 중단' 가능
+> - 팩토리 함수 `Job()`은 `Job`의 하위 타입 `CompletableJob`을 반환, 이는 `complete()`, `completeExceptionally()` 제공
+>   - `complete()` 
+>     - `Job` 완료에 사용, 모든 'Child Coroutine'이 완료될 때까지 계속 실행
+>     - `complete()` 호출 후, 해당 `Job`에서 새로운 'Coroutine' 시작 불가
+>     - `complete()`로 인해 `Job` 완료 시 `true`, 이미 완료된 `Job`이면 `false`
+>   - `completeExceptionally()`
+>     - 주어진 '예외'와 함께 `Job` 완료하며, 모든 'Child Coroutine'을 모두 '취소'
 
-- `Job`은 코루틴을 취소하거나, 상태를 추적하는 등의 기능을 제공하는 코루틴 컨텍스트 요소입니다.
-- `Job`은 `NEW`, `ACTIVE`, `COMPLETING`, `CANCELLING`, `CANCELLED`, `COMPLETED` 등을 통해 상태를 나타낼 수 있습니다.
-- `isActive`, `isCompleted`, `isCancelled` 등의 속성을 통해 `Job`의 상태를 확인할 수 있습니다.
+'Structured Concurrency'를 통한 특징들은 다음과 같습니다.
 
-### Coroutine builders create their jobs based on their parent job
+1. 'Child Coroutine'은 'Parent Coroutine'의 `CoroutineContext` 상속
+2. 'Parent Coroutine'은 'Child Coroutine'이 완료될 때까지 '중단'
+3. 'Parent Coroutine'이 '취소'되면, 'Child Coroutine'도 '취소'
+4. 'Child Coroutine'에서 알 수 없는 '예외'가 발생하면, 'Parent Coroutine'은 파괴
 
-- 코루틴 빌더는 자체적으로 `Job`을 생성하며 `Job`은 코루틴 컨텍스트이므로 `coroutineContext[Job]` 또는 확장 프로퍼티인 `job`을 통해 접근할 수 있습니다.
-- `Job`은 부모 코루틴에서 자식 코루틴으로 자동으로 상속되지 않은 유일한 코루틴 컨텍스트입니다.
-    - 대신 부모-자식 형성을 위해서 자식 코루틴의 `Job`은 부모 코루틴의 `Job`을 참조하여 관계를 형성 합니다.
-- 자식 코루틴에서 부모 코루틴의 `Job` 컨텍스트가 새로운 `Job`으로 대체될 경우 구조적 동시성 메커니즘이 형성되지 않기에 여러 문제가 발생될 수 있습니다.
-    - 부모 코루틴은 자식 코루틴의 본문이 끝날 때 까지 기다리지 않고 종료될 수 있음
-    - 자식 코루틴에서 취소 및 예외 처리를 상위 코루틴으로 전달할 수 없음
+이 특징은 대부분 `CoroutineContext.Element` 중 하나인 `Job`에 의해 구현됩니다.
 
-### Waiting for children
+`Job`은 'Coroutine'의 'Lifecycle'을 관리하는 `CoroutineContext.Element`의 일부입니다.  
+이는 인터페이스로 구현되지만, 구체적인 '상태'와 '동작'을 가지고 있어 '추상 클래스'처럼 사용될 수 있습니다.
 
-- `Job`은 `Job.join()` 메서드를 통해 호출한 코루틴을 일시 중단시키고 지정된 `Job`이 완료(`Cancelled` or `Completed`)될 때 까지 대기할 수 있습니다.
-- `Job`은 `children` 프로퍼티를 통해 자식 코루틴을 참조하여 모든 자식 코루틴이 완료를 확인할 수 있습니다.
+---
 
-### Job factory function
+'Coroutine'의 'Lifecycle'은 `Job`의 '상태'에 의해 표현됩니다.
 
-- `Job()` 사용 시 코루틴과 연결되지 않은 `Job` 인스턴스 생성이 가능합니다.
-- `Job()`을 통해 생성된 `Job`은 다른 코루틴의 부모로 사용될 수 있지만, 모든 자식 코루틴에 명시적으로 `join`을 호출하지 않으면 `Active` 상태로 유지되는 문제가 발생할 수 있습니다.
-- `Job()`은 `CompletableJob`의 하위 인터페이스 타입의 객체를 반환하며, 이를 통해 `complete()`, `completeExceptionally()` 메서드를 사용할 수 있습니다.
+'Coroutine Builder'로 `Job`이 생성된 경우, 해당 `Job`은 'ACTIVE' 상태로 시작됩니다.  
+'ACTIVE' 상태에서는 'Coroutine'의 '작업을 실행'하며, 추가로 'Child Coroutine' 작업을 실행 할 수 있습니다.
 
-| method                                              | description                                                                               |
-|-----------------------------------------------------|-------------------------------------------------------------------------------------------|
-| complete(): Boolean                                 | `Job`을 완료시키며 모든 자식 코루틴이 끝날 때까지 계속 실행됩니다. 그러나 모든 코루틴이 완료된 후 이 `Job`에서 새로운 코루틴을 시작할 수 없습니다. |
-| completeExceptionally(exception: Thrwable): Boolean | 주어진 예외와 함께 `Job`을 완료시킵니다. 이로 인해 모든 자식 코루틴은 즉시 취소되며 `CancellationException`이 주어진 예외를 감쌉니다. |
+`CoroutineStart.LAZY`이 적용된 'Coroutine'은 'NEW' 상태에서 시작되며, 'ACTIVE' 상태로 전환하기 위해 `Job.start()`을 통해 '명시적으로 시작'해야 합니다.
 
-- 위 2가지 메서드의 결과값이 `true`인 경우 `Job`이 완료됨을 의미하며, `false`인 경우 이미 완료된 `Job`임을 의미합니다.
-- `job.complete()` 호출 시 `Job` 내에 실행 중인 모든 자식 코루틴들이 완료될 떄까지 계속 실행하게 됩니다. (추가적으로 `job.join`을 사용하여 `Job`의 완료를 대기할 수 있습니다.)
+작업 완료 시, 해당 `Job`은 'Child Coroutine'을 기다리는 'COMPLETING' 상태로 변경됩니다.  
+이 후 모든 'Child Coroutine'이 완료되면 'COMPLETED' 상태로 변경됩니다.
 
-### Summary
+만약, 작업 실행 중('ACTIVE' or 'COMPLETING') '취소•실패'가 되면, 해당 `Job`은 'CANCELLING' 상태로 변경됩니다.
+'CANCELLING' 상태에서는 리소스 해제와 같은 '정리 작업'을 할 수 있습니다. '정리 작업'이 완료되면 `Job`은 'CANCELLED' 상태로 변경됩니다.
 
-- `Job`은 코루틴을 취소하거나 상태를 추적하는 등의 기능을 통해 코루틴을 제어할 수 있습니다.
-- `Job`은 자동으로 부모 코루틴에서 자식 코루틴으로 상속되지 않은 유일한 코루틴 컨텍스트 입니다.
-- `job.join()` : 호출한 코루틴을 일시 중단시키고 지정된 `Job`이 완료될 때까지 대기시킬 수 있습니다.
-- `job.complete()` : `Job`을 완료시키며 모든 자식 코루틴이 끝날때 까지 계속 실행됩니다.
-- `job.completeExceptionally()` : 주어진 예외와 함께 `Job`을 완료시킵니다.
+`Job.join()`은 해당 `Job`이 '완료'될 때까지 'Coroutine'을 '중단'시키는데 사용됩니다.
+
+이처럼 `Job`은 여러 상태로 변경되며, `isActive`, `isCompleted`, `isCancelled` 등으로 '상태' 확인이 가능합니다.
+
+---
+
+'Coroutine Builder'는 자체적으로 `Job`을 생성하여 반환하기에, 여러 곳에서 사용될 수 있습니다.  
+또한 `Job`에 접근하는 방법으로는 `coroutineContext[Job]`, 확장 프로퍼티`job`을 사용하는 방법이 있습니다.
+```kotlin
+val launchJob: Job = launch { /* ... */ }
+
+val deferred: Deferred<Int> = async { /* ... */ }
+val asyncJob: Job = deferred // OK
+
+val activeCheck = coroutineContext.job.isActive
+```
+
+`Job`은 'Parent Coroutine'에서 'Child Coroutine'으로 '자동 상속'되지 않는 유일한 `CoroutineContext` 입니다.  
+대신 'Structured Concurrency' 형성을 위해 'Child Coroutine'의 `Job`은 'Parent Coroutine'의 `Job`을 '참조'하여 생성하도록 합니다.
+
+만약, 'Parent Coroutine'의 `Job`을 상속하여 사용할 경우, 'Structured Concurrency'가 형성되지 않아, 그 특징을 잃게 됩니다.
+
+---
+
+`Job.join()`을 통해 `Job`이 완료될 때까지 'Coroutine 중단'이 가능합니다.  
+`join()`은 'suspending function'에서 호출한 'Coroutine'을 '중단'시키고 지정된 `Job`의 상태가 'CANCELLED' 또는 'COMPLETED'가 될 때까지 기다립니다. 
+
+이를 응용하면, `Job`은 `children` 프로퍼티로 모든 'Child Coroutine'이 완료될 때까지 기다릴 수 있습니다.
+
+---
+
+`Job()` 'Factory Function' 사용 시, 'Coroutine'과 연결되지 않은 `Job`을 생성할 수 있습니다.  
+이렇게 생성된 `Job`은 여러 'Coroutine'의 'Parent'로 사용될 수 있음을 의미합니다.
+
+이 때 만약, 'Parent Job'에서 `join()`을 하면 'Parent Job'이 'Child Coroutine'의 완료를 기다립니다.  
+이런 경우 모든 'Child Coroutine'이 끝났어도, 'Parent Job'은 여전히 'Active' 상태로 유지되어 프로세스가 종료되지 않는 문제가 발생할 수 있습니다. 
+ 
+더 나은 방법으로는 `Job`의 모든 'Child Coroutine'에 `join()`을 호출하여, 'Parent Job'을 기다리는 것이 아닌, 'Child Coroutine'의 완료를 기다리는 것입니다. 
+
+`Job()`은 'constructor' 호출이 아닌, 'Factory Function' 호출 입니다.  
+실제로 반환되는 타입은 `Job`의 하위 인터페이스인 `CompletableJob`입니다.
+
+`CompletableJob`는 `Job`의 기능을 확장하여 `complete()`, `completeExceptionally()`를 제공합니다.
+
+`complete()`는 `Job`을 완료하는 데 사용되며, `complete()`를 호출하면 모든 'Child Coroutine'이 완료될 때까지 계속 실행됩니다. 
+그러나 `complete()` 호출 후 해당 `Job`에서 새로운 'Coroutine'을 시작할 수 없습니다.  
+또한 `complete()`를 통해 `Job`이 완료 되었으면 `true`를 반환하고, 이미 완료된 `Job`이면 `false`를 반환합니다.
+
+`completeExceptionally()`는 주어진 '예외'와 함께 `Job`을 완료합니다.
+이로 인해 모든 'Child Coroutine'은 즉시 '취소'되며, `CancellationException`이 주어진 '예외'를 감쌉니다.
+
+---
 
 ## [Part 2.4 : Cancellation](Cancellation.md)
 
