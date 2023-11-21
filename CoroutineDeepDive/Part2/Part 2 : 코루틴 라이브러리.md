@@ -298,83 +298,84 @@ val activeCheck = coroutineContext.job.isActive
 
 ## [Part 2.4 : Cancellation](Cancellation.md)
 
-### Basic Cancellation
+> - `Job.cancel()`은 해당 `Job`을 '취소'  
+>   - 첫 번째 'suspension point'에서 종료됨
+>   - 'Child Coroutine' 존재 시 해당 'Coroutine'도 같이 '취소'
+>   - '취소' 후 `Job`은 새로운 'Coroutine'의 부모로 사용될 수 없으며, '상태'가 `CANCELLING` → `CANCELLED`로 변경
+> - `cancel(throwable: CancellationException)`으로 명확한 취소 가능
+> - `cancel()` 시 `join()`을 호출 하지 않으면, 'Coroutine'의 완료까지 '중단'을 보장 받을 수 없음 
+>   - `Job-COMPLETED` or `Job-CANCELLED` 보장 불가능
+> - `try-catch-fianlly`로 `cancel()`시 `CancellationException`를 캐치 후, 'Parent'로 예외 전파 및 리소스 정리 가능
+> - `Job-CANCELLING`에서 `withContext(NonCancellable)`을 통해 취소되지 않는 `Job-ACTIVE` 제공 가능
+> - `invokeOnCompletion`을 통해 `Job`이 최종('COMPLETED' or 'CANCELLED') 상태 도달 시 실행할 'Handler' 설정 가능
+>   - '리소스 해제', '다른 Coroutine에게 전파' 등의 작업 가능
+>   - `throwable` 파라미터를 통해 'Coroutine 종료 상황' 확인 가능
+>     - `== null` : 정상 종료
+>     - `is CancellationException` : 취소
+>     - `is Exception` : 예외 종료
+> - `suspendCancellableCoroutine`을 통해 `CancellableContinuation<T>`으로 여러 작업 가능
+>   - `invokeOnCancellation`을 통해 'Coroutine 취소' 시 어떤 작업을 수행할 지 결정 가능
+>   - `Job` 상태 확인 후 '취소 원인'과 함께 `continuation` 취소 가능
 
-`Job` 인터페이스에는 `cancel()` 메서드를 제공하여 작업을 취소할 수 있는 기능을 제공하며 다음 효과가 발생됩니다.
+`Job`에는 `cancel()`을 통해 '취소'할 수 있는 기능을 제공하며, 이는 다음과 같은 효과가 발생합니다.
 
-- 코루틴이 일시 정지되는 지점이 있는 경우 그 지점에서 작업이 종료합니다. (`delay` or `yield`)
-- 자식 작업이 존재하는 경우 그 작업도 취소합니다. (A-B-C 작업 중 B가 취소되면 B,C가 취소되고 A는 아무런 영향을 받지 않음)
-- 작업이 취소되면 `CANCELLING` 상태가 되고, 그 다음 `CANCELLED` 상태가 됩니다. (취소된 작업은 더 이상 새로운 코루틴의 부모로서 사용되지 못함)
+- 해당 'Coroutine'은 첫 번째 'suspension point'에서 `Job`을 종료합니다.
+- `Job`에 'Child Coroutine'이 존재하는 경우, 해당 'Child Coroutine'도 '취소'됩니다.
+- `Job`이 '취소'되면, 새로운 'Coroutine'의 부모로 사용될 수 없으며, '상태'가 `CANCELLING` → `CANCELLED`로 변경됩니다.
 
-`CancellationException` 하위 타입을 `cancel`의 인자로 전달하여 코루틴의 취소 원인을 명확하게 할 수 있습니다.  
-만약 `CacnellationException` 외 타입으로 코루틴 취소 시도 시 코루틴은 취소되지 않습니다.
+`cancel(throwable: CancellationException)`을 통해 예외를 전달하여 'Coroutine'의 취소 원인을 명확하게 할 수 있습니다.
 
-코루틴 취소 후 `join` 호출 시 취소가 완전히 처리된 뒤 다음 작업을 수행할 수 있습니다.
-이렇게 처리되지 않으면 코루틴이 취소되기 전 다른 코드가 실행될 가능성이 있으며, 이로 인해 예기치 못한 결과 혹은 버그가 발생될 수 있습니다.
+`join()`은 'Coroutine'을 '중단'시키고 해당 `Job`의 상태가 'CANCELLED' or 'COMPLETED' 될 때까지 기다립니다.   
+이런 특성으로 `cancel()` 호출 후 `join()` 호출 시 'Coroutine'이 종료된 후 다음 작업을 수행함을 보장합니다.  
+추가로 'Coroutine Library'에서는 `cancel()`와 `join()`을 같이 호출하는 `cancelAndJoin()` 확장 함수가 존재합니다.
 
-`cancel`, `join`을 같이 호출하는 `cancelAndJoin` 확장 함수가 존재합니다.
+`Job()` 팩토리 함수를 사용하여 생성된 `Job`도 동일한 방식으로 `cancel()`과 `join()`의 특징을 가집니다.
 
-### How does cancellation work
+---
 
-`Job`이 취소되면 `CANCELLING` 상태로 변경되며 이 상태에서 코루틴이 다음 suspension point에 도달하면 `CancellationException`이 발생됩니다.  
-`CancellationException`은 `catch` 블록을 통해 잡을 수 있으며, 이 예외를 다시 던져야 코루틴의 취소 상태가 정상적으로 상위에 전파됩니다.
+`Job`이 '취소'되면 CANCELLING'으로 변경되며, 'Coroutine'이 다음 'suspension point'에 도달하면 `CancellationException`이 발생됩니다.
 
-취소된 코루틴은 `CancellationException`이 발생됨을 알 수 있는데 이는 코루틴이 강제로 종료되는 것이 아닌, 정상적인 예외 처리 흐름을 따르게 하여 리소스 정리를 안전하게 정리할 수 있는 기회를
-줍니다.
-코루틴이 취소되거나 예외가 발생하더라도 `finally` 블록이 항상 실행되는데 이 블록에서 리소스 해제나 필요한 정리 작업을 수행하면 됩니다.
+발생된 `CancellationException`은 `try-catch`를 통해 잡을 수 있으며, 발생된 `throw`를 '상위'로 전파해야 'Strucutred Concurrency'가 제대로 적용됩니다.
+또한 `CancellationException`은 '코루틴이 강제로 종료'되는 것이 아닌, '정상적인 예외 처리 흐름'을 따르게 하여 `finally` 블록을 통해 리소스 정리를 안전하게 정리할 수 있는 기회를 줍니다.
 
-### Just one more call
+---
 
-`CancellationException`이 발생한 후 `finally` 블록에서는 기본적으로 모든 리소스를 정리할 수 있지만,
-새로운 코루틴을 시작하거나 일시 정지 함수를 호출하는 것은 허용되지 않습니다.
-이는 해당 `Job`이 이미 `CANCELLING` 상태로 전환되었기 때문입니다.
+`cancel()` 후 `Job-CANCELLING`으로 변경되어 더 이상의 'Coroutine'을 시작하거나, 'suspending function'의 호출은 불가능하며,
+만약 'Coroutine 중단' 시도 시 `CancellationException`이 다시 발생합니다.
 
-그러나 `withContext(NonCancellable)` 함수를 이용하면, 코루틴이 이미 취소된 상태에서도 데이터베이스 롤백과 같은 일시 정지 함수를 안전하게 사용할 수 있습니다.
-`withContext`는 실행 컨텍스트를 임시로 변경하며, `NonCancellable`은 취소할 수 없는 `Job`을 제공해 블록 내의 작업을 `ACTIVE` 상태로 유지합니다.
+별개로, `Job-CANCELLING`에서 DataBase-Rollback 등의 'suspending function'의 호출이 필요한 경우,  
+`withContext(NonCancellable)`을 통해 취소되지 않는 `Job`을 제공하여 해당 `Job-ACTIVE`로 유지하여 작업을 할 수 있습니다.
 
-### invokeOnCompletion
+---
 
-`invokeOnCompletion` 함수는 코루틴 `Job`이 최종 상태에 도달 시 실행할 핸들러를 설정하는데 사용되고 리소스 해제, 다른 코루틴에게 알림을 보내는 등의 작업에 유용합니다.
+`invokeOnCompletion`은 `Job`이 최종 상태('COMPLETED' or 'CANCELLED')에 도달 시 실행할 'Handler'를 설정할 수 있습니다.  
+이를 통해, '리소스 해제', '다른 Coroutine에게 전파' 등의 작업에 유용합니다.
 
-`invokeOnCompletion`은 예외 파라미터를 전달하는데 이 값을 통해 코루틴이 어떻게 종료되는지 확인할 수 있습니다.
+`invokeOnCompletion`은 `throwable` 파라미터를 통해 'Coroutine'이 어떻게 종료되는지 확인이 가능합니다.
 
-- `null` : 코루틴이 정상적으로 종료
-- `CancellationException` : 코루틴이 취소됨
-- 그 외 예외 : 코루틴이 예외와 함께 종료됨
+```kotlin
+job.invokeonCompletion { throwable: Throwable? ->
+    throwable == null // Coroutine 정상 종료
+    throwable is CancellationException // Coroutine 취소
+    throwable is Exception // Coroutine 예외 종료
+}
+```
 
-또한 `invokeOnCompletion` 호출 전 코루틴이 완료된 경우 핸들러가 즉시 실행됩니다.
+`invokeOnCompletion` 호출 전 `Job`이 이미 완료된 경우, 'Handler'가 즉시 실행됩니다.  
+또한 'Coroutine'이 '취소'되는 순간 동기적으로 `invokeOnCompletion`이 호출되며, 이는 다른 Thread에서도 실행될 수 있습니다. 
 
-코루틴이 취소되는 순간 동기적으로 `invokeOnCompletion`을 호출하며 이는 다른 스레드에서도 실행될 수 있습니다.
-즉 실행되는 스레드를 직접 제어할 수 없습니다.
+---
 
-### Stopping the unstoppable
+`Job` 취소는 'suspension point'에서 발생되며 이런 'point'가 없으면 취소가 발생되지 않습니다.  
+만약 이런 경우에도 '취소'를 하고 싶은 경우 `Job.isActive` 또는 `ensureActive()` 통해 `Job` 상태 확인 후 조치할 수 있습니다.
 
-취소(Cancellation)는 suspension point에서 발생되며 이러한 지점이 없는 코루틴의 경우 취소가 발생되지 않습니다.
+---
 
-suspension point가 존재하지 않는 코루틴을 취소하는 방법으로는 다음과 같이 있습니다.
+`suspendCancellableCoroutine`은 `suspendCoroutine`과 비슷하지만,   
+`Continuation`을 `CancellableContinuation<T>`으로 '래핑'하여 몇 가지 추가적인 메서드를 제공합니다.
 
-- `yield()`를 호출하여 코루틴을 잠깐 중단하고 다시 재개하여 코루틴을 취소할 수 있는 suspension point를 생성하는 방법
-- `Job.isActive` 프로퍼티를 사용하여 현재 코루틴이 `ACTIVE` 상태인지 확인 후 적절한 조치를 취하는 방법
-- `ensureActive()`를 사용하여 `Job`이 `ACTIVE` 상태가 아닌 경우 `CancellationException`을 발생시키는 방법
-
-`yield()`는 일반적인 최상위 suspension 함수이며, 스레드 변경 등 다른 효과를 가질 수 있습니다.
-`ensureActive()`는 특정 `coroutineScope`나 `Job`에서만 호출될 수 있으며, 코루틴이 `ACTIVE` 상태가 아닌 경우에만 예외를 발생시킵니다.
-
-### suspendCancellableCoroutine
-
-`suspendCancellableCoroutine` 함수는 코루틴 내에서 비동기 작업을 수행할 떄 사용됩니다.
-표준 `suspendCoroutine`과 달리 취소 가능성을 고려한 추가적인 메서드들을 제공합니다.
-
-`invokeOnCancellation`은 코루틴이 취소되었을 때 실행될 코드 블록을 정의하는 메서드로 불필요한 리소스 해제와 실행 중인 작업 중단 등을 실행할 수 있습니다.
-
-### Summary
-
-- `Job` 인터페이스는 코루틴을 취소할 수 있는 `cancel()`을 제공하며 코루틴이 취소된 경우 자식 `Job`도 함께 취소됩니다.
-- 코루틴이 취소되면 다음 'suspension point'에서 `CancellationException`이 발생되며 `finally` 블록에서 리소스를 정리하는 것이 좋습니다.
-- `withContext(NonCancellable)`을 사용하면 이미 취소된 코루틴에서도 suspension 함수를 호출할 수 있습니다.
-- `invokeOnCompletion` 함수는 '코루틴 종료' 시 어떤 작업을 실행할 지 설정할 수 있으며, 코루틴이 어떤 예외로 종료되는지 확인할 수 있습니다.
-- `suspendCancellableCoroutine` 함수는 코루틴 내 비동기 작업을 수행할 때 사용되며 취소 가능성을 고려한 추가적인 메서드들을 제공합니다.
-    - `invokeOnCancellation` 함수는 '코루틴 취소' 시 어떤 작업을 실행할 지 설정 할 수 있습니다.
+`CancellableContinuation`은 `invokeOnCancellation`을 제공하여 'Coroutine 취소' 시 어떤 작업을 수행할 지 결정할 수 있습니다.  
+또한 `Job`의 상태를 확인하여 '취소 원인'과 함께 `continuation`을 취소할 수 있게 해줍니다.
 
 ---
 
