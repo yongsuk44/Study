@@ -151,7 +151,7 @@ suspend fun <R> coroutineScope(
 `launch`나 `async`는 새로운 코루틴을 생성하고 즉시 다음 코드 라인으로 넘어가지만
 이와 반대로 `coroutineScope`는 해당 블록에서 시작된 모든 코루틴이 완료될 때까지 현재 코루틴을 일시 중단합니다.
 
-이러한 이유로 `coroutineScope`는 병렬 작업을 수행할 때 유용하게 사용될 수 있으며, 코드 복잡성을 줄일 수 있습니다.
+이러한 이유로 `coroutineScope`는 직렬 작업을 수행할 때 유용하게 사용될 수 있으며, 코드 복잡성을 줄일 수 있습니다.
 
 ```kotlin
 fun main() = runBlocking {
