@@ -381,164 +381,217 @@ job.invokeonCompletion { throwable: Throwable? ->
 
 ## [Part 2.5 :Exception handling](Exception%20handling.md)
 
-### Stop breaking my coroutines
+> - 예외가 전파된 경우 'Coroutine Builder'는 'Parent Coroutine' 취소, 'Parent Coroutine'은 모든 'Child Coroutine'을 취소
+> - `SupervisorJob`은 'Child Coroutine'에서 발생된 예외가 'Parent Coroutine'에 영향을 주지 않음
+>   - 일반적으로 `SupervisorJob`은 '다수의 Coroutine'을 시작하는 `Scope`로 사용
+>   - `CoroutineScope(SupervisorJob())`으로 시작되는 모든 'Child Coroutine'은 자동으로 `SupervisorJob`에 의해 관리
+> - `supervisorScope`은 'Parent Coroutine'에 예외 전파를 중단하는 방법 중 하나
+>   - `withContext(SupervisorJob())`은 `supervisorScope` 대체 불가능
+> - 예외 타입이 `CancellationException`의 하위 클래스 경우, 'Parent Coroutine'으로 예외 전파를 하지 않고 현재 'Coroutine'만 취소
+> - `CoroutineExceptionHandler`는 `CoroutineContext`로 모든 예외에 대한 기본 동작 정의 가능
 
-`SupervisorJob`은 일반 `Job`과 다르게 자식 코루틴에서 발생된 예외가 부모 코루틴에 영향을 주지 않습니다.  
-즉, 자식 코루틴에서 예외가 발생하더라도 다른 자식 코루틴이나 부모 코루틴이 중단되지 않습니다.
+'Coroutine'에서 처리되지 않는 예외가 전파된 경우, **'Coroutine Builder'가 'Parent Coroutine'을 취소**하고,  
+취소된 'Parent Coroutine'은 **모든 'Child Coroutine'을 취소**하게 됩니다.
 
-일반적으로 `SupervisorJob`은 아래와 같이 여러 코루틴을 시작하는 `Scope`의 일부로 사용되며 해당 `Scope`에서 시작되는 모든 코루틴은 자동으로 `SupervisorJob`에 의해 관리됩니다.
+```mermaid
+graph TB
+    Coroutine#1 --- Coroutine#2
+    Coroutine#1 --- Coroutine#3
+    Coroutine#1 --- Coroutine#4
+    Coroutine#1 -.Cancels.-> Coroutine#2
+    Coroutine#1 -.Cancels.-> Coroutine#4
+
+    Coroutine#3 --- Coroutine#5
+    Coroutine#3 --- Coroutine#6
+    Coroutine#3 --- Coroutine#7
+    Coroutine#3 -.Cancels.-> Coroutine#5
+    Coroutine#3 -.Cancels.-> Coroutine#7
+    Coroutine#6 -.Cancels.-> Coroutine#3
+    Coroutine#3 -.Cancels.-> Coroutine#1
+
+    style Coroutine#6 stroke:#f66,stroke-width:4px
+    linkStyle 10 stroke:red
+    linkStyle 11 stroke:red
+```
+
+'Coroutine' 예외는 `Job`을 통해 전파되기에, `try-catch`로 'Coroutine Builder'를 감싸서 예외를 잡는 로직은 동작되지 않습니다.
+
+`SupervisorJob`은 `Job`과 비슷하지만, 'Child Coroutine'에서 발생된 예외가 'Parent Coroutine'에 영향을 주지 않습니다.  
+즉, 'Child Coroutine'에서 예외가 발생하더라도 다른 'Child Coroutine'이나 'Parent Coroutine'이 중단되지 않습니다.
+
+`SupervisorJob`은 **다수의 'Coroutine'을 시작하는 `Scope`로 사용**되며,   
+해당 `Scope`에서 시작되는 모든 'Coroutine'은 자동으로 `SupervisorJob`에 의해 관리됩니다.
+
+만약 'Single Coroutine Builder'의 인자로 `SupervisorJob`을 사용하면, 
+`Job`을 사용하는 것과 같기에 예외 처리에 큰 이점을 가질 수 없습니다.
 
 ```kotlin
 val scope = CoroutineScope(SupervisorJob())
+scope.launch { ... } // CoroutineContext.Job is SupervisorJob
 
-scope.launch { ... }
-scope.async { ... }
-```
-
-자주 범하는 실수 중 하나는 `launch`, `async`의 인자로 `SupervisorJob`을 사용하는 것인데,
-이는 오직 하나의 직접적인 자식만을 가지고 있기에 일반 `Job`을 사용하는 것과 같이 예외 처리에 큰 이점을 가질 수 없습니다.  
-이처럼 큰 이점을 가지려면 `SupervisorJob`은 여러 코루틴 빌더의 컨텍스트로 사용하는 것이 더 효과적입니다.
-
-```kotlin
 val job = SupervisorJob()
-
-launch(job) { ... }
+launch(job) { ... } 
 async(job) { ... }
 job.cancelAndJoin()
+
+launch(SupervisorJob()) { ... } // Bad practice
 ```
 
-`supervisorScope`는 예외 전파를 중단하는 또 다른 방법으로 부모 코루틴과의 연결을 유지하면서도 자식 코루틴에서 발생하는 예외를 무시하거나 제어 할 수 있습니다.
+---
 
-`coroutineScope`는 `launch`, `async` 등의 코루틴 빌더와 다르게 부모 코루틴에게 예외를 전파하지 않고 해당 Scope 내에서 예외를 잡을 수 있게 해줍니다.
-코루틴 빌더는 자체적으로 예외를 잡지 않기에, 부모 코루틴에게 예외가 전파될 가능성이 높습니다.
+`supervisorScope`은 'Parent Coroutine'에 **예외 전파를 중단**하는 방법 중 하나 입니다.  
+'Strucutred Concurrency'를 유지하면서, 'Child Coroutine'에서 발생하는 예외를 무시하거나 제어할 수 있습니다.
 
-`supervisorScope`는 자식 코루틴의 예외가 부모 코루틴에게 전파되지 않지만,
-`withContext(SupervisorJob())`에서 `SupervisorJob()`을 부모 `Job`으로 만들지만, `withContext`는 단순히 코루틴의 컨텍스트를 변경하는 것이기에 예외 무시 기능이
-적용되지 않습니다.
+'Coroutine Builder'는 자체적으로 예외를 잡지 않기에, 'Parent Coroutine'에 예외가 전파될 가능성이 높습니다.  
+반면, `supervisorScope`은 해당 `Scope` 내에서 예외를 잡을 수 있게 해줍니다.
 
-### await
+주의 할 점으로 `withContext(SupervisorJob())`이 `supervisorScope`를 대체 할 수 없습니다.  
+`CoroutineContext`에서 `Job`은 유일하게 상속되지 않기에, 각 'Coroutine'은 `Parent Job`을 참조하여 새로운 `Job`을 생성하게 됩니다.
 
-`await`은 `async` 코루틴 빌더와 함께 사용되며 비동기 작업의 결과를 가져오기 위한 메서드입니다.
-다른 코루틴들과 동일하게 비동기 작업에서 예외가 발생되면, 부모 코루틴까지 예외를 전파합니다.
+이때 `withContext()`은 단순히 `CoroutineContext`를 변경하는 것이기에, `SupervisorJob`이 `ParentJob`으로 적용이 됩니다.
+즉, 다음과 같은 구조로 형성이 됩니다.
 
-### CancellationException does not propagate to its parent
+```mermaid
+graph TD
+    SupervisorJob --> withContext --> Coroutine#1
+    withContext --> Coroutine#2
+```
 
-예외가 `CancellationException`의 하위 클래스라면, 이 예외는 부모로 전파되지 않고 현재 코루틴만 취소합니다.
+따라서 'Child Coroutine' 중 한 곳에서 예외가 발생되면 모든 'Child Coroutine'가 취소되고 'Parent Coroutine'으로 예외가 던져집니다.
+이러한 이유로 `withContext(SupervisorJob())`은 `supervisorScope`를 대체 할 수 없습니다.
 
-### Coroutine exception handler
+---
 
-`CoroutineExceptionHandler`는 코루틴에서 예외 처리 시, 모든 예외에 대한 기본 동작을 정의하는데 유용합니다.
-이 핸들러는 예외가 발생하면 정의한 코드 블록이 실행되며, 코루틴 컨텍스트에 추가할 수 있어 `SupervisorJob` 등과 같이 사용할 수 있습니다.
+예외 타입이 `CancellationException`의 하위 클래스라면, 이 예외는 부모로 전파되지 않고 현재 'Coroutine'만 취소합니다.
 
-### Summary
-
-- `SupervisorJob`에서 발생된 예외는 부모 코루틴에게 전파되지 않으며, 이로 인해 여러 코루틴 빌더의 컨텍스트로 사용하는 것이 효과적입니다.
-- `suervisorScope` 블록에서 생성된 코루틴들은 예외가 발생해도 부모 코루틴에게 전파되지 않습니다.
-- 예외가 `CancellationException`의 하위 클래스라면, 이 예외는 부모로 전파되지 않고 현재 코루틴만 취소합니다.
-- `CoroutineExceptionHandler`는 코루틴에서 예외 처리 시, 모든 예외에 대한 기본 동작을 정의하는데 유용합니다.
+`CoroutineExceptionHandler`를 통해 예외 처리 시, 모든 예외에 대한 기본 동작을 정의할 수 있습니다.
+그러나 예외 전파를 멈추지 않기에 `SupervisorJob`과 같이 사용하면 효율적일 수 있습니다.
 
 ---
 
 ## [Part 2.6 : Coroutine scope functions](CoroutineScope%20함수.md)
 
-### Approaches that were used before coroutine scope functions were introduced
+> - `GlobalScope`은 `EmptyCoroutineContext`을 가진 `CoroutineScope` 
+>   - `Scope`, `CoroutienContext` 상속이 발생하지 않기에 'Parent Coroutine'이 취소되어도 독립적으로 계속 실행
+> - `CoroutineScope` '확장 함수' 또는 '인자로 받는 함수'는 많은 문제점 존재
+>   - 여러 곳에서 호출되면 `Scope` 관리가 어려움
+>   - `Job`으로 로직 실행 중 예외 발생 시, 해당 `Scope`의 모든 'Child Coroutine' 취소
+>   - 어느 곳에서든 `Scope`에 접근하여 `cancel()`이 가능
+> - `coroutineScope { ... }`는 `CoroutineScope`를 시작하는 'suspending function'
+>   - 인자로 주어진 함수에 의해 생성된 값 반환 
+>   - 내부에서 시작된 모든 'Child Coroutine'이 완료될 때까지 기존 'Coroutine'을 중단
+>   - 복잡한 동시성 제어 없이 'Coroutine' 직렬화 가능
+>   - 'Parent Coroutine'의 `CoroutineContext` 상속하여 'Structured Concurrency' 형성
+> - 'Coroutien Builder' 특징
+>   - `CoroutineScope`의 확장 함수, `CoroutineScope`를 통해 `CoroutineContext`를 얻음
+>   - `Job`을 통해 예외 전파, 비동기 'Coroutine' 생성 시작
+> - 'Coroutine scope functions' 특징
+>   - 'suspending function'이며, `Continuation`에서 `CoroutineContext`를 얻음
+>   - 일반 함수처럼 예외 전파, 호출한 'Coroutine'으로 시작
+>   - `withContext()` : 'Parent'-`CoroutineContext` 'override' 후 새로운 `CoroutineContext.Element` 설정
+>   - `supervisorScope` : `CoroutineContext`를 상속받지만, `Job`을 `SupervisorJob`으로 'override'
+>   - `withTimeout` : 특정 작업에 대한 '제한 시간' 설정, 초과 시 `TimeoutCancellationException` 발생
+>   - `withTimeoutOrNull` : `TimeoutCancellationException` 대신 `null` 반환
 
-코루틴 빌더(`async`, `launch` 등)을 사용하려면 스코프가 필요하며 이는 `runBlocking`, `coroutineScope` 등을 통해 제공됩니다.
+`GlobalScope`은 'Parent Coroutine'이 취소 되어도, 독립적으로 계속 실행 됩니다.  
+또한 `GlobalScope`는 `Scope`, `CoroutineContext`의 상속이 일어나지 않습니다.  
+이런 특징으로 지속적인 리소스 낭비와 `CoroutineContext`를 고려하지 않아 예기치 못한 동작이 발생할 수 있습니다.
 
-스코프 중 `GlobalScope`도 존재하는데 이 스코프는 다음과 같은 특징을 지닙니다.
+`CoroutineScope`를 인자로 받거나, `CoroutineScope`를 확장하는 함수를 통해 사용하는 것은 좋지 못합니다.
 
-- `GlobalScope`는 애플리케이션의 전체 수명 주기 동안 유지되며, 애플리케이션의 수명 주기와 동일하게 실행되기에 부모 코루틴이 취소되더라도 계속 실행됩니다.
-- `GlobalScope`는 `EmptyCoroutineContext`를 얻기에 컨텍스트와 스코프에 대한 값이 없어 일반적인 부모-자식 간 상속이 없습니다.
+```kotlin
+// Don't do that
+suspend fun CoroutineScope.doSomething() { /*...*/ }
+suspend fun doSomething(coroutineScope: CoroutineScope) { /*...*/ }
+```
 
-이와 같은 특징으로 인해 '리소스 낭비가 발생'할 수 있으며, '컨텍스트에 대한 설정을 직접 해야하고', '유닛테스트가 어려워진다'는 단점이 있습니다.
+위와 같은 경우는 다음과 같은 문제점이 발생될 수 있습니다.
+1. 중첩 호출을 관리하는 경우, `Scope`를 여러 함수에 전달하면 `Scope` 관리가 어려워짐
+2. `SupervisorJob`이 아닌 `Job`을 통해 실행 중 예외 발생 시, 해당 `Scope`의 모든 작업이 중단됨
+3. `CoroutineScope`에 직접 접근하여 `cancel()` 시 어디서든 취소가 가능하여 예상치 못한 동작 발생
 
-### coroutineScope
+---
 
-`launch`나 `async`는 새로운 코루틴을 생성하고 즉시 다음 코드 라인으로 넘어가지만
-`coroutineScope`는 자식 코루틴들이 모두 완료될 떄까지 생성된 코루틴을 일시 중단합니다.
+`coroutineScope`는 `Scope`를 시작하는 'suspending function'으로, 인자로 주어진 함수에 의해 생성된 값을 반환합니다.
+`coroutineScope`는 내부에서 시작된 모든 'Coroutine'이 완료될 때까지 기존 'Coroutine'을 중단시킵니다.  
+결과적으로 `coroutineScope`는 복잡한 동시성 제어 없이 'Coroutine'의 실행을 직렬화 할 수 있게 해줍니다.
 
-즉, `coroutineScope`는 '일시 정지 가능한 코드 블록'을 실행하기 위한 새로운 코루틴 스코프를 생성합니다.
+`coroutineScope`는 'Parent Coroutine'의 `CoroutineContext`를 상속받고, 'Parent Job'을 참조하여 새로운 `Job`을 생성합니다.
+즉, 'Structured Concurrency'를 형성하며 동일하게 다음 특징을 지닙니다.
 
-`coroutineScope`는 다음과 같은 특징을 지닙니다.
+1. 'Parent Coroutine' 취소 시, `coroutineScope` 내 모든 'Child Coroutine' 취소
+2. `coroutineScope` 내 'Child Coroutine'에서 예외 발생 시 해당 `Scope`의 모든 'Child Coroutine' 취소 후 'Parent Coroutine'으로 예외 전파
 
-- 상위 스코프의 `coroutineContext`를 상속받아 생성된 자식 코루틴에게 해당 컨텍스트를 상속합니다.
-- 생성된 자식 코루틴이 완료되어야지만, 자기 자신을 종료할 수 있습니다.
-- `coroutineScope`가 속한 부모 코루틴이 취소된다면, 생성된 자식 코루틴들도 모두 취소됩니다.
+이러한 특징으로 `coroutineScope`는 여러 'suspending function'을 '동시에 실행'하여 '단일 값을 얻기' 간편합니다.
 
-`coroutineScope` 또는 그 안의 자식 코루틴에서 예외가 발생되면 해당 범위의 코루틴들이 모두 취소되고 부모 코루틴에 예외를 던집니다.
+```kotlin
+suspend fun getUser(): User = coroutineScope {
+    val name = async { fetchName() }
+    val email = async { fetchEmail() }
+    User(name.await(), email.await())
+}
+```
 
-### Coroutine Scope functions
+---
 
-코루틴 스코프 함수는 suspending 함수 내에서 새로운 코루틴 스코프를 생성하거나 기존의 스코프를 변형하는데 사용됩니다.
-이러한 코루틴 스코프 함수에는 `coroutineScope`, `superviorScope`, `withContext`, `withTimeout` 등이 있습니다.
+'Coroutine Builder'와 'Coroutine scope functions'의 차이점 입니다.
 
-코루틴 스코프 함수와 코루틴 빌더는 혼동될 수 있지만 이 둘을 엄연히 [차이점](CoroutineScope%20함수.md#코루틴-스코프-함수와-코루틴-빌더의-차이점)이 존재합니다
+|    Coroutine Builder (`runBlocking` 제외)     |                   Coroutine scope functions                    |
+|:-------------------------------------------:|:--------------------------------------------------------------:|
+|         `launch` `async` `produce`          | `coroutineScope` `supervisorScope` `withContext` `withTimeout` |
+|           `CoroutineScope` 확장 함수            |                      suspending function                       |
+| `CoroutineScope`를 통해 `CoroutineContext`를 얻음 | 'suspending function'의 `Continuation`에서 `CoroutineContext`를 얻음 |
+|               `Job`을 통해 예외 전파               |                         일반 함수처럼 예외 전파                          | 
+|              비동기 Coroutine 시작               |                   그 자리에서 호출되는 'Coroutine' 시작                   |
 
-코루틴 스코프 함수와 `runBlocking`도 비슷해 보이지만, `runBlocking`은 blocking 함수, 코루틴 스코프 함수는 suspending 함수 입니다.
-이로 인해 서로 다른 목적과 환경에서 사용되므로 명확하게 구분해야 합니다.
+---
 
-### withContext
+`withContext()`는 'Parent Coroutine'의 `CoroutineContext`를 'override'하면서, 특정 `CoroutineContext.Element` 변경하여 설정할 수 있습니다.
+이로 인해 `withContext()` 내에서 실행되는 'Coroutine'은 새로운 `CoroutineContext` 설정을 따릅니다.
 
-컨텍스트 변경이 필요한 경우 `withContext`를 사용하는 것이 유용하며, 컨텍스트의 변경이 필요 없는 경우 `coroutineScope`를 사용하면 됩니다.
+보통 코드의 일부분에서 `Dispatchers`를 변경하기 위해 사용됩니다. 
+```kotlin
+launch(Dispatchers.Main) { 
+    // ....
+    withcontext(Dispatchers.IO + CoroutineName("DB Update Coroutine #1")) { /* ... */ }
+}
+```
 
-`withContext`는 코드 중간에 다른 코루틴 스코프를 설정하기 위해 `Dispatchers` 컨텍스트와 함께 자주 사용됩니다.
+---
 
-코드의 가독성과 관리성을 위해서 `async`와 `await()`를 즉시 사용할 떄 특별한 경우가 아니라면 `coroutineScope` or `withContext`를 사용하게 좋습니다.
+`supervisorScope`은 `coroutineScope`와 유사하게 `CoroutineContext`를 상속받지만,   
+`Job`을 `SupervisorJob`으로 'override'하여 'Child Coroutine'에서 예외가 발생해도 다른 'Coroutine'을 취소 시키지 않습니다.
 
-### supervisorScope
+이로 인해 다수의 독립적인 비동기 작업을 안전하고 효율적으로 관리하기 적합합니다.
 
-`coroutineScope`와 유사하지만, 컨텍스트의 `Job`을 `SupervisorJob`으로 오버라이드하여 자식 코루틴이 예외를 발생시켜도 다른 코루틴들을 취소 시키지 않습니다.
-이 때문에 여러 독립적인 비동기 작업을 안전하고 효율적으로 관리하는 데 주로 사용됩니다.
+```kotlin
+suspend fun sendAnalytics(actions: List<UserAction>) = supervisorScope {
+    actions.forEach { action ->
+        launch { analytics.event(action) }
+    }
+}
+```
 
-`supervisorScope` 내부에서 `async`와 `await()`를 사용하여 코루틴의 결과를 얻는 중 예외가 발생되면 `await()` 기준으로 예외가 전파되기에,
-이를 고려하여 `await()` 호출 주변에 `try-catch`와 같은 예외 처리 코드를 작성해야 합니다.
+---
 
-`withContext(SupervisorJob())` 사용 시, `SupervisorJob()`은 `withContext`의 `Job`에 부모로 사용되게 됩니다.
-이 떄문에 `withContext`의 자식 코루틴에서 예외가 발생하게 되면 `withContext`로 전파되기에 `SupervisorJob()`은 크게 의미가 없습니다.
+`withTimeout`은 특정 작업에 최대 실행 시간을 부여하여, 시간 초과 시 작업을 강제로 '종료'시키는 기능을 제공합니다. 
 
-### withTimeout
+시간 초과 시 `TimeoutCancellationException`을 발생시키며, 이는 `CancellationException`의 하위 클래스 입니다.  
+작업 완료 시 `withTimeout`은 블록에서 반환된 값을 반환합니다.
 
-`withTimeout`은 작업에 최대 실행 시간을 부여하고 다음과 같이 처리됩니다.
+이런 특징으로 특정 작업에 시간 제한을 두거나, 느린 네트워크 요청, 복잡한 계산 등에 적용할 수 있습니다.  
 
-- 시간이 초과되면 `TimeoutCancellationException`을 발생시켜 작업을 강제로 종료시킵니다.
-- 성공적으로 완료된 경우 블록에서 반환된 값을 얻습니다.
+`withTimeoutOrNull`은 작업의 시간이 초과되면, 작업을 '취소'하고 `null`을 반환합니다.
 
-주로 네트워크 요청, 복잡한 알고리즘 등의 처리 시간에 민감한 곳에 사용될 수 있으며, 이는 테스트에 유용하게 사용될 수 있습니다.
+---
 
-`withTimeoutOrNull`은 `withTimeout`과 동일하지만, 시간 초과 시 `TimeoutCancellationException`을 발생시키지 않고 `null`을 반환합니다.
-이로 인해 좀 더 유연한 예외 처리를 할 수 있습니다.
+'Coroutine scope function'을 조합해서 사용해야 하는 경우 'suspending function'이므로 중첩해서 사용할 수 있습니다.
 
-### Connecting coroutine scope functions
-
-코루틴 스코프 함수들은 자체적으로 특정한 기능을 제공하며 이 함수들을 중첩해서 사용하여 여러 기능을 조합해서 사용할 수 있습니다.
-
-단, 각 함수의 특정과 영향성을 잘 이해하고 사용해야 합니다.   
-(`withContext`가 취소 불가능한 작업을 수행하는데 `withTimeout`은 의미 없는 기능이 될 수 있습니다.)
-
-### Additional operations
-
-기본적으로 suspending 함수는 내부 코루틴 작업이 모두 완료될 때까지 완료되지 않습니다.
-이때 같은 코루틴 스코프에서 별도의 추가 작업(Analytics 호출 등)과 같은 작업이 포함되어 있는 경우에
-추가 작업에서 예외가 발생되면 메인 로직이 취소 되기에 좋은 방식이 아닙니다.
-
-이 때문에 명시적으로 스코프를 주입하여 사용하는 것이 좋습니다.
-명시적으로 스코프를 주입하면 해당 로직이 독립적으로 비동기 작업을 할 수 있음이 명확해지고, 해당 코루틴 작업의 흐름을 쉽게 파악할 수 있어 디버깅이 간단해집니다.
-
-### Summary
-
-- 코루틴 스코프 함수를 통해 코루틴 빌더들을 사용할 수 있으며, 코루틴 스코프 함수 중 `GlobalScope`는 다음과 같은 특징을 지닙니다.
-    - Application Lifecycle을 가지며 Application 종료될 떄까지 해당 스코프에서 실행된 코루틴 작업이 실행 됩니다.
-    - `EmptyCoroutineScope`를 통해 생성되므로 컨텍스트와 스코프에 대한 값이 없습니다.
-- `coroutineScope`는 '일시 정지 가능한 코드 블록'을 실행하기 위한 새로운 코루틴 스코프를 생성하며 다음 특징을 지닙니다.
-    - 상위 스코프의 컨텍스트를 상속받아 자식 코루틴에게 전달합니다.
-    - 자식 코루틴이 완료되어야지만, 자신도 종료할 수 있습니다.
-    - 부모 코루틴이 취소되면 자기 자신을 포함한 모든 자식 코루틴도 취소됩니다.
-- 코루틴 스코프 함수에는 `coroutineScope`, `withContext`, `superviorScope`, `withTimeout` 등이 있습니다.
-    - `withContext` : `Dispatchers`의 변경과 같이 코루틴 컨텍스트의 변경이 필요한 경우 사용됩니다.
-    - `supervisorScope` : `SupervisorJob`을 사용하여 자식 코루틴의 예외를 전파하지 않는 독립적인 비동기 작업에 사용됩니다.
-    - `withTimeout` : 특정 작업에 시간 제한을 두고 싶을 때 사용됩니다.
-- 코루틴 스코프 함수들은 중첩해서 여러 기능을 조합해서 사용할 수 있습니다.
-- 코루틴 내부에서 메인 로직과 추가 작업을 같이 실행 시, 별도의 스코프를 생성하여 클래스에 명시적으로 주입한 뒤 별도의 스코프로 추가 작업을 실행하는 것이 메인 로직에 영향을 주지 않기에 권장됩니다.
+```kotlin
+suspend fun calculateAnswerOrNull(): User? = withContext(Dispatchers.IO) {
+    withTimeoutOrNull(2000) { calculateAnswer() }
+}
+```
 
 ---
 
