@@ -381,61 +381,91 @@ job.invokeonCompletion { throwable: Throwable? ->
 
 ## [Part 2.5 :Exception handling](Exception%20handling.md)
 
-### Stop breaking my coroutines
+> - 예외가 전파된 경우 'Coroutine Builder'는 'Parent Coroutine' 취소, 'Parent Coroutine'은 모든 'Child Coroutine'을 취소
+> - `SupervisorJob`은 'Child Coroutine'에서 발생된 예외가 'Parent Coroutine'에 영향을 주지 않음
+>   - 일반적으로 `SupervisorJob`은 '다수의 Coroutine'을 시작하는 `Scope`로 사용
+>   - `CoroutineScope(SupervisorJob())`으로 시작되는 모든 'Child Coroutine'은 자동으로 `SupervisorJob`에 의해 관리
+> - `supervisorScope`은 'Parent Coroutine'에 예외 전파를 중단하는 방법 중 하나
+>   - `withContext(SupervisorJob())`은 `supervisorScope` 대체 불가능
+> - 예외 타입이 `CancellationException`의 하위 클래스 경우, 'Parent Coroutine'으로 예외 전파를 하지 않고 현재 'Coroutine'만 취소
+> - `CoroutineExceptionHandler`는 `CoroutineContext`로 모든 예외에 대한 기본 동작 정의 가능
 
-`SupervisorJob`은 일반 `Job`과 다르게 자식 코루틴에서 발생된 예외가 부모 코루틴에 영향을 주지 않습니다.  
-즉, 자식 코루틴에서 예외가 발생하더라도 다른 자식 코루틴이나 부모 코루틴이 중단되지 않습니다.
+'Coroutine'에서 처리되지 않는 예외가 전파된 경우, **'Coroutine Builder'가 'Parent Coroutine'을 취소**하고,  
+취소된 'Parent Coroutine'은 **모든 'Child Coroutine'을 취소**하게 됩니다.
 
-일반적으로 `SupervisorJob`은 아래와 같이 여러 코루틴을 시작하는 `Scope`의 일부로 사용되며 해당 `Scope`에서 시작되는 모든 코루틴은 자동으로 `SupervisorJob`에 의해 관리됩니다.
+```mermaid
+graph TB
+    Coroutine#1 --- Coroutine#2
+    Coroutine#1 --- Coroutine#3
+    Coroutine#1 --- Coroutine#4
+    Coroutine#1 -.Cancels.-> Coroutine#2
+    Coroutine#1 -.Cancels.-> Coroutine#4
+
+    Coroutine#3 --- Coroutine#5
+    Coroutine#3 --- Coroutine#6
+    Coroutine#3 --- Coroutine#7
+    Coroutine#3 -.Cancels.-> Coroutine#5
+    Coroutine#3 -.Cancels.-> Coroutine#7
+    Coroutine#6 -.Cancels.-> Coroutine#3
+    Coroutine#3 -.Cancels.-> Coroutine#1
+
+    style Coroutine#6 stroke:#f66,stroke-width:4px
+    linkStyle 10 stroke:red
+    linkStyle 11 stroke:red
+```
+
+'Coroutine' 예외는 `Job`을 통해 전파되기에, `try-catch`로 'Coroutine Builder'를 감싸서 예외를 잡는 로직은 동작되지 않습니다.
+
+`SupervisorJob`은 `Job`과 비슷하지만, 'Child Coroutine'에서 발생된 예외가 'Parent Coroutine'에 영향을 주지 않습니다.  
+즉, 'Child Coroutine'에서 예외가 발생하더라도 다른 'Child Coroutine'이나 'Parent Coroutine'이 중단되지 않습니다.
+
+`SupervisorJob`은 **다수의 'Coroutine'을 시작하는 `Scope`로 사용**되며,   
+해당 `Scope`에서 시작되는 모든 'Coroutine'은 자동으로 `SupervisorJob`에 의해 관리됩니다.
+
+만약 'Single Coroutine Builder'의 인자로 `SupervisorJob`을 사용하면, 
+`Job`을 사용하는 것과 같기에 예외 처리에 큰 이점을 가질 수 없습니다.
 
 ```kotlin
 val scope = CoroutineScope(SupervisorJob())
+scope.launch { ... } // CoroutineContext.Job is SupervisorJob
 
-scope.launch { ... }
-scope.async { ... }
-```
-
-자주 범하는 실수 중 하나는 `launch`, `async`의 인자로 `SupervisorJob`을 사용하는 것인데,
-이는 오직 하나의 직접적인 자식만을 가지고 있기에 일반 `Job`을 사용하는 것과 같이 예외 처리에 큰 이점을 가질 수 없습니다.  
-이처럼 큰 이점을 가지려면 `SupervisorJob`은 여러 코루틴 빌더의 컨텍스트로 사용하는 것이 더 효과적입니다.
-
-```kotlin
 val job = SupervisorJob()
-
-launch(job) { ... }
+launch(job) { ... } 
 async(job) { ... }
 job.cancelAndJoin()
+
+launch(SupervisorJob()) { ... } // Bad practice
 ```
 
-`supervisorScope`는 예외 전파를 중단하는 또 다른 방법으로 부모 코루틴과의 연결을 유지하면서도 자식 코루틴에서 발생하는 예외를 무시하거나 제어 할 수 있습니다.
+---
 
-`coroutineScope`는 `launch`, `async` 등의 코루틴 빌더와 다르게 부모 코루틴에게 예외를 전파하지 않고 해당 Scope 내에서 예외를 잡을 수 있게 해줍니다.
-코루틴 빌더는 자체적으로 예외를 잡지 않기에, 부모 코루틴에게 예외가 전파될 가능성이 높습니다.
+`supervisorScope`은 'Parent Coroutine'에 **예외 전파를 중단**하는 방법 중 하나 입니다.  
+'Strucutred Concurrency'를 유지하면서, 'Child Coroutine'에서 발생하는 예외를 무시하거나 제어할 수 있습니다.
 
-`supervisorScope`는 자식 코루틴의 예외가 부모 코루틴에게 전파되지 않지만,
-`withContext(SupervisorJob())`에서 `SupervisorJob()`을 부모 `Job`으로 만들지만, `withContext`는 단순히 코루틴의 컨텍스트를 변경하는 것이기에 예외 무시 기능이
-적용되지 않습니다.
+'Coroutine Builder'는 자체적으로 예외를 잡지 않기에, 'Parent Coroutine'에 예외가 전파될 가능성이 높습니다.  
+반면, `supervisorScope`은 해당 `Scope` 내에서 예외를 잡을 수 있게 해줍니다.
 
-### await
+주의 할 점으로 `withContext(SupervisorJob())`이 `supervisorScope`를 대체 할 수 없습니다.  
+`CoroutineContext`에서 `Job`은 유일하게 상속되지 않기에, 각 'Coroutine'은 `Parent Job`을 참조하여 새로운 `Job`을 생성하게 됩니다.
 
-`await`은 `async` 코루틴 빌더와 함께 사용되며 비동기 작업의 결과를 가져오기 위한 메서드입니다.
-다른 코루틴들과 동일하게 비동기 작업에서 예외가 발생되면, 부모 코루틴까지 예외를 전파합니다.
+이때 `withContext()`은 단순히 `CoroutineContext`를 변경하는 것이기에, `SupervisorJob`이 `ParentJob`으로 적용이 됩니다.
+즉, 다음과 같은 구조로 형성이 됩니다.
 
-### CancellationException does not propagate to its parent
+```mermaid
+graph TD
+    SupervisorJob --> withContext --> Coroutine#1
+    withContext --> Coroutine#2
+```
 
-예외가 `CancellationException`의 하위 클래스라면, 이 예외는 부모로 전파되지 않고 현재 코루틴만 취소합니다.
+따라서 'Child Coroutine' 중 한 곳에서 예외가 발생되면 모든 'Child Coroutine'가 취소되고 'Parent Coroutine'으로 예외가 던져집니다.
+이러한 이유로 `withContext(SupervisorJob())`은 `supervisorScope`를 대체 할 수 없습니다.
 
-### Coroutine exception handler
+---
 
-`CoroutineExceptionHandler`는 코루틴에서 예외 처리 시, 모든 예외에 대한 기본 동작을 정의하는데 유용합니다.
-이 핸들러는 예외가 발생하면 정의한 코드 블록이 실행되며, 코루틴 컨텍스트에 추가할 수 있어 `SupervisorJob` 등과 같이 사용할 수 있습니다.
+예외 타입이 `CancellationException`의 하위 클래스라면, 이 예외는 부모로 전파되지 않고 현재 'Coroutine'만 취소합니다.
 
-### Summary
-
-- `SupervisorJob`에서 발생된 예외는 부모 코루틴에게 전파되지 않으며, 이로 인해 여러 코루틴 빌더의 컨텍스트로 사용하는 것이 효과적입니다.
-- `suervisorScope` 블록에서 생성된 코루틴들은 예외가 발생해도 부모 코루틴에게 전파되지 않습니다.
-- 예외가 `CancellationException`의 하위 클래스라면, 이 예외는 부모로 전파되지 않고 현재 코루틴만 취소합니다.
-- `CoroutineExceptionHandler`는 코루틴에서 예외 처리 시, 모든 예외에 대한 기본 동작을 정의하는데 유용합니다.
+`CoroutineExceptionHandler`를 통해 예외 처리 시, 모든 예외에 대한 기본 동작을 정의할 수 있습니다.
+그러나 예외 전파를 멈추지 않기에 `SupervisorJob`과 같이 사용하면 효율적일 수 있습니다.
 
 ---
 
