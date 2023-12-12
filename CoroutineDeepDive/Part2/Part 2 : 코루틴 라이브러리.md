@@ -597,136 +597,125 @@ suspend fun calculateAnswerOrNull(): User? = withContext(Dispatchers.IO) {
 
 ## [Part 2.7 : Dispatchers](Dispatchers.md)
 
-### Default dispatcher
+> - 'Dispatcher' 지정하지 않으면 기본적으로 `Dispatchers.Default` 적용, 'Android'에서는 `Dispatchers.Main` 적용
+> - `limitedParallelism` : 'Dispatcher' 내 사용할 수 있는 'Thread' 수 제한
+> - `Dispatchers.Default` 특징
+>   - CPU 집약적 연산을 위해 설계
+>   - '기기의 CPU 코어 수'와 동일한 크기의 'ThreadPool' 지니며, 최소 2개 이상의 'Thread' 보유
+> - `Dispatchers.IO` 특징
+>   - I/O 연산과 같은 Thread Blocking 작업을 위해 설계
+>   - 'Thread'가 필요할 때마다 'Thread' 생성, 일정 시간 사용되지 않으면 비활성화
+>   - 활성화된 'Thread 수'가 많아지면 성능 저하와 메모리 부족의 위험이 있기에 최대 64개로 제한
+> - `Default`와 `IO`는 '동일한 Thread Pool'을 '공유'하기에 'Thread' 재사용과 재배치 최적화 가능
+> - `Dispatchers.IO.limitedParallelism(n)`는 '독립적인 Thread Pool' 생성하여 'Thread' 경쟁이 빈번한 경우 효과적임
+> - `Dispatchers.Default.limitedParallelism(n)`는 `Dispatchers.Default`와 동일한 'Thread Pool'을 공유하기에 의미 없음
+> - Java `Executors`를 통해 'ThreadPool' 생성 시, `asCoroutineDispatcher()`를 통해 'Dispatcher' 변환 가능
+> - Dispatchers.Unconfined : 'Thread' 변경 없이 'Coroutine 실행
 
-코루틴 빌더에서 디스패처를 지정하지 않으면 기본적으로 `Dispatchers.Default`가 선택되며 이 디스패처는 다음 특징을 지닙니다.
+'Dispatcher'를 사용하여 'Coroutine'이 실행되어야 할 'Thread' 또는 'ThreadPool'을 선택할 수 있습니다.
 
-- CPU 집약적인 작업을 수행하기 위해 최적화 되어 있으며, 스레드 풀의 크기는 실행 환경의 CPU 코어 수에 따라 결정됩니다.
-- 블로킹 연산을 수행할 경우, 스레드가 대기 상태에 빠져 자원을 낭비할 수 있으므로 블로킹 연산에 해당 디스패처는 적절하지 않습니다.
+---
 
-`runBlocking`은 다른 디스패처가 설정되지 않은 경우 기본적으로 `Dispatchers.Default`가 아닌 메인 스레드에서 실행됩니다.
+'Coroutine'에 'Dispatcher'를 지정하지 않으면 `Dispatchers.Default`가 적용됩니다.
 
-### Limiting the default dispatcher
+`Dispatchers.Default`는 CPU 집약적인 연산을 실행하기 위해 설계되었습니다.  
+코드가 실행되는 '기기의 CPU 코어 수'와 동일한 크기의 'ThreadPool'을 지니며, 최소 2개 이상의 'Thread'를 보유하고 있습니다.
 
-비용이 많이 드는 연산에서 디스패처에 `limitedParallelism`를 적용하면 사용할 수 있는 스레드 수를 제한할 수 있습니다.
+---
 
-이 메커니즘은 `Dispatchers.IO`에서 사용하는 것을 주된 목적으로 만들어졌지만, 다른 디스패처에서도 사용할 수 있습니다.
+`Dispatchers.Default`이 적용된 'Coroutine'에서 어떤 큰 작업이 모든 'Thread'를 독점하고 있는 경우, 
+다른 'Coroutine'에서 'Thread'를 얻지 못하여 원활한 작업이 진행되지 않는 비효율적인 상황이 생길 수 있습니다.
 
-### Main Dispatcher
+이러한 경우 `limitedParallelism`를 적용하여 해당 'Dispatcher'에 사용할 수 있는 'Thread'의 수를 제한할 수 있습니다.  
+즉, `limitedParallelism`는 'Thread'의 수가 제한되어 'Race Condition'이 발생하는 상황을 관리하기 위해 설계되었습니다.
 
-`Dispatchers.Main`은 UI 업데이트와 같이 메인 스레드에서 처리해야 할 작업을 안전하게 수행하도록 도와줍니다.
-안드로이드 플랫폼에서는 일반적으로 `Dispatchers.Main`을 기본 디스패처로 사용합니다.
+---
 
-### IO dispatcher
+'Android'에서 UI 업데이트와 같은 작업을 'Main Thread'에서 안전하게 수행할 수 있도록 `Dispatchers.Main`을 제공합니다.  
+일반적으로 'Android'에서 'Dispatcher'를 사용할 때 `Dispatchers.Main`을 '기본 Dispatcher'으로 사용합니다.
 
-디스크 또는 네트워크 작업을 수행하는 등의 작업을 하기 위한 I/O 작업 최적화 디스패처 입니다.
+---
 
-스레드 풀에 제한이 없어 너무 많은 스레드가 활성화되는 경우 성능 저하와 메모리 부족의 위험이 있기에 디스패처를 사용합니다.
-`Dispatchers.Default`는 CPU 코어 수 만큼, `Dispatchers.IO`는 최대 64개로 제한됩니다.
+`Dispatchers.IO`는 'File Read/Write', 'Network Call' 등의 I/O 연산으로 인해 'Thread'를 Blocking 할 때 사용됩니다.  
 
-`Dispatchers.Default`와 `Dispatchers.IO`는 동일한 스레드 풀을 공유하여 스레드를 효율적으로 재사용합니다.
-두 디스패처는 독립적인 스레드 제한을 가지므로 하나가 다른 하나의 리소스를 차지하지 않습니다.
+`Dispatchers.IO`는 'Thread'가 필요할 때마다 'Thread'를 생성하고, 'Thread'가 일정시간 사용되지 않으면 비활성화 됩니다.  
+단, 활성화된 'Thread 수'가 많아지면 성능 저하와 메모리 부족의 위험이 있기에, 'Dispatcher'에는 'Thread 수'가 제한되는 것이 좋습니다.  
+이와 같은 이유로 `Dispatchers.IO`는 'Thread 수'를 최대 64개로 제한됩니다.
 
-너무 많은 스레드가 블로킹 상태에 빠지는 것을 방지하기 위해 `limitedParallelism`을 사용하여 동시에 실행할 수 있는 코루틴의 수를 제한합니다.
+`Dispatchers.IO`가 위와 같이 설계된 이유는 I/O 작업과 CPU 작업이 다르다는 점에 있습니다.  
+I/O 작업은 대기 시간이 있지만 CPU를 많이 사용하지 않기에, 더 많은 'Thread'를 효율적으로 운영하고 관리할 수 있습니다.  
+이 때문에 `Dispatchers.Default` 보다 활용 가능한 'Thread' 수가 더 많습니다.
 
-### IO dispatcher with a custom pool of threads
+---
 
-`Dispatchers.IO`에서 `limitedParallelism` 사용 시 독립적인 스레드 풀을 가진 새로운 디스패처를 생성할 수 있으며, 이 스레드 풀은 64개로 제한되지 않고 원하는 만큼 스레드 수를 제한할
-수 있습니다.
+`Dispachers.Default`와 `Dispatchers.IO`는 '동일한 Thread Pool'을 공유하여 'Thread'의 재사용과 재배치에 관한 최적화를 제공합니다.
+
+`Dispatchers.Default`에서 `withContext()`를 통해 `Dispatchers.IO`로 전환 되면, 
+해당 'Thread'는 `Dispatchers.IO`의 'Thread 수 제한'에 포함되어, `Dispatchers.Default`의 'Thread 제한'에 영향을 주지 않습니다.
+
+이러한 방식으로 두 디스패처는 효율적으로 'Thread'를 공유하면서 각각의 작업을 독립적으로 처리할 수 있습니다.
+
+앞서 설명한 `limitedParallelism`은 `Dispatchers.Default`와 `Dispatchers.IO`에서 동일하게 적용됩니다.
+
+---
+
+`Dispatchers.IO`와 `Dispatchers.Default`는 '동일한 Thread Pool'을 사용하지만, 
+`Dispatchers.IO`에 `limitedParallelism`을 적용하면 독립적인 새로운 'Thread Pool'을 가진 새로운 'Dispatcher'를 생성할 수 있습니다.
+
+이렇게 생성된 새로운 'Thread Pool'은 'Thread 수'의 제한이 64개가 아닌, 원하는 만큼 제한할 수 있습니다.
+
+단, `Dispatchers.Default`에 `limitedParallelism`을 적용하면, `Dispatchers.Default` 내의 'Thread Pool'을 공유하기에 의미가 없습니다.
 
 ```mermaid
 graph LR
-    subgraph Infinite Thread Pool
-        subgraph "Dispatchers.IO.limitedParallelism(n)"
+    subgraph Thread Pool
+        IO("Dispatchers.IO \n Thread Max = 64")
+        subgraph Dispatchers.Default 
+            Default("Dispatchers.Default.limitedParallelism(n)\n Thread Max = n")
         end
-        subgraph Dispatchers.IO
-        end
+    end
+    
+    subgraph New Thread Pool
+      A("Dispatchers.IO.limitedParallelism(n) \n Thread Max = n")
     end
 ```
 
-각 디스패처들은 결국 동일한 스레드 풀을 공유하기에 스레드의 재사용과 최적화가 가능합니다.
+만약 'Thread'를 빈번하게 Blocking 해야하는 클래스는 위와 같이 '독립적인 Thread Pool'을 갖는 'Dispatcher'를 사용하는 것이 좋습니다.  
+이러한 '독립적인 Thread Pool'은 '다른 Thread Pool'들과 무관하므로 'Thread'를 경쟁하는 문제를 줄일 수 있습니다.
 
-스레드를 많이 블로킹할 가능성이 있는 클래스는 위와 같이 독립적인 제한을 가진 자체 디스패처를 설정하는 것이 좋습니다.
-이러한 독립적인 제한을 가진 디스패처는 다른 디스패처와 무관하므로 동일한 스레드 풀에서 스레드를 경쟁 하는 문제를 줄일 수 있습니다.
+---
 
-### Dispatcher with a fixed pool of threads
+Java `Executors`를 통해 '고정된 Thread Pool', '캐싱된 Thread Pool'을 생성할 수 있으며, 이를 `asCoroutineDispatcher()`를 통해 'Dispatcher'로 변환할 수 있습니다.
 
-Java의 `Executors`를 사용하여 고정된 풀, 캐사된 풀을 생성할 수 있습니다.
-또한 이러한 풀을 `asCoroutineDispatcher`르 사용하여 디스패처로 변환할 수 있습니다.
+`ExecutorService.asCoroutineDispatcher()`로 생성된 'Dispatcher'는 `close()`로 종료하지 않으면 'Thread Leak'이 발생될 수 있습니다.
 
-그러나 위와 같이 생성된 디스패처는 `close`로 종료시켜야 합니다. 그렇지 않으면 스레드 누수가 발생됩니다.
-또한 고정된 스레드 풀은 미사용 스레드를 계속 유지해야 하므로 효율성이 떨어질 수 있습니다.
+---
 
-이러한 문제로 코루틴에서 제공하는 기본 디스패처를 사용하거나, 필요한 경우에만 `Executor`를 사용하는 것이 좋습니다.
-
-### Dispatcher limited to a single thread
-
-다중 스레드 디스패처 사용 시 공유 상태(shared state)를 수정(하나의 변수를 변경하는 등)하면 경쟁 상태(race condition)가 발생하게 될 수 있습니다.
-
-이를 해결하기 위한 방법 중 하나는 단일 스레드 디스패처 구현하여 추가적인 동기화 메커니즘을 넣지 않고 경쟁 상태를 피하는 것입니다.
-
-아래는 단일 스레드 디스패처 구현 방법입니다.
+'Multi Thread Dispatcher' 사용 시 'Race Condition' 문제를 고려해야하며, 이는 'Single Thread Dispatcher'를 통해 해결할 수 있습니다.
 
 ```kotlin
 Dispatchers.Default.limitedParallelism(1)
 Dispatchers.IO.limitedParallelism(1)
 ```
 
-단, 단일 스레드 디스패처 구현 시 스레드가 블로킹 되면 호출들이 순차적으로 처리되기에 성능이 저하될 수 있습니다.
+단, 'Thread Blocking' 시 호출이 순차적으로 처리되기에 성능이 저하될 수 있음을 고려해야 합니다.
 
-### Unconfined dispatcher
+---
 
-`Dispatchers.Unconfined`는 어떠한 스레드 변경도 하지 않으며 별도의 스레드 풀을 사용하지 않습니다.  
-즉, 시작된 스레드 혹은 재개된 스레드에서 실행됩니다. 이에 따라 스레드 관리에 대한 부담이 없으며 특별한 경우 유용하게 사용될 수 있습니다.
+`Dispatchers.Unconfined`는 'Thread' 변경을 하지 않습니다.
 
-모든 코루틴 범위에 `Dispatchers.Unconfined`를 사용하면 동일한 스레드에서 실행되어 연산의 순서를 쉽게 제어하고 복잡한 동기화나 타이밍 이슈를 피할 수 있기에 테스트 환경에서 유용하게 사용될 수
-있습니다.   
-단, `runTest`를 사용한다면 이러한 트릭은 의미가 없습니다.
+'Coroutine' 시작 시 시작된 'Thread'에서 실행되며, 'Coroutine'이 일시 중단되고 재개될 때는 그것을 시작한 'Thread'에서 재개됩니다.
 
-### Immediate main dispatching
+이러한 특징으로 `CoroutineScope`에 `Dispatchers.Unconfined`를 사용하면, 동일한 'Thread'에서 실행이 보장됨에 따라, 연산의 순서를 쉽게 제어하고 복잡한 동기화나 타이밍 이슈를 피할 수 있습니다. 
+이는 Unit-Test에서 유용하게 사용되지만, `runTest`를 사용한다면 이러한 트릭은 의미가 없습니다.
 
-`withContext`를 호출할 때 마다 일시 중단과 재개라는 프로세스를 거치며 그에 따른 일정한 비용이 발생되며, 동일한 스레드로 디스패칭 되는것이면 이는 더욱이 불필요한 비용입니다.
+---
 
-이에 따라 메인 디스패처에서는 `Dispatchers.Main.immediate`를 지원하여 불필요한 디스패칭을 방지하여 비용을 절약할 수 있습니다.  
-이는 현재 메인 디스패처만 사용할 수 있습니다.
+`withContext`가 호출될 때 마다 '중단'과 '재개' 프로세스를 거치게 되는데, 이는 일정한 비용이 발생됩니다.  
+만약 동일한 스레드로 디스패칭 되는 것이라면 이는 불필요한 비용이 될 수 있습니다.  
+또한 'Main Thread' 대기열이 길다면 데이터를 UI에 업데이트하는데 지연이 될 수 있어 사용성에 좋지 않을 수 있습니다.
 
-### Continuation interceptor
-
-`ContinuationInterceptor` 코루틴 컨텍스트는 다음 2가지 메서드를 지원합니다.
-
-- `interceptContinuation` : 코루틴이 일시 중단될 때 `continuation`을 수정하는 데 사용됩니다.
-- `releaseInterceptedContinuation` : `continuation`이 종료될 때 호출됩니다.
-
-`ContinuationInterceptor.interceptContinuation`를 통해 `Continuation`을 특정 스레드 풀에서 실행되는 `DispatchedContinuation`으로 래핑할 수
-있으며,
-이를 통해 비동기 작업 테스트 시 실제 코드에서 처리되는 디스패처를 테스트 디스패처로 교환할 수 있습니다.
-
-### Performance of dispatchers against different tasks
-
-디스패처 성능을 비교하기 위한 벤치마크 결과 다음과 같은 점을 얻을 수 있습니다.
-
-- 단순한 suspend 작업 시 여러 스레드를 사용하더라도 성능 향상을 기대하기 어렵습니다.
-- Blocking 작업 시 여러 스레드를 사용하면 작업을 분산하기에 효율적으로 처리할 수 있습니다.
-- CPU 집약적인 작업 시 `IO` 대신 `Default`를 사용하는 것이 효율적이며, `IO`의 경우 너무 많은 스레드가 활성화되어 Context switching에 소비되는 시간때문에 성능이 떨어질 수
-  있습니다.
-- 메모리를 많이 사용하는 작업 시 스레드 수를 늘려도 큰 성능 향상을 기대하기 어렵습니다.
-
-### Summary
-
-| Dispachers Type              | Description                                                                      |
-|------------------------------|----------------------------------------------------------------------------------|
-| `Dispatchers.Default`        | CPU 연산이 많이 필요한 작업에 최적화 되어 있으며 CPU 코어 수만큼 스레드가 제한됩니다.                             |
-| `Dispatchers.Main`           | UI 업데이트와 같이 메인 스레드에서만 가능한 작업에 사용됩니다.                                             |
-| `Dispatchers.IO`             | 파일 I/O, 네트워크 호출 등과 같은 블로킹 작업에 사용되며 최대 64개의 스레드로 제한됩니다.                           |
-| `Dispachers.Unconfined`      | 어떤 스레드도 변경하지 않고 별도의 스레드 풀을 가지지 않아 테스트 환경에서 유용합니다. 그러나 테스트 시 `runTest`를 많이 활용합니다. |
-| `Dispatchers.Main.immediate` | 메인 스레드에서 불필요한 디스패칭을 방지하여 비용을 절약할 수 있습니다.                                         |
-
-- 스레드 풀에서 `Default`와 `IO`는 각각 독립적인 스레드 제한을 가지고 있습니다.
-- 디스패처에 `limitedParallelism` 사용 시 스레드 수를 제한할 수 있습니다. 주로 스레드를 많이 사용하는 `Dispatchers.IO`에 사용됩니다.
-- `Dispatchers.IO.limitedParallelism` 사용 시 `Dispatchers.IO`와 독립적인 스레드 풀을 생성할 수 있습니다.
-- Java의 `Executor`를 생성하여 `asCoroutineDispatcher`를 통해 디스패처로 변환할 수 있습니다. 단, `close`로 꼭 정리해줘야 합니다.
-- `ContinuationInterceptor` : 코루틴 일시 중단 시 생성되는 `Continuation`을 특정 스레드 풀에서 실행되는 `DispatchedContinuation`으로 래핑할 수 있어 테스트 시
-  디스패처를 주입하는 용도로 사용합니다.
+이처럼 'Main Thread'에서 여러번 디스패칭되는 것을 스킵하고 비용을 절약하고자 할 때, `Dispatchers.Main.immediate`를 사용할 수 있습니다.
 
 ------------------------------------------------------------------------------
 
