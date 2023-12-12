@@ -38,10 +38,10 @@ Java의 제네릭은 클래스, 인터페이스, 함수 등에서 동일한 코�
 만약 `List<String>`과 `List<Object>`가 같은 타입으로 취급된다면, 런타임에서 문제가 발생할 수 있기 때문입니다.
 
 ```java
-List<String> strs=new ArrayList<String>();
-        List<Object> objs=strs; // A compile-time error here saves us from runtime exception later.
-        objs.add(1); // Put an Integer into a list of Strings
-        String s=strs.get(0); // ClassCastException: Cannot cast Integer to String
+List<String> strs = new ArrayList<String>();
+List<Object> objs = strs; // A compile-time error here saves us from runtime exception later.
+objs.add(1); // Put an Integer into a list of Strings
+String s = strs.get(0); // ClassCastException: Cannot cast Integer to String
 ```
 
 위 상황와 같이 Java는 런타임 안전성을 확보하기 위해 일부 타입 관련 작업을 제한합니다.  
