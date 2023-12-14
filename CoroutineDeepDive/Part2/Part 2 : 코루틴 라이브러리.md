@@ -721,38 +721,43 @@ Dispatchers.IO.limitedParallelism(1)
 
 ## [Part 2.8 : Constructing a coroutine scope](CoroutineScope%20구성.md)
 
-### CoroutineScope factory function
+> - `CoroutineScope`는 `CoroutineContext`를 'single property'로 지닌 인터페이스
+> - CoroutineScope Factory Function을 통해 `CoroutineScope` 생성하는 것이 좋은 패턴
+> - 'Android' 앱에서는 `viewModelScope`과 `lifecycleScope`를 통해 `CoroutineScope` 생성하는 것이 좋음
+> - `Analytics`, `Crashlytics` 등 추가 작업을 위해선 별도 `CoroutineScope`를 생성하여 `ViewModel` or `Presenter`의 생성자로 주입하여 사용하는 것이 좋은 패턴
 
-`CoroutineScope`는 단일 프로퍼티 `coroutineContext`를 가진 인터페이스입니다.
+`CoroutineScope`는 `CoroutineContext`를 'single property'로 지닌 인터페이스입니다. 
 
-대부분 프로퍼티로 코루틴 스코프 객체를 사용하여 코루틴 빌더를 호출하는 방식을 사용하거나
-`CoroutineScope` 팩토리 함수를 사용합니다.
+이에 따라 `CoroutineScope` 구현 클래스를 정의하고 직접 'CoroutineBuilder' 호출이 가능하지만, 
+해당 클래스 아무 곳에서 `cancel()`을 호출하여 'Scope'가 해제되어 예상치 못한 문제가 발생할 수 있기에 
+`CoroutineScope`을 객체로 생성하여 'Property'로 선언하고, 해당 'Property'를 통해 'CoroutineBuilder'를 호출하는 방식을 권장합니다.   
 
-### Constructing a scope on Android
+`CoroutineScope` 생성하는 가장 간편한 방법은 'CoroutineScope Factory Function'을 사용하는 것입니다.
 
-안드로이드 플랫폼에서는 코루틴의 시작을 `Fragment`, `Activity`, `ViewModel`, `Presenter` 등에서 시작될 수 있지만,
-디자인 패턴을 많이 사용하는 요즘에는 `ViewModel` 혹은 `Presenter`에서 많이 시작되도록 하고 있습니다.
+'CoroutineScope Factory Function'은 제공된 `CoroutineContext`를 통해 `CoroutineScope`를 생성하며, 
+`CoroutineContext`에 `Job`이 비어있다면 'Concurrency Structure'를 위해 `Job`을 별도로 생성합니다.
 
-이 때 공통적으로 사용될 코루틴 스코프를 생성하고 관리하는 것은 중복된 코드를 줄이고 동일한 생명주기로 관리하도록 할 수 있어 좋은 방법이 될 수 있습니다.
+```kotlin
+fun CoroutineScope(context: CoroutineCOntext) : CoroutineScope = 
+    ContextScope(
+        if (context[Job] != null) context
+        else context + Job()
+    )
 
-코루틴들을 생성하였으면, 사용자가 화면을 벗어나거나, `ViewModel`이 정리되는 등의 상황에서 모든 코루틴들을 취소하게 만들어주어야 합니다.
+internal class ContextScope(context: CoroutineCOntext): CoroutineScope {
+    override val coroutineContext: CoroutineContext = context
+    override fun toString(): String = "CoroutineScope(coroutineContext = $coroutineContext)"
+}
+```
 
-이와 같이 코루틴의 취소는 `Job`을 사용할 수 있지만, 좀 더 유연한 방식으로 코루틴을 관리하려면 `SupervisorJob` 컨텍스트를 스코프에 추가하여 사용할 수 있습니다.
+---
 
-코루틴에서 처리되지 않은 예외에 대해서 기본적인 예외 처리 방식을 정의하려면 `CoroutineExceptionHandler`를 사용할 수 있으며 이 핸들러는 코루틴 컨텍스트의 일부로 추가될 수 있습니다.
+'Android' 앱에서는 `viewModelScope`과 `lifecycleScope`를 통해 `CoroutineScope`를 생성하는 것이 좋습니다.  
+이들은 `Dispatchers.Main`과 `SupervisorJob`을 사용하고, `ViewModel` 혹은 `LifecycleOwner`가 소멸되면 자동으로 'Coroutine'을 취소합니다.
 
-### viewModelScope and lifecycleScope
+---
 
-안드로이드 플랫폼에서는 스코프를 직접 정의하는 대신 `viewModelScope`와 `lifecycleScope`를 많이 사용합니다.
-
-이들은 `Disptchers.Main`과 `SupervisorJob`을 사용하고 `ViewModel` 혹은 `LifecycleOwner`가 소멸되면 자동으로 코루틴을 취소합니다.
-
-위 2가지 스코프를 사용하면 코루틴의 생명주기 관리에 대해서 신경을 쓰지 않아도 괜찮기에 코드를 간결하고 안정적으로 만들 수 있습니다.
-그러나, 특별한 컨텍스트 설정이 필요한 경우(`CoroutineExceptionHandler`와 같이) 제한적일 수 있습니다.
-
-### Constructing a scope for additional calls
-
-`Analytics`, `Crashlytics` 등 추가 작업을 위해서 별도의 스코프를 생성하여 생성자 또는 인자로 주입하여 사용하는 것이 좋습니다.
+`Analytics`, `Crashlytics` 등 추가 작업을 위해선 별도 `CoroutineScope`를 생성하여 생성자 또는 인자로 주입하여 사용하는 것이 좋은 패턴입니다.
 
 ```kotlin
 private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
