@@ -13,105 +13,115 @@
 
 ## [Part 3.1 : Channel](Channel.md)
 
-`Channel`은 여러 코루틴이 동시에 데이터를 보내거나 받을 수 있도록 설계되어 있으며 이 `Channel`을 통해 데이터를 주고 받을 수 있습니다.  
-단, `Channel`로 보내진 데이터는 오직 1번만 수신할 수 있습니다. 이는 데이터의 일관성과 무결성을 보장하는데 중요합니다.
+> - Channel
+>   - 'Coroutine' 간 데이터 전송•수신 가능한 파이프 라인, 오직 1번만 수신 가능
+>   - 'Channel'은 데이터 전송 'Coroutine'과 데이터 수신 'Coroutine' 사이에 버퍼 역할을 하여 안전하게 데이터 전달이 가능하기에 Concurrency Issue 발생 X
+> - SendChannel
+>   - 데이터 전송 및 'Channel Close' 역할
+>   - `send()` 시 'Channel' 용량이 가득 차있으면 'Coroutine' 중단 후, 'Channel'이 비워지면 '재개' 
+> - ReceiveChannel
+>   - 데이터 수신 및 'Channel Cancel' 역할
+>   - `receive()` 시 'Channel'이 비어있으면 'Coroutine' 중단 후, 'Channel'이 채워지면 '재개'
+> - 일반 함수에서 'Channel' 데이터 전송•수신 받는 경우 `trySend`, `tryReceive` 사용
+> - `produce` 
+>   - ReceiveChannel 반환 하는 CoroutineBuilder
+>   - 'Coroutine'이 어떤 방식으로든 종료될 때 `Channel`을 자동으로 닫음
+> - Channel Buffer Type
+>   - UNLIMITED : 버퍼 용량 무한, `send()` 시 'Coroutine' 중단 없이 데이터 전송
+>   - BUFFERED : 버퍼 용량 정해진 크기(기본 값 64), `send()` 시 버퍼가 가득 차면 'Coroutine' 중단
+>   - RENDEZVOUS : 버퍼 용량 0, 'producer'와 'consumer'가 동시에 활성화 되어 있는 경우에만 데이터 전송•수신 가능
+>   - CONFLATED : 버퍼 용량 1, 버퍼에 마지막 전송 데이터 유지, 새로운 데이터 들어오면 새로운 데이터로 대체
+> - Channel Buffer Overflow
+>   - SUSPEND : 버퍼가 가득 차면, `send()` 시 'Coroutine' 중단
+>   - DROP_OLDEST : 버퍼가 가득 차면, 버퍼의 가장 오래된 데이터 삭제
+>   - DROP_LATEST : 버퍼가 가득 차면, 버퍼의 가장 최근 데이터 삭제
+> - onUndeliveredElement : 'Consumer'에게 데이터가 전달되지 않았을 경우 (예외 발생, 채널 종료-닫기 등) 처리할 수 있는 핸들러
+> - Fanout Pattern : 하나의 'Channel'에서 여러 'Coroutine'이 안전하게 데이터 수신, Queue 방식 처리
+> - Fanin Pattern : 여러 'Coroutine'이 하나의 'Channel'로 데이터 전송, 데이터 순서 보장 X
 
-`Channel`은 `SendChannel`과 `ReceiveChannel`를 구현하며 다음과 같은 특징을 지닙니다.
+`Channel`은 'Coroutine' 간 직접적인 연결을 요구하지 않고, 데이터를 주고 받기 위해 사용되는 유용한 통신 도구 입니다.  
+`Channel`로 보내진 데이터는 데이터는 오직 **'1번만 수신'** 가능하며, 이는 데이터의 일관성과 무결성을 보장하는데 중요합니다.
 
-- SendChannel : 데이터를 `Channel`에 보내기 위한 메서드로 `Channel`을 통해 수신자에게 데이터를 제공할 수 있습니다.  
-  또한 `Channel`을 닫을 수 있어 수신자가 더 이상 데이터를 받지 못하도록 할 수 있습니다.
-- ReceiveChannel : `Channel`로부터 데이터를 받기 위한 메서드로 `Channel`을 통해 데이터를 수신할 수 있습니다.
+```mermaid
+graph LR
+    A("Producer #1") --1, 2--> Channel
+    B("Producer #2") --Developer--> Channel
+    C("Producer #N") --Nick, AI--> Channel
+    
+    Channel --Nick 1--> D("Consumer #1")
+    Channel --Developer AI 2--> E("Consumer #2")
+```
 
-각 인터페이스는 `send()`와 `receive()` suspending 함수를 지원하며 이를 통해 동시성 제어를 할 수 있습니다.
+`Channel` 인터페이스는 데이터 전송과 수신 작업을 위해 설계 되었습니다.
 
-- `send()` : `Channel`이 가득 차 있으면, `send()`는 `Channel`이 비워질 때까지 일시 중단됩니다.
-- `receive()` : `Channel`이 비어 있으면, `receive()`는 `Channel`이 채워질 때까지 일시 중단됩니다.
+```kotlin
+interface Channel<E> : SendChannel<E>, ReceiveChannel<E>
 
-만약 suspending 함수를 사용하지 않는 곳에서 데이터 송신과 수신을 해야하는 경우 `trySend`와 `tryReceive` 함수를 사용하여 즉시 성공과 즉시 실패를 반환받을 수 있습니다.
+interface SendChannel<E> {
+  suspend fun send(element: E)
+  fun close(): Boolean
+  // ...
+}
 
-`Channel`에서 데이터 수신 중 수신자가 얼마나 많은 데이터를 수신해야 하는지 모를 수 있습니다.  
-이러한 문제를 `Channel`이 닫힐 때까지 요소를 계속 수신하는 방법으로 `for-loop`와 `consumeEach`를 사용하여 해결할 수 있습니다.  
-또한 더 간단한 방법으로 `produce` 코루틴 빌더를 사용할 수 있습니다.
+interface ReceiveChannel<E> {
+  suspend fun receive(): E
+  fun cancel(cause: CancellationException? = null)
+  // ...
+}
+```
 
-`produce`는 `Channel`을 생성하고 `Channel`에 데이터를 보내는 코루틴을 생성합니다.  
-또한 코루틴 본문에서 예외가 발생한 경우 자동으로 `Channel`을 닫아 안전하게 리소스를 정리하고
-다른 코루틴에게 더 이상 데이터가 없음을 알려 안전하게 `Channel`을 관리할 수 있습니다.
+`SendChannel`은 데이터를 `Channel`에 전송하는 역할을 하며, `close()`를 통해 `Channel`을 닫을 수 있습니다.  
+`send()`은 `Channel`이 가득 차 있으면, `Channel`이 비워질 때까지 '중단'되며, `Channel`에 공간이 확보되면 'Coroutine'을 자동으로 '재개' 합니다.
+
+`ReceiveChannel`은 `Channel`의 데이터를 수신하는 역할을 하며, `cancel()`을 통해 `Channel`을 취소 시킬 수 있습니다.  
+`receive()`은 `Channel`이 비어 있으면, `Channel`이 채워질 때까지 '중단'되며, 데이터가 `Channel`에 도착하면 'Coroutine'을 자동으로 '재개' 합니다. 
+
+만약 일반 함수에서 데이터를 전송하거나 수신하려면 `trySend`와 `tryReceive`를 사용하여 즉시 성공과 즉시 실패를 반환받을 수 있습니다.
+
+`Channel`에서 'consumer'가 얼만큼 데이터를 수신해야 하는지 모르는 경우, `Channel`이 닫힐 때까지 요소를 계속 수신하는 방법으로 `for-loop`와 `consumeEach`를 사용 할 수 있습니다. 
+단, `for-loop`의 경우 `Channel`을 명시적으로 닫아줘야(`Channel.close()`) 하며, 'producer'에서 '예외가 발생'할 경우 확인이 불가능 합니다.
+
+이를 위해 'Coroutine'은 `ReceiveChannel`을 반환하는 'CoroutineBuilder' `produce`를 제공합니다.
+
+`produce`는 'Coroutine'이 어떤 방식으로든 종료될 때 (Finished, Stopped, Cancelled) `Channel`을 자동으로 닫아줍니다.
+덕분에 `Channel`을 명시적으로 닫아줄 필요가 없이 안전하게 `Channel`을 사용할 수 있습니다.
 
 ---
 
-### Channel types
+`Channel`은 `capacity` 파라미터를 통해 '버퍼 용량을 지정'하여 사용할 수 있습니다.  
+`capacity`에 값을 지정 하지 않으면 기본 값 'RENDEZVOUS'이 적용됩니다.
 
-채널의 타입은 버퍼 용량을 기반으로 구분할 수 있습니다.
-
-- UNLIMITED : 버퍼 용량이 무한한 채널로, `send()`는 항상 일시 중단되지 않습니다.
-- BUFFERED : 정해진 크기(기본 값 64)의 버퍼 용량을 가진 채널로, `send()`는 버퍼가 가득 차면 일시 중단됩니다.
-- RENDEZVOUS : 버퍼 용량이 0인 채널로, `send()`와 `receive()`가 모두 준비되어야 데이터 전송을 할 수 있습니다.
-- CONFLATED : 버퍼 용량이 1인 채널로, 버퍼에 항상 마자막으로 전송된 아이템만 유지되며 새로운 아이템이 들어오면 이전 아이템은 새로운 아이템으로 대체 됩니다.
-
----
-
-### On buffer overflow
-
-`onBufferOverflow` 파라미터는 `Channel`의 버퍼가 가득 찬 경우, 동작을 제어하여 `Channel`의 동작을 더욱 세밀하게 제어할 수 있습니다.
-
-- SUSPEND(기본) : `send()`에서 코루틴을 중단시킵니다.
-- DROP_OLDEST : 버퍼의 가장 오래된 데이터를 삭제합니다.
-- DROP_LATEST : 버퍼의 가장 최근 데이터를 삭제합니다.
+- UNLIMITED : 버퍼 용량이 무한한 채널로, `send()` 시 'Coroutine' 중단 없이 데이터 전송
+- BUFFERED : 정해진 크기(기본 값 64)의 버퍼 용량을 가진 채널로, `send()` 시 버퍼가 가득 차면 'Coroutine' 중단
+- RENDEZVOUS : 버퍼 용량이 0인 채널로, 'producer'와 'consumer'가 동시에 활성화 되어 있는 경우에만 데이터 전송과 수신 가능
+- CONFLATED : 버퍼 용량이 1인 채널로, 버퍼에 마지막 전송 데이터가 유지되며 새로운 데이터가 들어오면 새로운 데이터로 대체
 
 ---
 
-### On undelivered element handler
+`Channel`은 `onBufferOverFlow` 파라미터를 통해 '버퍼 오버플로 동작'을 제어할 수 있습니다.  
+`onBufferOverFlow` 값을 지정하지 않으면 기본 값 'SUSPEND'가 적용됩니다.
 
-`onUndeliveredElement`는 `Channel`의 생명주기와 관련된 문제나 다양한 상황에서 예외가 발생했을 때 이 핸들러를 활용할 수 있습니다.
+- SUSPEND : 버퍼가 가득 차면, `send()` 시 'Coroutine' 중단
+- DROP_OLDEST : 버퍼가 가득 차면, 버퍼의 가장 오래된 데이터 삭제
+- DROP_LATEST : 버퍼가 가득 차면, 버퍼의 가장 최근 데이터 삭제
 
-예로 파일을 전송하는 `Channel`에서 오류가 발생하여 리소스를 닫지 못하면 리소스 누수 문제가 발생하게 됩니다.  
-이 떄, `onUndeliveredElement`를 사용하여 리소스를 정리하는 작업을 할 수 있습니다.
+---
 
-따라서 리소스 관리가 중요한 `Channel`에서 `onUndeliveredElement`를 활용하여 예기치 못한 상황에 대비합니다.
+`Channel`은 `onUndeliveredElement` 파라미터를 통해 'consumer'에게 데이터가 전달되지 않았을 경우 처리할 수 있는 핸들러를 제공합니다.
+대부분 `Channel`이 `close()`, `cancel()`을 호출하거나, `send()`, `receive()`에서 예외가 발생했을 때 이 핸들러를 사용합니다.
+
+`Channel`을 통해 데이터 전송 중 일부가 소비되지 않고 남아있는 경우, 
+리소스 누수가 발생될 수 있기에 `onUndeliveredElement`을 통해 이러한 리소스를 정리하고 안전하게 관리할 수 있습니다.  
 
 --- 
 
-### Fan-out
+'Fanout' 패턴은 하나의 `Channel`에서 여러 'Coroutine'이 안전하게 데이터를 수신하는 패턴을 의미합니다.  
+이 패턴은 `Channel`이 데이터를 'Queue' 방식으로 처리하며, 첫 번째로 대기하던 'Coroutine'이 먼저 데이터를 수신합니다.
 
-- Fan-out : 여러 코루틴이 하나의 `Channel`에서 데이터를 수신하는 패턴을 의미합니다.
-
-하나의 `Channel`에서 여러 코루틴이 안전하게 데이터를 수신하기 위해서는 `consumeEach` 보다는 `for-loop`를 통해 데이터를 수신하는 것이 안전합니다.
-
-이와 같이 'Fan-out' 패턴은 `Channel`이 데이터나 요소를 `Queue` 방식으로 처리하며, 첫 번째로 대기하던 코루틴이 먼저 데이터를 수신합니다.
-
---- 
-
-### Fan-in
-
-- Fan-in : 여러 코루틴에서 하나의 `Channel`로 데이터를 보내는 패턴을 의미합니다.
-
-여러 코루틴에서 동시에 작업을 처리하고 그 결과를 하나의 `Channel`로 집중시킬 때 유용합니다.
-주의할 점으로는 여러 코루틴에서 동시에 데이터를 전송하면 데이터 순서가 보장되지 않기에 별도의 처리가 필요할 수 있습니다.
+'Fanin' 패턴은 여러 'Coroutine'이 하나의 `Channel`로 데이터를 전송하는 패턴을 의미합니다.  
+이 패턴에서 주의할 점은 여러 'Coroutine'이 동시에 데이터를 전송하면 데이터 순서가 보장되지 않습니다.
 
 여러 `Channel`을 하나로 병합하려면 `produce`를 통해 `Channel`을 생성하고 `Channel`을 병합하는 방식으로 구현할 수 있습니다.
-
----
-
-### Pipelines
-
-일련의 데이터 처리 단계를 나타내는 용어로, 코루틴에서는 하나의 `Channel`에서 데이터를 받고 가공하여 다른 `Channel`로 전달되는 구조를 의미합니다.
-
----
-
-### Summary
-
-- `Channel`은 여러 코루틴이 동시에 데이터를 보내거나 받을 수 있도록 설계되어 데이터를 주고 받을 수 있습니다.  
-  단, `Channel`로 보내진 데이터는 데이터의 일관성과 무결성으로 인해 오직 1번만 수신할 수 있습니다.
-- `Channel`은 `SendChannel`과 `ReceiveChannel`을 구현하여 데이터를 보내고 받을 수 있습니다.
-- 각 `Send`와 `Receive`는 suspending 함수를 지원하며 이를 통해 동시성 제어를 할 수 있습니다.  
-  즉, `Channel`이 비어있거나 가득 찬 경우 코루틴이 일시 중지될 수 있습니다.
-- `produce`는 `Channel`을 생성하고 생성된 `Channel`에 데이터를 보내는 코루틴을 생성합니다.  
-  또한 예외가 발생한 경우 `Channel`을 닫아 리소스 정리하여 안전하게 관리할 수 있습니다.
-- `Channel`의 타입은 버퍼 용량을 기반으로 구분하며 각 `UNLIMITED`, `BUFFERED`, `RENDEZVOUS`, `CONFLATED`로 구분할 수 있습니다.
-- `onBufferOverflow` 파라미터는 `Channel`의 버퍼가 가득 찬 경우 동작을 제어하며, `SUSPEND`, `DROP_OLDEST`, `DROP_LATEST` 등 각 타입으로 지원합니다.
-- `onUndeliveredElement`는 `Channel`의 생명주기와 관련된 문제나 다양한 상황에서 예외가 발생했을 때 이 핸들러를 활용할 수 있습니다.
-- 'Fan-out' : 여러 코루틴이 하나의 `Channel`에서 데이터를 수신하는 패턴을 의미합니다.
-- 'Fan-in' : 여러 코루틴에서 하나의 `Channel`로 데이터를 보내는 패턴을 의미합니다.
 
 ------------------------------------------------------------------------------------------------
 
