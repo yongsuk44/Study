@@ -162,26 +162,63 @@ suspend fun fetchMultipleRequest(): User = coroutineScope {
 
 ## [Part 3.3 : Hot and cold data sources](Hot%20and%20cold%20data%20sources.md)
 
-### Hot vs Cold
+> - 'Hot Stream'
+>   - 'consumer' 소비 여부와 관계 없이 독립적으로 데이터 생성
+>   - 생성된 데이터 저장 및 필요 시 제공
+>   - `List`, `Channel` 등 해당
+> - 'Cold Stream'
+>   - 'consumer' 요청 시에만 연산 수행
+>   - 데이터 미리 저장 X, 요청 발생 시 데이터 생성 및 연산
+>   - `Sequence`, `Flow` 등 해당
+> - 'Cold Stream' 특징
+>   - 요청 발생 시 데이터를 생성하므로, 계속 요청하면 데이터가 무한할 수 있음
+>   - 데이터가 필요한 시점에 연산 수행하기에 최소한의 연산만 수행
+>   - 중간 결과를 저장하는 컬렉션이 필요 없기에 더 적은 메모리 사용
+> - 'Coroutine'에서 `Channel`은 대표적인 'HotStream'으로, 소비와 무관하게 독립적으로 'Element'를 생성하고 유지
+> - `Flow`는 'ColdStream'으로 요청(`emit()`)에 따라 'Element'를 발행하고 'consumer' 마다 독립적인 'DataStream'을 가짐
+> - '`flow` Builder' 특징
+>   - `CoroutineScope` 없이 Builder 사용이 가능하며, 'terminal 연산(`collect()`)'이 실행되는 'Scope'에서 실행 
+>   - 'suspend function'에서 `Continuation`을 통해 'Scope'을 가져오는것과 동일한 방식으로 'Structured Concurrency' 지원 
 
-Hot Stream은 소비자의 구독과 관계 없이 데이터를 계속해서 생성하며, 생성된 데이터를 저장하고 있다가 필요할 때 제공할 수 있습니다.
+'DataStream'은 'Hot'과 'Cold'로 구분할 수 있으며, 대부분의 데이터 소스는 'Hot'과 'Cold' 중 하나의 특성을 가집니다.
 
-Cold Stream은 데이터가 필요할 때까지 어떠한 연산도 수행하지 않습니다. 즉, 구독자가 데이터를 요청할 때만 데이터를 생성하고 연산을 수행하여 제공합니다.
+|       Hot Stream        |     Cold Stream      |
+|:-----------------------:|:--------------------:|
+| Collections (List, Set) |   Sequence, Stream   |
+|         Channel         | Flow, RxJava streams |
 
-이러한 특징으로 Cold Stream은 요청이 올 때 데이터를 생성하므로 이론적으로 데이터 길이가 무한할 수 있습니다.  
-또한 최소한의 연산만을 수행하기에 연산의 최적화와 효율성을 가지며, 중간 결과를 저장하는 컬렉션이 없기에 메모리 사용량이 적습니다.
+'HotStream'은 다음과 같습니다.
 
-### Hot channels, cold flow
+- 적극적(eager)으로 데이터를 생성하며, 'Consumer'의 소비 여부와 관계 없이 독립적으로 데이터를 생성합니다.
+- 생성된 데이터를 저장하고, 필요할 때 제공합니다.
+- `List`, `Channel` 등이 해당합니다.
 
-`Channel`과 `flow` 빌더는 개념적으로 유사하지만, 동작 방식에 차이가 있습니다.
+'ColdStream'은 다음과 같습니다.
 
-`Channel`은 Hot Stream으로 즉시 값을 계산하여 시작합니다.  
-이러한 계산은 수신자가 준비될 때까지 중지되며, `Channel`은 소비와 무관하게 요소를 독립적으로 생산하고 보관합니다.
-또한 요소는 1번만 수신될 수 있기에 하나의 수신자가 모든 요소를 수신하면, 다른 수신자는 아무런 요소를 받을 수 없습니다.
+- 'Consumer'의 요청이 있을 때만 연산을 수행 합니다. 즉, 게으른(Lazy) 실행을 합니다.
+- 데이터를 미리 저장하지 않으며, 요청이 발생할 때마다 데이터를 생성하거나 연산 합니다.
+- `Sequence`, `Flow` 등이 해당합니다.
 
-`Flow`는 Cold Stream으로 요청에 따라 요소가 생산됩니다.  
-또한 `Flow`는 처리 작업을 하지 않는 단순한 정의로 터미널 연산(`collect`)가 수행될 때 요소가 어떻게 생산될지에 대해 정의합니다.
-즉, 터미널 연산을 여러번 시도하면 계속해서 요소를 사용할 수 있습니다.
+'ColdStream'은 다음과 같은 특징을 지닙니다.
+- 요청이 발생될 때마다 데이터를 생산하므로 무한할 수 있습니다.
+- 데이터가 필요한 시점에 연산을 수행하기에 최소한의 연산만 수행 합니다.
+- 중간 결과를 저장하는 컬렉션이 필요 없기에 더 적은 메모리를 사용합니다.
+
+---
+
+'Coroutine'에서 대표적인 'DataStream'은 `Channel`과 `Flow` 입니다.
+
+`Channel`은 'HotStream'으로, 소비와 무관하게 독립적으로 'Element'를 생성하고 이를 유지 합니다.  
+또한 'consumer' 수에 관심이 없고 'Element'는 1번 만 수신 될 수 있으므로, 
+첫 번째 'consumer'가 'Element'를 모두 수신하면, 다른 'consumer'는 아무것도 수신할 수 없습니다.
+
+반면, `Flow`는 'ColdStream'으로 요청(`emit()`)에 따라 'Element'를 발행합니다.  
+`Flow`는 'consumer'가 요청할 때 까지 'Element'를 생성하지 않으며, 각 'consumer'는 독립적인 'DataStream'을 가집니다.  
+즉, 'consumer' 마다 별도로 'Element'를 생성할 수 있고 발행할 수 있습니다.
+
+`Flow`는 '`flow` Builder'를 통해 생성할 수 있으며, `CoroutineScope`가 필요하지 않습니다.  
+'`flow` Builder'는 'terminal 연산(`collect()`)'이 실행되는 'Scope'에서 실행되며, 
+이는 `coroutineScope`처럼 'suspend function'의 `Continuation`에서 'Scope'를 가져오는 것과 유사합니다.  
 
 ------------------------------------------------------------------
 
