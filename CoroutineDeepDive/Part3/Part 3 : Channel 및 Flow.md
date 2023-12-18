@@ -127,63 +127,98 @@ interface ReceiveChannel<E> {
 
 ## [Part 3.2 : Select](Select.md)
 
-코루틴의 `select`는 여러 코루틴 중 먼저 완료되는 코루틴을 기다리는 제공을 하여 이를 통해 여러 작업 중 빠르게 처리되는 작업의 결과를 얻을 수 있습니다.
-추가로 여러 채널 중 데이터를 전송하거나, 데이터를 수신할 수 있는 첫 번째 채널을 선택하는 것도 가능합니다.
+> - `select` : 여러 'Coroutine' 중 먼저 완료되는 결과를 얻을 때 사용
+> - `select`는 `Channel`과 함께 사용 가능하며, 다음과 같은 함수 지원
+>   - onReceive : `Channel` 데이터 존재 시 해당 데이터 수신, `select`는 람다식 결과 반환
+>   - onReceiveCatching : `Channel` 데이터 존재 시 해당 데이터 수신 및 `Channel` 닫힘 시 추가적인 처리 가능, `select` 람다식 결과 반환
+>   - onSend : 데이터 '소비 속도 < 생산 속도' 일 때 사용, `Channel` 버퍼 공간 존재 시 데이터 전송, `select` `Unit` 반환
 
-### Selecting deferred values
+'Coroutine' `select`는 여러 'Coroutine' 중 가장 먼저 완료되는 결과를 기다리게 해줍니다. 
+또한 버퍼 공간이 있는 첫 번째 `Channel`로 데이터를 전송하거나, 데이터가 준비되어 있는 첫 번째 `Channel`로부터 데이터를 수신하는 것이 가능합니다.
 
-코루틴에서 대표적인 비동기 처리 방법으로는 `async`를 통해 처리하는 방법이 있습니다.
-
-이러한 비동기 작업을 여러 작업을 동시에 실행하여 가장 먼저 처리되는 작업의 결과를 얻고 싶은 상황이 발생될 수 있습니다.
-이러한 경우 `select`와 `async`를 같이 사용하여 가장 먼저 완료되는 비동기 작업을 얻을 수 있습니다.
-
-주의할 점으로 하나의 코루틴 스코프에서 `select`를 통해 여러 비동기 작업을 실행할 때,   
-코루틴의 [구조적 동시성 메커니즘](../Structured%20Concurrency.md)에 의해 모든 비동기 작업이 처리되지 않으면 해당 스코프가 완료되지 않는 비효율적인 처리가 될 수 있습니다.
-
-이러한 문제를 해결하기 위해 `select`로 결과를 선택한 후 `also`를 사용하여 완료되지 않은 비동기 작업을 취소하는 별도의 작업을 추가하는 것이 효율적입니다.
+`Deferred`는 'Coroutine'에서 '비동기 작업의 결과'를 대표하는 타입으로 `async`에서 작업을 시작하고 결과를 `Deferred`로 반환합니다.  
+그러나 때때로 여러 비동기 작업 중 가장 먼저 완료되는 것의 결과만을 원하는 경우 `select`를 사용할 수 있습니다.
 
 ```kotlin
-select<User> {
-    async { getRestApi1() }.onAwait { it }
-    async { getRestApi2() }.onAwait { it }
-}.also { coroutineContext.cancelChildren() }
+suspend fun fetchMultipleRequest(): User = coroutineScope {
+    select<User> {
+        async { getRestApi1() }.onAwait { it }
+        async { getRestApi2() }.onAwait { it }
+    }.also { 
+        coroutineContext.cancelChildren()
+    }
+}
 ```
 
 ---
 
-### Selecting from channels
+`select`는 `Channel`과 함께 사용 할 수 있으며, 다음 함수들을 지원합니다.
 
-`select`과 채널을 같이 사용하여 여러 채널 중 데이터를 전송하거나, 데이터를 수신할 수 있는 첫 번째 채널을 선택할 수 있으며 다음 함수들을 지원합니다.
-
-- onReceive : 채널에 데이터가 있을 떄 데이터를 받아올 수 있으며 `select`는 람다식의 결과를 반환합니다.
-- onReceiveCatching : 채널에 데이터가 있을 떄 데이터를 받아올 수 있고, 추가로 채널이 닫혔을 떄 채널을 정리하는 등의 처리할 수 있습니다.
-  `select`는 람다식의 결과를 반환합니다.
-- onSend : 채널의 버퍼에 공간이 있을 때 데이터를 전송할 수 있습니다. `select`는 `Unit`을 반환합니다.
+- onReceive : `Channel` 데이터 존재 시 해당 데이터 수신, `select`는 람다 표현식 결과 반환
+- onReceiveCatching : `Channel` 데이터 존재 시 해당 데이터 수신 및 `Channel` 닫힘 시 추가적인 처리 가능, `select`는 람다 표현식 결과 반환
+- onSend : 데이터 소비 속도가 생산 속도 보다 느릴 경우 사용하며 `Channel` 버퍼 공간 존재 시 데이터 전송, `select`는 `Unit` 반환
 
 --------------------------------------------------------------------
 
 ## [Part 3.3 : Hot and cold data sources](Hot%20and%20cold%20data%20sources.md)
 
-### Hot vs Cold
+> - 'Hot Stream'
+>   - 'consumer' 소비 여부와 관계 없이 독립적으로 데이터 생성
+>   - 생성된 데이터 저장 및 필요 시 제공
+>   - `List`, `Channel` 등 해당
+> - 'Cold Stream'
+>   - 'consumer' 요청 시에만 연산 수행
+>   - 데이터 미리 저장 X, 요청 발생 시 데이터 생성 및 연산
+>   - `Sequence`, `Flow` 등 해당
+> - 'Cold Stream' 특징
+>   - 요청 발생 시 데이터를 생성하므로, 계속 요청하면 데이터가 무한할 수 있음
+>   - 데이터가 필요한 시점에 연산 수행하기에 최소한의 연산만 수행
+>   - 중간 결과를 저장하는 컬렉션이 필요 없기에 더 적은 메모리 사용
+> - 'Coroutine'에서 `Channel`은 대표적인 'HotStream'으로, 소비와 무관하게 독립적으로 'Element'를 생성하고 유지
+> - `Flow`는 'ColdStream'으로 요청(`emit()`)에 따라 'Element'를 발행하고 'consumer' 마다 독립적인 'DataStream'을 가짐
+> - '`flow` Builder' 특징
+>   - `CoroutineScope` 없이 Builder 사용이 가능하며, 'terminal 연산(`collect()`)'이 실행되는 'Scope'에서 실행 
+>   - 'suspend function'에서 `Continuation`을 통해 'Scope'을 가져오는것과 동일한 방식으로 'Structured Concurrency' 지원 
 
-Hot Stream은 소비자의 구독과 관계 없이 데이터를 계속해서 생성하며, 생성된 데이터를 저장하고 있다가 필요할 때 제공할 수 있습니다.
+'DataStream'은 'Hot'과 'Cold'로 구분할 수 있으며, 대부분의 데이터 소스는 'Hot'과 'Cold' 중 하나의 특성을 가집니다.
 
-Cold Stream은 데이터가 필요할 때까지 어떠한 연산도 수행하지 않습니다. 즉, 구독자가 데이터를 요청할 때만 데이터를 생성하고 연산을 수행하여 제공합니다.
+|       Hot Stream        |     Cold Stream      |
+|:-----------------------:|:--------------------:|
+| Collections (List, Set) |   Sequence, Stream   |
+|         Channel         | Flow, RxJava streams |
 
-이러한 특징으로 Cold Stream은 요청이 올 때 데이터를 생성하므로 이론적으로 데이터 길이가 무한할 수 있습니다.  
-또한 최소한의 연산만을 수행하기에 연산의 최적화와 효율성을 가지며, 중간 결과를 저장하는 컬렉션이 없기에 메모리 사용량이 적습니다.
+'HotStream'은 다음과 같습니다.
 
-### Hot channels, cold flow
+- 적극적(eager)으로 데이터를 생성하며, 'Consumer'의 소비 여부와 관계 없이 독립적으로 데이터를 생성합니다.
+- 생성된 데이터를 저장하고, 필요할 때 제공합니다.
+- `List`, `Channel` 등이 해당합니다.
 
-`Channel`과 `flow` 빌더는 개념적으로 유사하지만, 동작 방식에 차이가 있습니다.
+'ColdStream'은 다음과 같습니다.
 
-`Channel`은 Hot Stream으로 즉시 값을 계산하여 시작합니다.  
-이러한 계산은 수신자가 준비될 때까지 중지되며, `Channel`은 소비와 무관하게 요소를 독립적으로 생산하고 보관합니다.
-또한 요소는 1번만 수신될 수 있기에 하나의 수신자가 모든 요소를 수신하면, 다른 수신자는 아무런 요소를 받을 수 없습니다.
+- 'Consumer'의 요청이 있을 때만 연산을 수행 합니다. 즉, 게으른(Lazy) 실행을 합니다.
+- 데이터를 미리 저장하지 않으며, 요청이 발생할 때마다 데이터를 생성하거나 연산 합니다.
+- `Sequence`, `Flow` 등이 해당합니다.
 
-`Flow`는 Cold Stream으로 요청에 따라 요소가 생산됩니다.  
-또한 `Flow`는 처리 작업을 하지 않는 단순한 정의로 터미널 연산(`collect`)가 수행될 때 요소가 어떻게 생산될지에 대해 정의합니다.
-즉, 터미널 연산을 여러번 시도하면 계속해서 요소를 사용할 수 있습니다.
+'ColdStream'은 다음과 같은 특징을 지닙니다.
+- 요청이 발생될 때마다 데이터를 생산하므로 무한할 수 있습니다.
+- 데이터가 필요한 시점에 연산을 수행하기에 최소한의 연산만 수행 합니다.
+- 중간 결과를 저장하는 컬렉션이 필요 없기에 더 적은 메모리를 사용합니다.
+
+---
+
+'Coroutine'에서 대표적인 'DataStream'은 `Channel`과 `Flow` 입니다.
+
+`Channel`은 'HotStream'으로, 소비와 무관하게 독립적으로 'Element'를 생성하고 이를 유지 합니다.  
+또한 'consumer' 수에 관심이 없고 'Element'는 1번 만 수신 될 수 있으므로, 
+첫 번째 'consumer'가 'Element'를 모두 수신하면, 다른 'consumer'는 아무것도 수신할 수 없습니다.
+
+반면, `Flow`는 'ColdStream'으로 요청(`emit()`)에 따라 'Element'를 발행합니다.  
+`Flow`는 'consumer'가 요청할 때 까지 'Element'를 생성하지 않으며, 각 'consumer'는 독립적인 'DataStream'을 가집니다.  
+즉, 'consumer' 마다 별도로 'Element'를 생성할 수 있고 발행할 수 있습니다.
+
+`Flow`는 '`flow` Builder'를 통해 생성할 수 있으며, `CoroutineScope`가 필요하지 않습니다.  
+'`flow` Builder'는 'terminal 연산(`collect()`)'이 실행되는 'Scope'에서 실행되며, 
+이는 `coroutineScope`처럼 'suspend function'의 `Continuation`에서 'Scope'를 가져오는 것과 유사합니다.  
 
 ------------------------------------------------------------------
 
