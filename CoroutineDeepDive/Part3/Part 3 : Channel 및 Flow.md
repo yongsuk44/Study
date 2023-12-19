@@ -224,113 +224,118 @@ suspend fun fetchMultipleRequest(): User = coroutineScope {
 
 ## [Part 3.4 : Flow introduction](Flow%20introduction.md)
 
-### The characteristics of Flow
+> - `Flow`
+>   - 비동기로 계산되는 'DataStream' 생성, 순차적으로 'Element' 발행
+>   - 순차적으로 발행되는 'Element'에 일련의 처리 수행
+>   - 유일 멤버 함수 `collect()` '터미널 연산' 제공
+> - '터미널 연산' 'Thread Blocking' X, 'Coroutine 중단' O
+> - '터미널 연산' 호출 지점의 'Parent Coroutine'과 연결되어 'structured concurrency' 지원
+> - `Flow`는 여러 `CoroutineContext`를 지원 (CoroutineName, CoroutineExceptionHandler 등)
+> - `Flow`는 '시작점', '중간 연산', '터미널 연산'으로 구성
+>   - 시작점 : `flow` Builder, 다른 객체에서의 변환, Helper 함수 등
+>   - 중간 연산 : 'Element' 변형, 필터링 등 연산 작업
+>   - 터미널 연산 : 'Coroutine'이 '중단'되며, 'Scope'가 필요한 `Flow`의 유일한 연산
+> - Flow UseCase
+>   - 서버 전송 이벤트를 통한 메시지 수신 또는 전송 (WebSocket, RSocket, Notification 등)
+>   - 텍스트 변경, 클릭 이벤트 등 사용자 이벤트 관찰
+>   - Sensor 데이터 수신 (GPS, Accelerometer 등)
+>   - 데이터 베이스 변화 관찰
 
-`collect`와 같은 터미널 연산은 스레드 차단이 아닌 코루틴을 중지하며, 현재 코루틴 컨텍스트를 존중하여 다른 코루틴 컨텍스트들의
-기능(`CoroutineExceptionHandler`, `CoroutineName` 등)들을 지원합니다.  
-또한 구조적 동시성을 지원하기에 부모 코루틴이 취소되면, 내부에서 실행 중인 Flow 연산도 함께 취소됩니다.
+`Flow`는 비동기로 계산되는 'DataStream'을 생성하고, 'Element'들이 순차적으로 흐르게 합니다.  
+`Flow` 인터페이스 자체는 순차적으로 흐르는 'Element'를 가져와 일련의 처리를 합니다.  
+이는 각 'Element'가 `Flow`의 'Terminal 연산'에 도달했을 때, 수집되어 처리되는 것을 의미합니다.
 
-`flow` 빌더는 일시 중지 함수가 아니며, 특별한 코루틴 없이 사용할 수 있지만, 터미널 연산은 코루틴을 중지한다는 특징을 알아야 합니다.
+```kotlin
+interface Flow<out T> {
+    suspend fun collect(collector: FlowCollector<T>)
+}
+```
 
-### Flow nomenclature
+`collect()`는 `Flow`의 'only member function'으로 다른 함수들은 'extensions'으로 정의되어 있습니다.
 
-모든 Flow는 시작점이 필요하며 `flow` 빌더, 다른 객체로부터의 변환, 헬퍼 함수로 시작할 수 있습니다.  
-터미널 연산은 Flow 처리를 마무리하는 단계로, 일시 중지 될 수 있습니다.  
-Flow 시작과 터미녈 연산 사이에 중간 연산을 통해 데이터를 변형하거나 필터링 하는 등의 작업을 할 수 있습니다.
+---
 
-### Real-life use cases
+`Flow`의 'Terminal 연산'들은 'Thread Blocking'이 아닌, 'Coroutine'을 '중단' 합니다.  
+또한 'Terminal 연산' 호출 지점의 'Parent Coroutine'과 연결되어 'structured concurrency'를 지원합니다.  
+즉, 'Coroutine'의 취소 메커니즘을 따르는데, 'Parent Coroutine'이 취소된 경우 그 안에서 실행 중인 `Flow`도 함께 취소됩니다. 
 
-다음은 Flow의 일반적인 사용 사례입니다.
+추가로 `Flow`는 `CoroutineContext`를 존중하여 `CoroutineExceptionHandler`, `CoroutineName` 등의 `CoroutineContext`를 지원합니다.
 
-- 웹소켓, 알림 등 서버와 메시지를 계속해서 주고받을 때
-- 버튼 클릭, 텍스트 입력과 같은 연속적인 데이터 스트림으로 간주되는 사용자 이벤트 관찰
-- GPS, 가속도계 등 센서에서 수신되는 연속적인 데이터 정보
-- 데이터 베이스가 변화되는것을 관찰
+---
 
-또한 많은 양의 API를 요청하는 상황에서 `flatMapMerge` 중간 연산의 `concurrency` 파라미터를 추가하여 호출의 수를 제한하는 방법을 제공합니다.
+`Flow`는 '`flow` Builder', '다른 객체에서의 변환', 'Helper 함수'와 같은 시작점이 존재해야 합니다.  
+
+'터미널 연산'은 `Flow`의 마지막 연산을 의미하며, 일반적으로 'Coroutine 중단'이 발생하거나 'Scope'가 필요한 유일한 연산입니다.
+대표적으로 `collect()`, `collect { ... }`, 그 외 `launchIn`, `toList`, `toSet` 등이 있습니다.
+
+'중간 연산'은 `Flow` 시작과 '터미널 연산' 사이에 `Flow`를 어떤 방식으로 수정하는 '중간 연산'이 있을 수 있습니다.  
+이를 통해 데이터를 변형하거나 필터링 하는 등의 작업을 할 수 있습니다.
+
+```kotlin
+flow { emit("Message ABC") }                    // Start point (flow builder)
+    .onStart { println("onStart") }             // Intermediate operation
+    .onEach { println("onEach: $it") }          // Intermediate operation
+    .onCompletion { println("onCompletion") }   // Intermediate operation
+    .catch { println("catch: $it") }            // Intermediate operation
+    .collect { println("collect: $it") }        // Terminal operation
+```
+
+---
+
+`Flow` UseCase 예시 입니다.
+
+- 서버 전송 이벤트를 통한 메시지 수신 또는 전송 (WebSocket, RSocket, Notification 등)
+- 텍스트 변경, 클릭 이벤트 등 사용자 이벤트 관찰
+- Sensor 데이터 수신 (GPS, Accelerometer 등)
+- 데이터 베이스 변화 관찰
+
+다수의 비동기 API 요청 상황에서 `flatMapMerge`와 `concurrency` 파라미터를 통해 호출 수를 제한하는 방법을 제공합니다.
+
+```kotlin
+suspend fun fetchMultipleRequest(
+    keys: List<String>
+): List<Response> = keys
+        .asFlow()
+        .flatMapMerge(concurrency = 4) { key ->
+            suspend { api.request(key) }.asFlow()
+        }
+        .toList()
+```
 
 ------------------------------------------------------------------
 
 ## [Part 3.5 : Understanding flow](Flow%20이해하기.md)
 
-Flow는 여러 여산들의 실행 정의를 나타내는 개념으로 중단 람다식과 유사합니다.
-
-중단 람다식은 특정 연산이나 작업을 잠시 중단하고 나중에 재개 해주는 기능을 가진 코드 블록을 의미합니다.  
-이는 기본 람다식에 `suspend` 키워드를 사용하여 만들 수 있으며, 코루틴 내에서 `delay`와 같이 일시적으로 정지할 수 있습니다.
-
-그러나 이러한 람다식들은 코드 복잡성을 증가시킬 수 있기에, 이러한 람다 구현을 함수형 인터페이스로 정의하여 인스턴스를 전달할 필요 없이 직접 람다식을 사용하여 호출할 수 있습니다.
-
-또한 함수형 인터페이스는 람다식으로 표현될 수 있기에 해당 람다식을 리시버 타입으로 만들어 특정 객체 참조 없이 멤버를 직접 사용할 수 있도록 할 수 있습니다.
-
-```kotlin
-fun interface FlowCollector<T> {
-    suspend fun emit(value: T)
-}
-
-val f: suspend FlowCollector<String>.() -> Unit = {
-    emit("A")
-}
-```
-
-그럼에도 람다식 대신 인터페이스를 통해 코드의 목적과 구조가 명확해지길 원한다면 다음과 같이 정의할 수 있습니다.
-
-```kotlin
-interface Flow<T> {
-    suspend fun collect(collector: FlowCollector<T>)
-}
-
-val builder: suspend FlowCollector<String>.() -> Unit = {
-    emit("A")
-}
-
-val flow: Flow<String> = object : Flow<String> {
-    override suspend fun collect(collector: FlowCollector<String>) {
-        collector.builder()
-    }
-}
-```
-
-한번 더 `flow`의 생성을 간소화하기 위해 `flow` 빌더를 정의할 수 있습니다.
-
-```kotlin
-fun <T> flow(builder: suspend FlowCollector<T>.() -> Unit) = object : Flow<T> {
-    override suspend fun collect(collector: FlowCollector<T>) {
-        collector.builder()
-    }
-}
-
-val flow: Flow<String> = flow {
-    emit("A")
-}
-```
-
----
-
-### Flow is synchronous
-
-Flow는 동기적 특성을 가집니다. 즉, 각 단계의 실행은 순차적으로 이루어지고 특정 단계가 완료되기 전 다음 단계로 넘어가지 않습니다.
-
-예를 들어 `collect`는 모든 요소를 수집하는 동안 중단되며, 이는 `Flow`가 동기적이고 새로운 코루틴을 생성하지 않음을 나타냅니다.
-또한 `onEach`에서 `delay`를 사용하면 동기적 특성으로 인해 각 요소 사이에 `delay`가 적용됩니다.
-
----
-
-### Flow and shared states
-
-`Flow`는 동기적 특징을 지니기에, `Flow` 연산 내 로컬 변수를 사용하여 일부 데이터를 임시로 저장하거나,
-연산의 중간 결과를 계산하는 등의 작업은 안전하다고 할 수 있습니다.
-
-그러나 여러 코루틴에서 동시에 실행되는 `Flow` 혹은 다른 코루틴과 공유되는 상태를 사용할 때는
-동시성 문제가 발생될 수 있으므로 동기화 메커니즘을 사용하여 공유된 상태를 보호해야 합니다.
+- 본문 참고
 
 ------------------------------------------------------------------
 
 ## [Part 3.6 : Flow building](Flow%20Building.md)
 
-### Flow from raw values
+> - Flow Builder 
+>   - flowOf() : `Flow`가 지닐 값 정의하여 구현, `flowOf(1, 2, 3, 4)`
+>   - emptyFlow() : 비어있는 `Flow` 생성, `emptyFlow<Int>()`
+>   - asFlow() : `Iterable`, `Sequence` 등 `Flow`로 변환, `listOf(1, 2, 3, 4, 5).asFlow()`
+>   - flow { ... } : `emit()`, `emitAll()`을 통해 'Element' 발행하여 `Flow` 구현
+>     - 순서 : flow { ... } -> emit(value: T) -> collect { ... }
+> - `channelFlow`
+>   - `Flow`와 같이 '터미널 연산'으로 시작
+>   - `Channel`과 같이, 'consumer' 요청 없이 별도 'Coroutine'에서 데이터 생성
+>   - 내부에서 `ProducerScope<E>` 사용 
+>     - `CoroutineScope` 구현 되어 있어, 'Coroutine Builder'를 통한 별도 'Coroutine' 시작 가능
+>     - `SendChannel<E>` 구현 되어 있어, `Channel` 직접 제어 가능
+>   - 여러 'Coroutine'을 실행하여 독립적으로 값을 계산할 떄 사용
+> - `callbackFlow`
+>   - 'Callback'을 래핑하는데 사용되며, `channelFlow`와 마찬가지로 내부에서 `ProducerScope<T>` 사용
+>   - `awaitClose { ... }` : 'Corotuine' 즉시 종료를 방지하고, `Channel`이 `cancel`, `close`을 통해 닫힐 때까지 'Coroutine'을 '중단' 상태로 유지
+>   - `trySendBlocking(value)` : `send()`와 유사하지만, 'Thread Blocking'으로 처리되어 일반 함수에서 사용 가능
+>   - `close()` : `Channel` 종료
+>   - `cancel(throwable)` : `Channel` 종료 후 `Flow` 'consumer'에게 예외 전달 
 
-`Flow`를 생성하는 가장 간단한 방법은 `flowOf` 함수를 사용하는 것입니다.
-또한 비어있는 `Flow`를 생성하려면 `emptyFlow`를 사용할 수 있습니다.
+`Flow` 생성 중 가장 간단한 방법은 `flowOf()`를 사용하는 것입니다.  
+`flowOf()`는 `Flow`가 가질 값들을 정의하기만 하면 됩니다. (`listOf()`와 유사)  
+
+또한 비어있는 `Flow` 생성하려면 `emptyFlow()`를 사용할 수 있습니다.
 
 ```kotlin
 flowOf(1, 2, 3, 4, 5).collect()
@@ -339,9 +344,7 @@ emptyFlow<Int>().collect()
 
 --- 
 
-### Converters
-
-`asFlow`는 `Iterable`, `Iterator`, `Sequence`와 같은 컬렉션 형태의 데이터 구조를 `Flow`로 변환하는 데 사용됩니다.
+`asFlow()`를 사용하면 모든 `Iterable`, `Iterator`, `Sequence`를 `Flow`로 변환할 수 있습니다.
 
 ```kotlin
 listOf(1, 2, 3, 4, 5)
@@ -353,49 +356,141 @@ listOf(1, 2, 3, 4, 5)
 
 ---
 
-### Converting a function to a flow
+`Flow`는 시간에 따라 지연되는 '단일 값'을 나타나는 데 자주 사용되기에, 
+'suspend function'을 `Flow`로 변환하는 방식은 매우 유용합니다.
 
-기존의 suspending 함수나 일반 함수의 결과를 `Flow`로 변환하는 경우, `Flow`는 해당 함수의 결과만을 포함하게 됩니다.
-즉, `suspend () -> T` or `() -> T`의 경우 `Flow<T>`로 변환됨을 말합니다.
+'suspend function'의 결과는 해당 `Flow`에서 '유일 값'이 되고, 
+`asFlow()`를 사용하여 `Flow`로 변환 할 수 있습니다. (`suspend () -> T`, `() -> T`)
 
-또한 참조 연산자(`::`)를 통해 특정 함수를 참조하여 `Flow`로 변환할 수 있습니다.
+```kotlin
+suspend fun getUserName(): String { 
+    delay(1000)
+    return "Nick"
+}
 
----
+suspend fun main() {
+    ::getUserName
+        .asFlow()
+        .collect { println(it) }
 
-### Flow builders
+    val nameFunction = suspend { "Emma" }
 
-`flow { ... }` 빌더는 `Flow`를 생성하는 일반적인 방법으로 순차적 데이터 구조 혹은 채널을 생성하는 방식과 유사하게 동작합니다.
-
-`emit`을 통해 원하는 값을 `Flow`에 추가할 수 있으며 `emitAll`을 사용하면 채널이나 다른 `Flow`의 값을 현재의 `Flow`에 순차적으로 추가할 수 있습니다.
-
----
-
-### Understanding flow builder
-
-`flow` 빌더 호출 시 실제 코드에서는 `Flow` 객체를 생성하기만 합니다.  
-생성된 `Flow` 객체는 내부적으로 `Flow` 인터페이스를 구현하며, `collect`를 호출하면 `flow` 빌더 내 정의된 코드 블록을 실행합니다.
-
-코드 블록 내부에서는 `FlowCollector`를 통해 `emit`을 호출하여 `Flow`에 값을 추가합니다.  
-이 후에 `collect`에 원하는 값을 전달하여 마무리 합니다.
-
-이러한 방식으로 `Flow`는 직관적이고 간단합니다.   
-`Flow`에 대한 다양한 확장 함수나 추가 기능들은 모두 위 원리를 기반으로 구축됩니다.
+    nameFunction
+        .asFlow()
+        .collect { println(it) }
+}
+```
 
 ---
 
-### ChannelFlow
+`Flow` 생성 방법 중 가장 많이 사용되는 방법은 '`flow` Builder' 입니다.  
+이는 'sequence builder', `produce`와 유사하게 동작됩니다.
 
-`channelFlow`는 `Flow`와 같이 터미널 연산으로 시작되지만, `Channel`과 같이 독립적으로 데이터를 생성할 수 있습니다.
-이렇게 생성된 데이터는 별도의 코루틴에서 처리되어 데이터의 요청과 처리가 동시에 이루어질 수 있습니다.  
-즉, `Flow`와 `Channel`의 특징을 결합한 `Flow` 입니다.
+`emit()`을 통해 다음 값을 발행하며, `Channel` 또는 `Flow` 모든 값을 발행하기 위해 `emitAll()`을 사용할 수 있습니다.
 
-`channelFlow`는 내부에서 `ProducerScope<T>` 작업을 수행하며,
-`ProducerScope`는 `CoroutineScope`를 구현하기에 코루틴 생성, 코루틴 생명주기 관리, 다양한 코루틴 연산을 수행할 수 있습니다.
+페이지 별 Rest API로 사용자 'Data Stream'을 만드는 방법 입니다.
 
-`ProducerScope`는 `SendChannel`을 구현하고 있어, `SendChannel`의 다양한 함수를 통해 채널을 닫거나, 특정 조건에 데이터 전송을 일시 정지하는 등의 채널 동작을 제어할 수 있습니다.
-또한 내부에서 데이터를 생성하고 전송하는데 `emit`이 아닌 `send`를 사용합니다.
+```kotlin
+fun fetchUsersFlow(api : UserApi) : Flow<User> = flow {
+    var page = 0
+    do {
+        val users = api.takePage(page++)
+        emitAll(users)
+    } while (users.isNotEmpty())
+}
+```
 
 ---
+
+```kotlin
+fun <T> flow(
+    block: suspend FlowCollector<T>.() -> Unit
+): Flow<T> = object : Flow<T> {
+    override suspend fun collect(collector: FlowCollector<T>) {
+        collector.block()
+    }
+}
+
+interface Flow<out T> {
+    suspend fun collect(collector: FlowCollector<T>)
+}
+
+fun interface FlowCollector<in T> {
+    suspend fun emit(value: T)
+}
+
+fun main() = runBlocking {
+    flow { // 1
+        emit("A")
+        emit("B")
+    }.collect { // 2
+        println(it)
+    }
+}
+```
+
+'`flow` Builder' 호출 시, 실제로는 `object`를 생성합니다.  
+그러나 `collect()`를 호출하는 것은 `FlowCollector`의 `block`을 호출하는 것과 같습니다.
+
+즉, `block`은 `// 1`의 람다식을 의미하고, 람다식의 수신자는 `FlowCollector`입니다.  
+'함수 인터페이스'를 람다식으로 사용하여 정의할 때, 람다식의 본문은 인터페이스에서 기대하는 유일한 함수(`emit`)의 구현으로 사용됩니다.
+따라서 `emit()`의 본문은 `println(it)`과 같습니다.
+
+그러므로 다음과 같은 실행 순서로 진행됩니다.
+
+1. '`flow` Builder' 호출 (`Flow<T> object` 구현, `collect()` 호출 시 `FlowCollector`의 `block` 호출) 
+2. `flow` 내부 `emit()` 호출 (`FlowCollector`의 `emit()` 호출)
+3. `collect()` 호출 (`emit()` 발행된 각 'Element' 수신하여 `println(it)` 호출)
+
+---
+
+`channelFlow`는 일반 함수이며, '터미널 연산'으로 시작됩니다.  
+또한 `Channel`과 유사하게, 일단 시작되면 'consumer'를 기다리지 않고 별도의 'Coroutine'에서 값을 생성합니다.
+
+`channelFlow` 내부는 `ProducerScope<T>`를 사용합니다.  
+
+```kotlin
+interface ProducerScope<in E> : CoroutineScope, SendChannel<E> {
+    val channel: SendChannel<E>
+}
+```
+`ProducerScope<T>`는 `produce`에 의해 사용되는 것과 동일하며, `CoroutineScope`를 구현하고 있기에, 
+'Coroutine Builder'를 사용하여 'Coroutine'를 시작할 수 있습니다.  
+
+'Element' 생성을 위해 `emit()` 대신 `send()`를 사용합니다.  
+또한 `SendChannel`의 다양한 함수를 통해 `Channel`을 직접 제어 할 수 있습니다. (채널 닫기, 데이터 전송 정지 등)
+
+`channelFlow`는 `CoroutineScope`를 구현하고 있어 독립적으로 값을 계산할 때 자주 사용됩니다.
+
+```kotlin
+fun <T> contextualFlow(): Flow<T> = channelFlow {
+    launch(Dispatchers.IO) { send(computeIoValue()) }
+    launch(Dispatchers.Default) { send(computeCpuValue()) }
+}
+
+fun <T> Flow<T>.merge(other: Flow<T>): Flow<T> = channelFlow {
+    launch { this.collect { send(it)} }
+    other.collect { send(it) }
+}
+```
+
+---
+
+`callbackFlow`는 '사용자 이벤트', '다른 종류의 이벤트'의 흐름을 필요로 할 때 사용하는 기능입니다.  
+
+'이벤트 입력 과정'과 '이벤트 처리 과정'은 독립적이어야 하므로, 
+`channelFlow`가 좋은 선택이 될 수 있지만, 더 좋은 방법은 `callbackFlow` 입니다.
+
+`callbackFlow`는 'Callback'을 래핑하는데 사용되며, `channelFlow`와 마찬가지로 내부에서 `ProducerScope<T>`를 사용합니다.
+
+- `awaitClose { ... }` : `Channel`이 닫힐 때까지 '중단'되는 함수로, `Channel`이 닫히면 'argument'를 호출합니다.  
+만약 `awaitClose`가 없는 경우 'Callback' 등록 직후 'Coroutine'이 즉시 종료됩니다.   
+이는 'Coroutine' 본문이 끝나고 대기하는 'Child Coroutine'이 없으므로 자연스러운것이지만,   
+이를 방지하기 위해 `awaitClose`를 사용하여 다른 방식으로 `Channel`이 닫힐 때까지 'Element'를 수신합니다.
+- `trySendBlocking(value)` : `send`와 유사하지만, 'Coroutine 중단'이 아닌, 'Thread Blocking'하여 데이터를 전달 합니다.  
+이는 일반 함수에서 사용이 가능하도록 합니다.
+- `close()` : `Channel`을 종료시킵니다.
+- `cancel(throwable)` : `Channel`을 종료하고 `Flow` 'consumer'에게 예외를 전달합니다.
 
 ### CallbackFlow
 
