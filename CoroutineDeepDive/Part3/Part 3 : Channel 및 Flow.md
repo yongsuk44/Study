@@ -224,30 +224,83 @@ suspend fun fetchMultipleRequest(): User = coroutineScope {
 
 ## [Part 3.4 : Flow introduction](Flow%20introduction.md)
 
-### The characteristics of Flow
+> - `Flow`
+>   - 비동기로 계산되는 'DataStream' 생성, 순차적으로 'Element' 발행
+>   - 순차적으로 발행되는 'Element'에 일련의 처리 수행
+>   - 유일 멤버 함수 `collect()` '터미널 연산' 제공
+> - '터미널 연산' 'Thread Blocking' X, 'Coroutine 중단' O
+> - '터미널 연산' 호출 지점의 'Parent Coroutine'과 연결되어 'structured concurrency' 지원
+> - `Flow`는 여러 `CoroutineContext`를 지원 (CoroutineName, CoroutineExceptionHandler 등)
+> - `Flow`는 '시작점', '중간 연산', '터미널 연산'으로 구성
+>   - 시작점 : `flow` Builder, 다른 객체에서의 변환, Helper 함수 등
+>   - 중간 연산 : 'Element' 변형, 필터링 등 연산 작업
+>   - 터미널 연산 : 'Coroutine'이 '중단'되며, 'Scope'가 필요한 `Flow`의 유일한 연산
+> - Flow UseCase
+>   - 서버 전송 이벤트를 통한 메시지 수신 또는 전송 (WebSocket, RSocket, Notification 등)
+>   - 텍스트 변경, 클릭 이벤트 등 사용자 이벤트 관찰
+>   - Sensor 데이터 수신 (GPS, Accelerometer 등)
+>   - 데이터 베이스 변화 관찰
 
-`collect`와 같은 터미널 연산은 스레드 차단이 아닌 코루틴을 중지하며, 현재 코루틴 컨텍스트를 존중하여 다른 코루틴 컨텍스트들의
-기능(`CoroutineExceptionHandler`, `CoroutineName` 등)들을 지원합니다.  
-또한 구조적 동시성을 지원하기에 부모 코루틴이 취소되면, 내부에서 실행 중인 Flow 연산도 함께 취소됩니다.
+`Flow`는 비동기로 계산되는 'DataStream'을 생성하고, 'Element'들이 순차적으로 흐르게 합니다.  
+`Flow` 인터페이스 자체는 순차적으로 흐르는 'Element'를 가져와 일련의 처리를 합니다.  
+이는 각 'Element'가 `Flow`의 'Terminal 연산'에 도달했을 때, 수집되어 처리되는 것을 의미합니다.
 
-`flow` 빌더는 일시 중지 함수가 아니며, 특별한 코루틴 없이 사용할 수 있지만, 터미널 연산은 코루틴을 중지한다는 특징을 알아야 합니다.
+```kotlin
+interface Flow<out T> {
+    suspend fun collect(collector: FlowCollector<T>)
+}
+```
 
-### Flow nomenclature
+`collect()`는 `Flow`의 'only member function'으로 다른 함수들은 'extensions'으로 정의되어 있습니다.
 
-모든 Flow는 시작점이 필요하며 `flow` 빌더, 다른 객체로부터의 변환, 헬퍼 함수로 시작할 수 있습니다.  
-터미널 연산은 Flow 처리를 마무리하는 단계로, 일시 중지 될 수 있습니다.  
-Flow 시작과 터미녈 연산 사이에 중간 연산을 통해 데이터를 변형하거나 필터링 하는 등의 작업을 할 수 있습니다.
+---
 
-### Real-life use cases
+`Flow`의 'Terminal 연산'들은 'Thread Blocking'이 아닌, 'Coroutine'을 '중단' 합니다.  
+또한 'Terminal 연산' 호출 지점의 'Parent Coroutine'과 연결되어 'structured concurrency'를 지원합니다.  
+즉, 'Coroutine'의 취소 메커니즘을 따르는데, 'Parent Coroutine'이 취소된 경우 그 안에서 실행 중인 `Flow`도 함께 취소됩니다. 
 
-다음은 Flow의 일반적인 사용 사례입니다.
+추가로 `Flow`는 `CoroutineContext`를 존중하여 `CoroutineExceptionHandler`, `CoroutineName` 등의 `CoroutineContext`를 지원합니다.
 
-- 웹소켓, 알림 등 서버와 메시지를 계속해서 주고받을 때
-- 버튼 클릭, 텍스트 입력과 같은 연속적인 데이터 스트림으로 간주되는 사용자 이벤트 관찰
-- GPS, 가속도계 등 센서에서 수신되는 연속적인 데이터 정보
-- 데이터 베이스가 변화되는것을 관찰
+---
 
-또한 많은 양의 API를 요청하는 상황에서 `flatMapMerge` 중간 연산의 `concurrency` 파라미터를 추가하여 호출의 수를 제한하는 방법을 제공합니다.
+`Flow`는 '`flow` Builder', '다른 객체에서의 변환', 'Helper 함수'와 같은 시작점이 존재해야 합니다.  
+
+'터미널 연산'은 `Flow`의 마지막 연산을 의미하며, 일반적으로 'Coroutine 중단'이 발생하거나 'Scope'가 필요한 유일한 연산입니다.
+대표적으로 `collect()`, `collect { ... }`, 그 외 `launchIn`, `toList`, `toSet` 등이 있습니다.
+
+'중간 연산'은 `Flow` 시작과 '터미널 연산' 사이에 `Flow`를 어떤 방식으로 수정하는 '중간 연산'이 있을 수 있습니다.  
+이를 통해 데이터를 변형하거나 필터링 하는 등의 작업을 할 수 있습니다.
+
+```kotlin
+flow { emit("Message ABC") }                    // Start point (flow builder)
+    .onStart { println("onStart") }             // Intermediate operation
+    .onEach { println("onEach: $it") }          // Intermediate operation
+    .onCompletion { println("onCompletion") }   // Intermediate operation
+    .catch { println("catch: $it") }            // Intermediate operation
+    .collect { println("collect: $it") }        // Terminal operation
+```
+
+---
+
+`Flow` UseCase 예시 입니다.
+
+- 서버 전송 이벤트를 통한 메시지 수신 또는 전송 (WebSocket, RSocket, Notification 등)
+- 텍스트 변경, 클릭 이벤트 등 사용자 이벤트 관찰
+- Sensor 데이터 수신 (GPS, Accelerometer 등)
+- 데이터 베이스 변화 관찰
+
+다수의 비동기 API 요청 상황에서 `flatMapMerge`와 `concurrency` 파라미터를 통해 호출 수를 제한하는 방법을 제공합니다.
+
+```kotlin
+suspend fun fetchMultipleRequest(
+    keys: List<String>
+): List<Response> = keys
+        .asFlow()
+        .flatMapMerge(concurrency = 4) { key ->
+            suspend { api.request(key) }.asFlow()
+        }
+        .toList()
+```
 
 ------------------------------------------------------------------
 
