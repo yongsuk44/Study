@@ -510,10 +510,10 @@ UI 이벤트와 네트워크 응답 등 비동기적인 콜백을 `Flow`로 표�
 ## [Part 3.7 : Flow lifecycle functions](Flow%20lifecycle%20functions.md)
 
 > - `Flow`는 'Element'를 순차적으로 처리하는 'Pipeline',
->   - `collect`를 통해 데이터 요청(UpStream)
+>   - `collect`를 통해 데이터 요청(UpStream), 'Coroutine 중단'
 >   - `emit`을 통해 데이터 생성(DownStream)
->   - UpStream과 DownStream으로 'Flow 완료', '예외 발생', '특정 이벤트' 등 흐름 전파 가능
->   - `onEach`, `onStart`, `onCompletion`, `onEmpty`, `catch` 등 함수를 제공하며 이들은 suspending 특징을 지님 (중단, 지연 등 가능)
+> - `Flow` 연산자
+>   - `onEach`, `onStart`, `onCompletion`, `onEmpty`, `catch` 등 함수 제공, 이들은 suspending 특징을 지님 (중단, 지연 등 가능)
 >   - onEach : 'Element' 순차 처리
 >   - onStart : '터미널 연산' 호출 시, 첫 번째 'Element'를 기다리지 않고 즉시 호출
 >   - onCompletion : `Flow`가 완료된 경우 호출
@@ -521,7 +521,7 @@ UI 이벤트와 네트워크 응답 등 비동기적인 콜백을 `Flow`로 표�
 >   - catch : `Flow` 'UpStream'에서 발생한 예외를 잡아 처리
 > - `catch`는 '터미널 연산' 뒤에 위치할 수 없기에, `onEach` → `catch` → `collect` 순서로 호출하여 예외 처리 하는 것이 일반적인 관행
 > - `flowOn`은 '터미널 연산' 호출로 'UpStream'에 전파되는 `CoroutineContext` 변경 가능
-> - `launchIn`은 `CoroutineScope`을 'argument'로 받아 새로운 'Coroutine'에서 'collect' 실행 가능
+> - `launchIn`은 `CoroutineScope`을 'argument'로 받아, 해당 'Scope' 내 새로운 'Coroutine'에서 `Flow`를 수집
 
 `Flow`는 하나의 파이프로 상상할 수 있습니다. 이 파이프에서는 '데이터 요청'과 '데이터 생성'은 서로 다른 방향으로 이동합니다.  
 
