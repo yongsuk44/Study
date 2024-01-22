@@ -1,5 +1,3 @@
-# Kotlin 공부
-
 ## [Effective Kotlin](https://leanpub.com/effectiveKotlin)
 
 - **[1장 Safety](EffectiveKotlin/Chapter1/1장%20요약.md)**
@@ -18,3 +16,5 @@
 - **[2장 Kotlin Coroutine Library](CoroutineDeepDive/Part2/Part%202%20%3A%20코루틴%20라이브러리.md)**
 - **[3장 Channel and flow](CoroutineDeepDive/Part3/Part%203%20%3A%20Channel%20및%20Flow.md)**
 - **[4장 Coroutine in practice](CoroutineDeepDive/Part4/Part%204%20%3A%20Coroutines%20in%20practice.md)**
+
+## [Clean Architecture](https://ebook-product.kyobobook.co.kr/dig/epd/ebook/E000003160845)
