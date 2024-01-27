@@ -164,7 +164,7 @@ fun calculate(): Int {
 }
 
 val fizz = calculate() // Calculating...
-val buzz 
+val buzz
     get() = calculate()
 
 fun main() {
@@ -181,8 +181,8 @@ Kotlin에서 속성들은 기본적으로 캡슐화되어 있고 'custom getter/
 이런 이유로 개발자들은 `var` 보다 `val`을 선호 한다.
 
 그러나, `val` 속성은 '참조의 변경이 불가능' 하지만 '참조 객체의 내부 상태'는 'custom getter' 또는 'delegate'에 의해 변경될 수 있음을 기억해야 한다.
-이는 앞서 말한 개발자에게 변경에 대한 더 많은 유연성을 제공한다. 그러나 변경이 필요하지 않다면 `final` 속성을 사용하는 것이 좋다.  
-`final` 속성은 그 값이 변경 될 수 없고, 값이 명확하게 정의되어 있어 추론하기 쉽다.
+이는 앞서 말한 개발자에게 변경에 대한 더 많은 유연성을 제공한다.
+그러나 변경이 필요하지 않다면 'custom getter' or 'delegate' 없이 고정된 값을 명확하게 정의하여 'final 속성'으로 사용하는 것이 좋다.
 
 또한 Kotlin은 스마트 캐스팅을 지원하여 `val` 속성의 타입을 더 효율적으로 처리할 수 있다.
 
@@ -210,18 +210,19 @@ fun main() {
 
 ## Separation between mutable and read-only collections
 
-Kotlin에서 컬렉션의 계층 구주와 아래와 같이 설계된 방식 덕분에 속성과 마찬가지로 'read-only 컬렉션'을 지원한다.
+Kotlin에서 컬렉션의 계층 구조가 아래와 같이 설계된 방식 덕분에 속성과 마찬가지로 'read-only 컬렉션'을 지원한다.
 
 <img src="CollectionHierarchy.png" width="60%">
 
-'Iterable', 'Collection', 'Set', 'List' 인터페이스는 'read-only' 타입으로, 수정을 허용하는 메서드가 없다. 
-반면에, 'MutableIterable', 'MutableCollection', 'MutableSet', 'MutableList' 인터페이스는 'read-only' 인터페이스를 확장하고, 변경을 허용하는 메서드를 추가한다.
+'Iterable', 'Collection', 'Set', 'List' 인터페이스는 'read-only' 타입으로, 수정을 허용하는 메서드가 없다.
+반면에, 'MutableIterable', 'MutableCollection', 'MutableSet', 'MutableList' 인터페이스는 'read-only' 인터페이스를 확장하고, 변경을 허용하는 메서드를
+추가한다.
 
 이는 속성이 작동하는 방식과 유사하며, 'read-only 속성'은 'getter'만을 포함하는 반면, 'read-write 속성'은 'getter/setter'를 포함한다.
 
 Kotlin에서 'read-only 컬렉션'은 내부적으로 변경 가능하지만, 'read-only interface'를 통해 외부에 노출되기에 외부에서 변경할 수 없다.   
 예를 들어, `Iterable<T>.map`과 `Iterable<T>.filter` 함수는 내부적으로 `ArrayList`를 사용하여 작업을 수행하지만,
-결과는 'read-only 컬렉션'인 `List`로 반환하여 외부에서 변경할 수 없도록 한다. 
+결과는 'read-only 컬렉션'인 `List`로 반환하여 외부에서 변경할 수 없도록 한다.
 
 ```kotlin
 inline fun <T, R> Iterable<T>.map(
@@ -241,14 +242,14 @@ inline fun <T, R> Iterable<T>.map(
 
 Kotlin에서 'read-only 컬렉션'을 사용하는 것은 불변 컬렉션을 사용하는 것과 거의 동일한 수준의 안전성을 제공한다.  
 'read-only 컬렉션'의 유일한 위험은 개발자가 의도적으로 다운 캐스팅(down-casting)을 수행하여 컬렉션의 불변성을 우회하려고 시도할 떄 발생된다.
-Kotlin에서 'read-only 컬렉션'을 반환하는 것은 'contract'의 일부로, 개발자는 반환된 컬렉션이 오직 'read' 목적으로만 사용될 것이라는 점을 신뢰해야 한다. 
-만약 이러한 'contract'를 어길 경우 프로그램의 안정성이 보장되지 않는다. 
+Kotlin에서 'read-only 컬렉션'을 반환하는 것은 'contract'의 일부로, 개발자는 반환된 컬렉션이 오직 'read' 목적으로만 사용될 것이라는 점을 신뢰해야 한다.
+만약 이러한 'contract'를 어길 경우 프로그램의 안정성이 보장되지 않는다.
 
 아래와 같은 다운 캐스팅은 추상화 대신 구체적인 구현에 의존하게 만든다.  
 이는 코드의가독성과 유지 보수성을 저하시키고, 불안전하며 예상치 못한 결과를 초래할 수 있다.
 
 ```kotlin
-val list = listOf(1,2,3)
+val list = listOf(1, 2, 3)
 
 // Don't Do this
 if (list is MutableList) {
@@ -264,10 +265,10 @@ Java의 `List`는 Kotlin의 `MutableList`에 해당된다. 즉, Java의 `List`�
 그러나 `Arrays.ArrayList`와 같은 특정 구현체는 `MutableList`의 모든 연산을 지원하지 않을 수 있기에 주의해야 한다.
 
 Kotlin에서 'read-only 컬렉션'을 가변 컬렉션으로 다운 캐스팅하는 것은 금지되어 있다.  
-만약 'read-only 컬렉션'에서 가변 컬렉션으로 변경해야 할 필요가 있다면, `List.toMutableList`를 사용하여 복사본을 생성해야 한다. 
+만약 'read-only 컬렉션'에서 가변 컬렉션으로 변경해야 할 필요가 있다면, `List.toMutableList`를 사용하여 복사본을 생성해야 한다.
 
 ```kotlin
-val list = listOf(1,2,3)
+val list = listOf(1, 2, 3)
 
 val mutableList = list.toMutableList()
 mutableList.add(4)
@@ -299,46 +300,133 @@ print(names) // [ZZZ AAA, BBB BBB, CCC CCC]
 print(person in names) // false, because person is at incorrect position
 ```
 
+가변 객체는 데이터가 변경될 수 있어 예측하기 어렵고 위험할 수 있는 반면,
+불변 객체는 한 번 생성되면 상태가 변경되지 않아 안정적이지만, 때로는 데이터 변경이 필요할 수 있다.
+이러한 데이터 변경에서는 불변 객체는 객체 자체의 변경이 아닌, 데이터 변경 후의 새로운 객체를 생성하는 메서드를 가져야 한다.
 
+예를 들어, `Int`는 불변으로, `plus`나 `minus` 같은 메서드를 호출할 때, 원래의 `Int`를 수정하지 않고 해당 연산 후 새로운 `Int`를 반환한다.
+이는 `Iterable`과 같은 'read-only' 객체에도 적용되며, 컬렉션 처리 함수들은 원본을 변경하지 않고 새로운 컬렉션을 반환한다.
+
+위와 같은 원칙을 불변 객체에 적용 할 수 있으며, 아래 예시를 보자.
+불변 클래스 `User`가 있고, 그 `surname`을 변경할 수 있어야 한다고 가정해보면,
+특성 속성을 변경 후 복사본을 생성하는 메서드를 통해 이를 지원할 수 있다.
+
+```kotlin
+class User(
+    val name: String,
+    val surname: String
+) {
+    fun withSurname(surname: String): User = User(name, surname)
+}
+
+// usage
+var user = User("yongsuk", "park")
+user = user.withSurname("kim")
+print(user) // User(name=yongsuk, surname=kim)
+```
+
+위와 같이 메서드를 작성하여 불변 객체에서 각 속성을 변경하도록 할 수 있지만, 모든 속성에 대해 이를 수행하는 것은 번거로운 작업이 될 수 있다.  
+이를 해결하기 위해 'data modifier'가 제공하는 메서드 중 하나인 `copy`를 사용할 수 있다.
+
+`copy`는 객체의 모든 'primary constructor' 속성을 기본값으로 사용하여 새로운 인스턴스를 생성한다.  
+즉, 기존 객체의 상태를 기본값으로 하고, 변경하고자 하는 특정 속성만 새로운 값으로 지정할 수 있다.  
+이렇게 함으로써, 기존 객체는 그대로 유지되며, 변경된 속성을 가진 새로운 객체를 생성할 수 있다.
+
+```kotlin
+data class User(
+    val name: String,
+    val surname: String
+)
+
+// usage
+var user = User("yongsuk", "park")
+user = user.copy(surname = "kim")
+print(user) // User(name=yongsuk, surname=kim)
+```
+
+이런 방법은 가변 객체를 직접 사용하는 것보다 효율적이지 않을 수 있지만,
+불변 객체의 모든 장점을 가지고 있어 일반적인 상황에서 가변 객체 보다 더 선호되어야 한다.
 
 ---
 
-## 다른 종류의 변경 가능 지점
+## Different kinds of mutation points
 
-변경 가능한 목록을 만들어야 한다고 가정할 때 2가지 방법으로 나타낼 수 있다.
+변경이 가능한 목록이 필요하다고 가정하면, 가변 컬렉션을 사용하는 방법과 'read-write' `var`을 사용하는 방법으로 나눌 수 있다.
 
 ```kotln
-val list1: MutableList<Int = mutableListOf()
+val list1: MutableList<Int> = mutableListOf()
 var list2: List<Int> = listOf()
 ```
 
-이 때 2가지 모두 속성을 수정할 수 있지만 방법이 다르다.
+위 방법 모두 속성을 수정할 수 있지만, 각각 다른 방식으로 수정된다.
 
 ```kotlin
 list1.add(1)
 list2 = list2 + 1
 ```
 
-내부적으로 처리되는 방법은 다음과 같이 동작된다.
+위와 같이 모두 'plus-assign' 연산자를 사용하여 대체될 수 있지만, 각각 다른 행동으로 반환된다.
 
 ```kotlin
-list1 += 1 // list1.plusAssign(1)
-list2 += 1 // list2.plus(1)
+list1 += 1 // Translates to list1.plusAssign(1)
+list2 += 1 // Translates to list2 = list2.plus(1)
 ```
 
-위 2가지 방법 모두 동일하게 동작하지만 변경 가능 지점이 다르다.
+위 두 방법 모두 올바르며 각각 장단점이 있다.
 
-- `mutableList` : 구체적인 리스트 구현 내부에 변경 가능 지점이 있어 내부적으로 적절한 동기화 여부를 확신할 수 없다.
-- `var properties` : 변경 가능 지점이 `properties` 자체이기에 멀티 스레드 처리 안정성이 좋다.
+가변 컬렉션의 경우 리스트 구현체에서 변화가 일어난다. 이 방법의 장점은 구현이 직관적이고 쉽다.  
+하지만 멀티스레드 환경에서 컬렉션 구현에 따라 동기화 여부가 달라져 스레드 안전성을 보장하지 않는다.  
+따라서 멀티 스레드 환경에서 가변 컬렉션 사용 시 직접 동기화 메커니즘을 구현해야 한다.
 
-> `var properties`에 `mutable collection`을 사용하지 말자.
-> 만약 사용하게 될 경우 2가지 지점에 대한 동기화를 구현해야 하고 모호성으로 인해 `+=` 연산자를 사용할 수 없게 된다.
+`var`의 경우, 변경점은 해당 속성 자체가 된다. 이 방법의 장점은 전체적인 보안성이 더 높다.  
+단일 변경점을 가지고 있기에 해당 속성에 대한 접근을 제어함으로써 동기화를 보다 쉽게 관리할 수 있다.   
+하지만 이 경우에도 멀티 스레드 환경에서 동기화 메커니즘 없이 `var` 속성을 변경하는 경우
+데이터 일관성 문제나 요소의 손실과 같은 문제가 발생할 수 있기에 동기화 메커니즘을 직접 구현해야 한다.
+
+```kotlin
+var list = listOf<Int>()
+for (i in 1..1000) {
+    thread {
+        list = list + i
+    }
+}
+
+Thread.sleep(1000)
+print(list.size) // 매번 1000이 되는 것은 희박하고 대부분의 경우 다른 숫자가 나올 것임. e.g : 944
+```
+
+가변 컬렉션 대신 `var` 속성을 사용하면, 'custom setter' 또는 'Delegate'를 정의함으로써 속성의 변경을 추적할 수 있다.  
+예를 들어, 아래와 같이 'observable delegate'를 사용할 때 리스트의 모든 변경 사항을 기록할 수 있다.
+
+```kotlin
+var names by Delegates.observable(listOf<String>()) { _, old, new ->
+    println("Names changed from $old to $new")
+}
+
+names += "Yongsuk" // Names changed from [] to [Yongsuk]
+names += "Minsu" // Names changed from [Yongsuk] to [Yongsuk, Minsu]
+```
+
+가변 컬렉션을 사용하여 컬렉션 요소를 직접 조작하는 것은 처리 속도가 빠를 수 있지만, 컬렉션의 변경 사항을 추적하기 위해서 특별한 'observable' 구현이 필요하다.
+반면 `var` 속성은 'custom setter' or 'observable delegate'를 사용하여 객체의 변경을 더 세밀하게 추적하고 제어할 수 있게 된다.
+
+`var` 속성과 가변 컬렉션을 동시에 사용하는 것은 추천되지 않는다.
+
+```kotlin
+// Don't do that
+var list3 = mutableListOf<Int>()
+```
+
+속성 자체의 변경과 컬렉션 내부의 변경, 이 두 가지 방식으로 발생할 수 있는 변화를 모두 동기화해야 하며, 'plus-assign'을 사용한 변경을 사용할 수 없다.
+
+상태를 변경하는 모든 방식은 비용이 되기에 일반적으로 불필요한 상태 변경 가능성을 만들지 않는 것이 좋다.  
+즉, 가변성을 제한하는 것이 좋다.
 
 ---
 
-## 변경 가능 지점을 유출하지 말자
+## Do not leak mutation points
 
-- `mutable object`를 외부에 노출할 경우 문제가 발생될 수 있다.
+상태를 구성하는 가변 객체를 외부에 노출시키는 것은 위험한 상황으로, 아래 예제를 보자.
 
 ```kotlin
 data class User(val name: String)
@@ -348,8 +436,13 @@ class UserRepository {
 
     fun loadAll(): MutableMap<Int, String> = users
 }
+```
 
+누군가 `loadAll`을 사용하여 `UserRepository`의 비공개 상태를 수정할 수 있는 상황이 발생할 수 있다.
+
+```kotlin
 val userRepository = UserRepository()
+
 val users = userRepository.loadAll()
 users[3] = "Kotlin"
 
@@ -358,9 +451,10 @@ users[3] = "Kotlin"
 println(userRepository.loadAll()) // {3=Kotlin}
 ```
 
-위와 같은 수정이 발생되는 것을 방지하기 위해 2가지 방법을 사용할 수 있다.
+특히나, 위와 같은 상태 수정이 우연하게 발생하는 경우 더욱 위험하며 예상치 못한 오류를 야기할 수 있다.  
+이를 방지하기 위해 아래 2가지 방법을 사용할 수 있다.
 
-### 방어적 복제
+첫 번째 방법으로는 'Defensive copying(반환된 가변 객체를 복사)'를 사용하는 것이다.
 
 ```kotlin
 class UserHolder {
@@ -369,7 +463,8 @@ class UserHolder {
 }
 ```
 
-### 반환 타입을 immutable type으로 Up-Casting
+그러나 가능한 가변성을 제한하는 것을 선호하기에,
+컬렉션의 경우 이런 객체들을 'read-only' 상위 타입으로 업 캐스팅하여 가변성을 제한 할 수 있다.
 
 ```kotlin
 data class User(val name: String)
@@ -380,14 +475,3 @@ class UserRepository {
     fun loadAll(): Map<Int, String> = users
 }
 ```
-
----
-
-# 정리
-
-- `var`보다 `val`을 선호해라
-- `mutable` 보다 `immutable`을 선호해라
-- 변경이 필요한 경우 `immutable data class`를 만들고 `copy`를 사용해라
-- `상태`를 유지하라면 `mutable collection`보다 `immutable collection`을 사용해라
-- 변경점을 신중하게 설계하고 불필요한 변경점을 만들지마라
-- `mutable object`를 외부에 노출하지 마라
