@@ -226,10 +226,10 @@ print(str)
 
 또 다른 좋은 예시로 'Response'와 'variance' 수정자를 같이 사용하여 아래와 같은 많은 이점을 얻을 수 있다.
 
-- `Response<T>`가 필요할 때, `T`의 모든 하위 타입에 해당하는 '응답'을 받아들일 수 있다.  
+- `Response<R>`가 필요할 때, `R`의 모든 하위 타입에 해당하는 '응답'을 받아들일 수 있다.  
   - `Response<Any>`를 기대하는 상황에서, `Response<Int>`나 `Response<String>`을 받아들일 수 있다.
-- `Response<T1, T2>`가 필요할 때, `T1`과 `T2`의 모든 하위 타입에 해당하는 '응답'을 받아들일 수 있다.  
-- `Failure<T>`가 필요할 때, `T`의 모든 하위 타입에 해당하는 '실패'를 받아들일 수 있다.  
+- `Response<R, E>`가 필요할 때, `R`과 `E`의 모든 하위 타입에 해당하는 '응답'을 받아들일 수 있다.  
+- `Failure<E>`가 필요할 때, `E`의 모든 하위 타입에 해당하는 '실패'를 받아들일 수 있다.  
   - `Failure<Number>`를 기대하는 상황에서, `Failure<Int>`나 `Failure<Double>`을 받아들일 수 있다.
   - `Failure<Any>`를 기대하는 상황에서, `Failure<Int>`나 `Failure<String>`을 받아들일 수 있다.
 - `Success`는 잠재적인 오류 타입을 명시할 필요가 없으며, `Failure는`는 잠재적인 성공 값의 타입을 명시할 필요가 없다.  
