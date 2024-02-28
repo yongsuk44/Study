@@ -1,16 +1,3 @@
-# Channel and Flow
-
-## 목차
-
-- [Channel](#part-31--channel)
-- [Select](#part-32--select)
-- [Hot and cold data sources](#part-33--hot-and-cold-data-sources)
-- [Flow introduction](#part-34--flow-introduction)
-- [Understanding flow](#part-35--understanding-flow)
-- [Flow building](#part-36--flow-building)
-- [Flow lifecycle functions](#part-37--flow-lifecycle-functions)
-- [SharedFlow and StateFlow](#part-38--sharedflow-and-stateflow)
-
 ## [Part 3.1 : Channel](Channel.md)
 
 > - Channel

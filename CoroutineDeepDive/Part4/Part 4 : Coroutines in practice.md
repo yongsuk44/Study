@@ -1,13 +1,3 @@
-# Kotlin Coroutines in practice
-
-## 목차
-
-- [Common use cases](#part-41--common-use-cases)
-- [Launching coroutine vs suspending functions](#part-42--launching-coroutine-vs-suspending-functions)
-- [Best practices](#part-43--best-practices)
-
----
-
 ## [Part 4.1 : Common use cases](Common%20use%20cases.md)
 
 대부분 Application 구조는 다음 3가지 계층으로 나눕니다.

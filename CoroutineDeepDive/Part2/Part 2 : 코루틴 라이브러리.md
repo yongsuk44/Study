@@ -1,20 +1,3 @@
-# Kotlin Coroutines library
-
-코루틴을 제대로 사용하기 위해 필요한 모든 것을 배우며 아래의 항목들을 정리하는 파트 입니다.
-
-## 목차
-
-- [Coroutine Builder](#part-21--coroutine-builder)
-- [CoroutineContext](#part-22--coroutine-context)
-- [Job and awaiting children](#part-23--jobs-and-awaiting-children)
-- [Cancellation](#part-24--cancellation)
-- [Exception handling](#part-25--exception-handling)
-- [Coroutine scope functions](#part-26--coroutine-scope-functions)
-- [Dispatchers](#part-27--dispatchers)
-- [Construncting a coroutine scope](#part-28--constructing-a-coroutine-scope)
-- [The problem with shared state](#part-29--the-problem-with-shared-state)
-- [Testing Kotlin coroutines](#part-210--testing-kotlin-coroutines)
-
 ## [Part 2.1 : Coroutine Builder](코루틴%20빌더.md)
 
 > - '일반 함수' → 'suspending function' 호출 X, 'suspending function' → '일반 함수' 또는 'suspending function' 호출 O
