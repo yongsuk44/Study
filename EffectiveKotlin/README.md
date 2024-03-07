@@ -45,3 +45,10 @@
 - [Item 30 : Minimize elements visibility](./Chapter4/Item%2030%20:%20Minimize%20elements%20visibility.md)
 - [Item 31 : Define contract with documentation](./Chapter4/Item%2031%20:%20Define%20contract%20with%20documentation.md)
 - [Item 32 : Respect abstraction contracts](./Chapter4/Item%2032%20:%20Respect%20abstraction%20contracts.md)
+
+## Part 5 : Object creation
+
+- [Part 5 Object creation 요약](./Chapter5/5장%20요약.md)
+- [Item 33 : Consider factory functions instead of constructors](./Chapter5/Item%2033%20:%20Consider%20factory%20functions%20instead%20of%20constructors.md)
+- [Item 34 : Consider a primary constructor with named optional arguments](./Chapter5/Item%2034%20:%20Consider%20a%20primary%20constructor%20with%20named%20optional%20arguments.md)
+- [Item 35 : Consider defining a DSL for complex object creation](./Chapter5/Item%2035%20:%20Consider%20defining%20a%20DSL%20for%20complex%20object%20creation.md)
