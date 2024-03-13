@@ -89,7 +89,7 @@ class CalendarView {
 
 ## When should we prefer a SAM?
 
-Kotlin이 아닌 다른 언어에서 사용될 클래스를 설계할 떄 'Single Abstract Method' 사용을 선호한다.  
+Kotlin이 아닌 다른 언어에서 사용될 클래스를 설계할 때 'Single Abstract Method' 사용을 선호한다.  
 'Java Client'들은 'typealias'나 IDE의 제안을 볼 수 없기에, 인터페이스가 더 깔끔해 보인다. 
 
 마지막으로, 일부 언어에서 'Kotlin의 함수 타입'을 사용하면, 다음과 같이 함수가 명시적으로 'Unit'을 반환하도록 요구한다.
