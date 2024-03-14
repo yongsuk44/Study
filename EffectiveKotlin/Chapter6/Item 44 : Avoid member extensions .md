@@ -16,8 +16,7 @@ fun isPhoneNumber(`$this`: String): Boolean =
     $this.length == 7 && $this.all { it.isDigit() }
 ```
 
-확장 함수의 구현 방식에 따른 결과 중 하나는, 멤버 확장을 만들 수 있다는 것이다.  
-또한, 인터페이스 내에서 확장 함수를 정의하는 것도 가능하다.
+이들이 어떻게 구현되었는지에 대한 결과 중 하나는 멤버 확장을 가질 수 있거나, 심지어 인터페이스 내에서 확장을 정의할 수 있다는 것이다.
 
 ```kotlin
 interface PhoneBook {

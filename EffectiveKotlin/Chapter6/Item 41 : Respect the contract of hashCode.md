@@ -51,7 +51,7 @@
 | 2     | ["Peter Piper picked a peck of pickled peppers", "She sells seashells by the seashore"] |
 | 3     | ["How much wood would a woodchuck chuck"]                                               |
 
-이제, 'HashTable'에서 새로운 텍스트의 존재 여부를 확인할 때, 해당 텍스트의 'HashCode'를 계산하게 된다.  
+이제, 'HashTable'에서 새로운 텍스트의 존재 여부를 확인할 때, 'HashCode'를 계산하게 된다.  
 
 - 'HashCode'가 0인 경우, 이 텍스트는 목록에 없다고 볼 수 있다.  
 - 'HashCode'가 1이나 3인 경우, 단 하나의 텍스트와 비교해야 한다.  
@@ -125,7 +125,7 @@ print(FullName("John", "Smith") == FullName("John", "Smith"))   // true
 
 위와 같은 이유로 인해, Kotlin에서는 커스텀 'equals' 구현이 있는 경우, 'hashCode'도 함께 'overriding' 할 것을 권장하는 이유이다.
 
-![img.png](hascode_overriding.png)
+![img.png](hashcode_overriding.png)
 
 또한, 요구되지는 않지만 이 기능을 실제로 효율적으로 만들기 위한 중요한 요구사항이 있다.  
 이는 바로, 'hashCode'가 요소들을 가능한 넓은 범위에 걸쳐 분산시키는 것이다.  
