@@ -37,3 +37,54 @@ fun NamePlate() {
 예를 들어, 코드가 서로 독립적인지, 병렬로 실행 가능한지 등의 조건을 확신하면, 더 효율적인 실행 전략을 사용할 수 있습니다. 
 이는 전체 프로그램의 성능을 향상시키는 데 도움이 됩니다.
 
+## Calling context
+
+`@Composable` 함수는 Compose 컴파일러에 의해 특수하게 처리됩니다.
+이 함수는 컴파일 과정에서 암시적으로 Composer 컨텍스트 인스턴스를 파라미터로 전달받으며, 이 인스턴스는 해당 함수의 Composable 자식들에게도 전달됩니다.
+이는 Compose 런타임과 개발자가 이를 명시적으로 다룰 필요 없이, Composable 함수 간의 컨텍스트가 자연스럽게 전달되도록 합니다.
+
+예를 들어, 이름표를 나타내는 Composable 함수가 있다고 가정해봅시다:
+
+```kotlin
+@Composable
+fun NamePlate(name: String, lastname: String) {
+    Column(
+        modifier = Modifier.padding(16.dp)
+    ) {
+        Text(text = name)
+        Text(
+          text = lastname,
+          style = MaterialTheme.typography.body2
+        )
+    }
+}
+```
+
+위 함수는 컴파일러에 의해 다음과 같이 간략하게 변환됩니다:
+
+```kotlin
+fun NamePlate(name: String, lastname: String, $composer: Composer) {
+    $composer.start(123)
+    Column(
+        modifier = Modifier.padding(16.dp)
+    ) {
+        Text(
+          text = name,
+          $composer
+        )
+        Text(
+          text = lastname,
+          style = MaterialTheme.typography.body2,
+          $composer
+        )
+    }
+    $composer.end()
+}
+```
+
+변환된 코드에서 볼 수 있듯이, Composer 인스턴스는 함수 호출에 추가되어 트리의 모든 레벨에서 사용될 수 있습니다.  
+이는 컴파일러가 Composable 함수가 다른 Composable 함수에서만 호출될 수 있도록 엄격한 규칙을 적용하여, 런타임에 필요한 정보를 항상 접근 가능하도록 보장합니다.
+
+이 요구 사항을 통해 Compose는 런타임에 필요한 정보를 모든 서브트리에서 항상 접근 가능하게 보장할 수 있습니다.   
+Composable 함수는 실제 UI를 생성하는 대신 트리에 변경 사항을 방출하며, 이러한 방출은 주입된 Composer 인스턴스를 통해 이루어집니다.
+이후의 재구성은 이전 실행에서 방출된 변경 사항에 따라 달라집니다. 이는 개발자가 작성하는 코드와 Compose 런타임 간의 중요한 연결 고리로, 런타임이 트리의 형태를 파악하고 메모리 내 표현을 구축하여 최적화를 수행할 수 있게 합니다.
