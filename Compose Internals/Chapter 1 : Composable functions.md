@@ -437,3 +437,64 @@ Composable 함수 자체는 여전히 호출 문맥을 강제함으로써 색이
 
 Composable 함수가 색을 가지고 있다는 것을 이해하면, 이들이 반드시 다른 카테고리의 함수가 되어야함을 이해할 수 있습니다.
 이를 통해 Compose 컴파일러가 이들을 다르게 처리하고, 이들의 동작과 호출 문맥에 대한 가정을 통해 이들의 능력을 활용할 수 있습니다.
+
+## Composable function types
+
+`@Composable` 어노테이션은 함수의 타입을 컴파일 시에 변경합니다. 더 구체적으로, Composable 함수는 `@Composable (T) -> Unit` 함수 타입을 따릅니다. 
+여기서 `T`는 입력 데이터이고 `Unit`은 함수가 입력을 받아 트리에 변화를 주어야 함을 나타냅니다. 
+개발자는 이 타입을 사용하여 표준 람다처럼 Composable 람다를 선언할 수 있습니다.
+
+```kotlin
+// This can be reused from any Composable tree
+val textComposable: @Composable (String) -> Unit = { 
+    Text(
+        text = it,
+        style = MaterialTheme.typography.body1
+    )
+}
+
+@Composable
+fun NamePlate(name: String, lastName: String) {
+    Column(
+        modifier = Modifier.padding(16.dp)
+    ) {
+        Text(
+            text = name,
+            style = MaterialTheme.typography.h6
+        )
+        textComposable(lastName)
+    }
+}
+```
+
+Composable 함수는 또한 수신자(receiver)를 가지는 람다가 필요할 때 `@Composable Scope.() -> Unit` 타입을 따를 수 있습니다.
+이는 Composable DSL을 활용하여 Composable을 중첩할 수 있도록 하는 스타일로 자주 사용됩니다.
+이러한 경우, 스코프는 일반적으로 modifier나 해당 Composable 내에서 읽을 수 있는 관련 변수를 포함합니다.
+
+Composable 함수는 수신자(receiver)를 갖는 람다가 필요할 때 `@Composable Scope.() -> Unit` 타입을 따를 수도 있습니다. 
+이는 Composable DSL을 사용하여 Composable 함수를 중첩할 수 있게 합니다. 
+이러한 경우, 스코프는 보통 modifier나 해당 Composable 내에서 사용할 변수를 포함합니다.
+
+```kotlin
+inline fun Box(
+    ...,
+    content: @Composable BoxScope.() -> Unit
+) {
+    // ...
+    Layout(
+        content = { BoxScopeInstance.content() },
+        measurePolicy = measurePolicy,
+        modifier = modifier
+    )
+}
+```
+
+또한, Compose 컴파일러는 Composable 함수에 특정한 제한 사항과 속성을 부과합니다. 
+이러한 요구 사항은 Composable 함수의 타입 정의의 일부로 볼 수 있습니다. 
+타입은 데이터를 세분화하고 속성 및 제한 사항을 부여하여 컴파일러가 이를 정적으로 검사할 수 있게 합니다. 
+이는 @Composable 어노테이션이 하는 일입니다.
+
+Composable 함수의 요구 사항은 코드를 작성하는 동안에도 Compose 컴파일러에 의해 검사됩니다. 
+컴파일러는 호출, 타입 및 선언 검사기를 사용하여 필요한 호출 문맥을 보장하고, 멱등성을 유지하며, 통제되지 않은 부작용을 방지합니다. 
+이러한 검사기는 Kotlin 컴파일러의 프론트엔드 단계에서 실행되며, 이 단계는 정적 분석에 사용되며 가장 빠른 피드백을 제공합니다. 
+이 라이브러리는 의도적으로 설계된 공개 API와 정적 검사를 통해 개발자에게 안내된 경험을 제공합니다.
