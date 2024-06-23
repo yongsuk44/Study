@@ -341,3 +341,38 @@ Compose에서 메모이제이션은 전통적인 "애플리케이션 전체" 메
 
 Compose는 위치 기반 메모이제이션 개념을 기반으로 구축되었으며, 스마트 재구성은 이를 기반으로 합니다.
 `remember` Composable 함수는 명시적으로 더 세밀한 제어를 위해 이를 사용합니다.
+
+## Similarities with suspend functions
+
+Composable 함수가 호출 컨텍스트를 요구한다는 점은 Kotlin의 또 다른 언어 기본 기능인 suspend 함수와 유사합니다.
+
+Kotlin에 익숙하면 suspend 함수 또한 호출 컨텍스트을 요구한다는 것을 알 것입니다.
+즉, suspend 함수는 다른 suspend 함수에서만 호출될 수 있습니다. Kotlin 컴파일러는 이 규칙을 적용하여 suspend 함수 체인의 모든 함수를 새로운 버전으로 대체하고, 
+이 버전은 각 단계에 암묵적인 파라미터를 전달합니다. 이 파라미터는 `Continuation`입니다.
+
+```kotlin
+suspend fun publishTweet(tweet: Tweet): Post = ...
+```
+
+위 코드를 Kotlin 컴파일러는 아래와 같이 변환합니다.
+
+```kotlin
+fun publishTweet(tweet: Tweet, continuation: Continuation<Post>): Unit
+```
+
+이때 Continuation은 컴파일러에 의해 추가되고 모든 suspend 호출에 전달됩니다.
+이는 Kotlin 런타임이 다양한 suspend 지점에서 실행을 중단하고 재개하는데 필요한 모든 정보를 포함합니다.
+
+suspend는 호출 컨텍스트를 강제하여 실행 트리를 통해 암묵적인 정보를 전달할 수 있는 방법을 보여주는 좋은 예입니다.
+
+이런 의미에서, 우리는 @Composable을 언어 기능의 한 예로 이해할 수 있습니다.
+
+> 여기서 생길 수 있는 합리적인 질문은 "Compose 팀은 왜 suspend를 사용하지 않았는가?" 입니다.
+> 두 기능이 구현하는 패턴은 유사하지만, 언어에서는 완전히 다른 동작을 활성화합니다.
+> 
+> Continuation 인터페이스는 실행을 중단하고 재개하는 문제를 해결하는데 특화되어 있습니다.
+> 이는 콜백 인터페이스로 모델링되며, Kotlin은 이를 위해 필요한 모든 메커니즘을 갖춘 기본 구현을 생성합니다.
+> 반면, Compoes의 목표는 런타임에서 다양한 방식으로 최적화할 수 있는 큰 호출 그래프의 메모리 내 표현을 만드는 것입니다.
+> 
+> Compose 동작에서 필요한 점은 호출 컨텍스트를 강제하는 것뿐이며, 흐름 제어를 인코딩하는 것이 아닙니다.
+> 흐름 제어 인코딩은 궁극적으로 Continuation이 하는 일입니다. 
