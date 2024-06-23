@@ -16,7 +16,7 @@ fun NamePlate(name: String) { ... }
 > 'Input'을 받아들이는 함수가 'Unit'을 반환하는 것은 함수 본문 내에서 'Input'을 어떻게든 소비하고 있다는 의미입니다.
 
 이러한 작업은 Compose 용어로 'emitting'이라고 하며, 이는 노드 트리에 변경 사항을 추가하는 것을 의미합니다.  
-Composable 함수는 실행될 때 'emitting' 작업을 수행하며, 이는 Composition 단계에서 이루어집니다.
+Composable 함수는 실행될 때 'emitting' 작업을 수행하며, 이는 컴포지션 단계에서 이루어집니다.
 
 그러나, 모든 Composable 함수가 `Unit`을 반환하는 것은 아닙니다.
 일부 함수는 값을 반환하며, 이는 Composable 함수의 의미를 변경합니다.
@@ -37,7 +37,7 @@ fun NamePlate() {
 따라서, `remember`는 단순히 결과를 기억하는 것뿐만 아니라 관련된 모든 정보를 저장하여 UI 트리가 항상 최신 상태를 유지하도록 돕습니다.
 
 `@Composable` 어노테이션은 해당 함수에게 몇 가지 중요한 속성을 갖게 합니다. 이 속성은 **Compose 런타임이 다양한 최적화를 수행**할 수 있게합니다. 
-예를 들어, 병렬 Composition, 우선순위에 따른 임의의 Composition, 스마트 재구성, 위치 기반 메모이제이션 등의 최적화가 가능해집니다.
+예를 들어, 병렬 컴포지션, 우선순위에 따른 임의의 컴포지션, 스마트 재구성, 위치 기반 메모이제이션 등의 최적화가 가능해집니다.
 
 런타임 최적화는 런타임이 실행해야 할 코드에 대해 특정 조건과 동작을 가정할 수 있을 때 가능합니다.  
 예를 들어, 코드 내의 요소들이 서로 의존하지 않는다면 병렬로 실행할 수 있고, 순서를 바꿔도 결과에 영향을 주지 않는다면 임의의 순서로 실행할 수 있습니다.
@@ -96,7 +96,7 @@ fun NamePlate(name: String, lastname: String, $composer: Composer) {
 
 이 요구 사항을 통해 Compose는 런타임에 필요한 정보가 어떤 서브트리에서도 항상 접근 가능하도록 합니다. 
 Composable 함수는 실제 UI를 생성하는 대신 트리에 변경 사항을 'emitting'(발행) 합니다.
-Composable 함수는 Composition 중에 이러한 변경 사항을 발행하기 위해 주입된 Composer 인스턴스를 사용하며, 이후의 재구성은 이전 실행에서 발행된 변경 사항에 따라 달라집니다.
+Composable 함수는 컴포지션 중에 이러한 변경 사항을 발행하기 위해 주입된 Composer 인스턴스를 사용하며, 이후의 재구성은 이전 실행에서 발행된 변경 사항에 따라 달라집니다.
 이것이 작성한 코드와 Compose 런타임을 연결하는 방식입니다. 이 연결을 통해 런타임은 트리의 구조를 파악하고, 메모리 내에서 이를 표현하여 다양한 최적화를 수행할 수 있습니다.
 
 ## Idempotent
@@ -157,7 +157,7 @@ fun MainScreen() {
 Composable 사이에서 부작용을 통해 관계를 설정하는 것은 대부분 잘못된 것이며 피해야 합니다.
 비즈니스 로직을 작성해야 하는 경우, 이는 Composable 함수 하나 또는 여러 개의 책임이 아니며, 다른 아키텍처 계층에 위임해야 합니다.
 
-> Compose는 우선순위에 따라 Composition을 재정렬할 수 있는 능력을 가지고 있습니다.  
+> Compose는 우선순위에 따라 컴포지션을 재정렬할 수 있는 능력을 가지고 있습니다.  
 > 예를 들어, 화면에 표시되지 않는 Composable에 낮은 우선순위를 할당할 수 있습니다.
 
 Composable 함수에서 직접 부작용을 실행하면, 재구성의 부작용으로 인해 여러 번 호출될 수 있습니다.
@@ -209,7 +209,7 @@ fun BuggyEventFeed(events: List<Event>) {
 여기서 `totalEvents`는 Column Composable이 재구성될 때마다 수정됩니다. 이는 총 개수가 일치하지 않고, 경쟁 조건에 노출됩니다.
 
 > 마지막으로 부작용이 없는 코드에 중점을 두는 이유는 사용자가 작성하는 코드가 예측 가능하고 일관되게 동작하도록 하기 위함입니다.
-> 그러나, 실제로 Composition을 빌드하거나 업데이트하는 것은 Composable 호출 그래프를 실행함으로써 이루어지며, 이 자체가 사실상 부작용입니다.
+> 그러나, 실제로 컴포지션을 빌드하거나 업데이트하는 것은 Composable 호출 그래프를 실행함으로써 이루어지며, 이 자체가 사실상 부작용입니다.
 > 하지만 이 부작용은 Compose 라이브러리의 기능을 활성화하고 프로그램 동작에 일관성을 해치지 않기 때문에 구조적으로 허용됩니다.
 
 ## Restartable
@@ -239,3 +239,105 @@ Composable 함수는 여러 번 호출될 수 있기에 빠르게 실행되어�
 Compose 컴파일러는 부작용을 생명주기에 맞추고 중단함으로써 이를 올바르게 사용하고 Compose 런타임이 기대하는 대로 조정할 수 있도록 합니다.
 
 Composable 함수와 Composable 함수 트리는 메모리에 유지되어 추후에 해석/구체화될 프로그램의 설명을 작성하는 빠르고 선언적이며 가벼운 접근 방식으로 생각할 수 있습니다.
+
+## Positional memoization
+
+이 속성을 이해하기 전에, "함수 메모이제이션(function memoization)"에 대해 먼저 알아야 합니다.
+함수 메모이제이션은 함수가 입력에 따라 결과를 캐시할 수 있는 능력을 의미합니다. 따라서 함수가 동일한 입력에 대해 호출될 때마다 다시 계산할 필요가 없습니다.
+위에서 설명한 것처럼, 이는 순수(결정론적) 함수에만 가능합니다. 왜냐하면 동일한 입력에 대해 항상 동일한 결과를 반환할 것이라는 확신이 있기 때문에 결과를 저장하고 재사용할 수 있습니다.
+
+> 함수 메모이제이션은 함수형 프로그래밍 세계에서 널리 알려진 기술로, 프로그램이 순수 함수의 조합으로 정의되기에 함수의 결과를 메모이제이션하여 성능을 크게 향상시킬 수 있습니다.
+
+위치 기반 메모이제이션(Positional Memoization)은 이 아이디어를 기반으로 하지만, 중요한 차이점이 있습니다.
+Composable 함수는 Composable 트리에서 자신의 위치를 항상 알고 있습니다. 
+런타임은 동일한 Composable 함수에 대한 호출을 부모 내에서 고유한 아이덴티티를 제공하여 구분합니다.
+이 아이덴티티는 Composable 함수 호출의 위치를 기반으로 생성됩니다. 이를 통해 런타임은 다음과 같은 코드에서 Text() Composable 함수에 대한 세 가지 호출을 구분할 수 있습니다:
+
+```kotlin
+@Composable
+fun MyComposable(txt: String) {
+    Text(txt)
+    Text(txt)
+    Text(txt)
+}
+```
+
+이 세가지 호출은 동일한 Text Composable에 대한 호출이며, 동일한 입력을 가지고 있습니다.
+그러나, 동일한 부모 내에서 다른 위치에서 호출되기에 컴포지션은 각각 다른 아이덴티티를 가진 세 개의 인스턴스를 생성합니다.
+
+이 아이덴티티는 재구성 동안에도 유지되므로, 런타임은 컴포지션을 통해 특정 Composable이 이전에 호출되었는지, 또는 변경되었는지를 확인할 수 있습니다.
+때때로 이러한 아이덴티티를 생성하는 것은 런타임에게 어려울 수 있습니다. 왜냐하면 소스 코드 내에서 호출 위치에 의존하기 때문입니다.
+
+예를 들어, 루프에서 생성된 Composable 목록의 경우 호출 위치가 여러 호출에 대해 동일할 수 있지만, 여전히 다른 노드로 인식되어야 합니다.
+
+```kotlin
+@Composable
+fun TalksScreen(talks: List<Talk>) {
+    Column {
+        for (talk in talks) {
+            Talk(talk)
+        }
+    }
+}
+```
+
+여기서 `Talk(talk)`는 매번 동일한 위치에서 호출되지만, 각 `Talk`는 다를 것으로 기대합니다.
+위와 같은 경우에 런타임은 호출 순서에 의존하여 유니크 아이디를 생성하고 이를 구분할 수 있습니다.
+이는 목록 끝에 새 요소를 추가할 때 잘 작동하지만, 목록의 맨 위나 중간에 요소를 추가할 때에는 문제가 발생할 수 있습니다.
+이 경우에는 해당 지점 아래의 모든 `Talk`를 재구성하게 되며, 이는 비효율적이고 예상치 못한 문제를 초래할 수 있습니다.
+
+이러한 경우, 런타임은 `key` Composable를 통해 호출에 유니크 키를 수동으로 할당할 수 있도록 합니다.
+
+```kotlin
+@Composable
+fun TalksScreen(talks: List<Talk>) {
+    Column {
+        for (talk in talks) {
+            key(talk.id) { // Unique Key
+                Talk(talk)
+            }
+        }
+    }
+}
+```
+
+이렇게 하면 각 `Talk(talk)` 호출을 `talk.id`에 기반하여 유니크하게 만들 수 있습니다. 
+이를 통해 `Talk` 호출에 대한 아이덴티티를 보장할 수 있으며, 이는 목록의 순서가 변경되더라도 모든 항목의 아이덴티티를 유지할 수 있습니다.
+
+Composable 함수가 "컴포지션에 노드를 발행한다."고 말할 때, 
+Composable 호출과 관련된 모든 정보(파라미터, 내부 Composable 호출, remember 호출 결과 등)가 저장됩니다.
+이는 주입된 Composer 인스턴스를 통해 이루어집니다.
+
+Given Composable functions know about their location, any value cached by those will be cached only in the context delimited by that location. Here is an example for more clarity:
+
+Composable 함수가 자신의 위치를 알고 있기에, 해당 위치에서 캐시된 값은 해당 위치에서만 캐시됩니다. 
+이를 더 명확하게 설명하기 위해 예시를 들어보겠습니다:
+
+```kotlin
+@Composable
+fun FilteredImage(path: String) {
+    val filters = remember { computeFilters(path) }
+    ImageWithFiltersApplied(filters)
+}
+
+@Composable
+fun ImageWithFiltersApplied(filters: Filters) {
+    // Apply filters to the image
+}
+```
+
+여기서 `remember`를 사용하여 주어진 `path`의 이미지에 대한 필터를 미리 계산하여 무거운 연산의 결과를 캐싱합니다.
+필터를 계산한 후, 이미지를 이미 계산된 피렅로 렌더링합니다. 연산 결과를 캐싱하는 것은 바람직합니다.
+캐싱된 값을 인덱싱하는 키는 호출 위치와 함수 입력(`path`)을 기반으로 합니다.
+
+> `remember`는 슬롯 테이블에서 결과를 읽는 방법을 알고 있는 Composable 함수입니다.
+> 함수가 호출되면 테이블에서 함수 호출을 찾아 캐시된 결과를 반환합니다.
+> 만약, 결과가 없다면 계산하고 반환하기 전에 결과를 저장합니다. 이렇게 하면 나중에 검색할 수 있습니다.
+
+Compose에서 메모이제이션은 전통적인 "애플리케이션 전체" 메모이제이션과는 다릅니다.
+여기서 `remember`는 위치 기반 메모이제이션을 사용하여 Composable 호출 범위 내에서 캐시된 값을 가져옵니다.
+이는 해당 범위 내에서 단일 인스턴스처럼 작동합니다. 즉, 초기 컴포지션 동안에만 값을 계산하고, 재구성에서는 캐시된 값을 반환합니다.
+하지만 동일한 Composable이 다른 컴포지션에서 사용되거나 다른 Composable에서 동일한 함수 호출이 기억되면, 기억된 값은 다른 인스턴스가 됩니다.
+
+Compose는 위치 기반 메모이제이션 개념을 기반으로 구축되었으며, 스마트 재구성은 이를 기반으로 합니다.
+`remember` Composable 함수는 명시적으로 더 세밀한 제어를 위해 이를 사용합니다.
