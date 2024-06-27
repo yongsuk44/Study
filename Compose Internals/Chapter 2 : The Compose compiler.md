@@ -671,3 +671,131 @@ fun Container(content: @Composable () -> Unit) {
 이 래핑 외에도 Compose는 Kotlin이 하는 것과 동일한 방식으로 값을 캡처하지 않는 Composable 람다를 최적화할 수 있습니다.
 이를 위해 파일당 하나의 synthetic "ComposableSingletons" 내부 객체를 생성합니다.
 이 객체는 이러한 Composable 람다에 대한 정적 참조를 유지(메모이제이션)하고, 나중에 이를 검색할 수 있도록 getter를 포함합니다.
+
+## Injecting the Composer
+
+Compose 컴파일러는 모든 Composable 함수를 새로운 버전으로 대체하고 추가적인 Composer 합성 파라미터를 추가합니다. 
+Composer 파라미터는 코드의 모든 Composable 호출에 전달되어 트리의 어느 지점에서나 항상 사용할 수 있도록 합니다. 
+여기에는 Composable 람다에 대한 호출도 포함됩니다.
+
+컴파일러 플러그인이 Composer 파라미터를 추가하면 함수 타입이 변경되므로, 이를 위해 타입 리매핑 작업이 필요합니다.
+
+```mermaid
+graph LR
+    A("@Composable fun A()") --> Compiler
+    B("@Composable fun B()") --> Compiler
+    C("@Composable fun C()") --> Compiler
+    
+    Compiler --> ComposerA("@Composable fun A(composer)")
+    Compiler --> ComposerB("@Composable fun B(composer)")
+    Compiler --> ComposerC("@Composable fun C(composer)")
+```
+
+이로 인해 Composer는 모든 서브트리에서 사용할 수 있게 되어 Composable 트리를 생성하고 최신 상태로 유지하는데 필요한 모든 정보를 제공합니다.
+
+아래는 예시입니다:
+
+```kotlin
+fun NamePlate(name: String, lastname: String, $composer: Composer) {
+    $composer.start(123)
+    Column(
+        modifier = Modifier.padding(16.dp), 
+        $composer
+    ) {
+        Text(
+          text = name,
+          $composer
+        )
+        Text(
+          text = lastname,
+          style = MaterialTheme.typography.body2,
+          $composer
+        )
+    }
+    $composer.end()
+}
+```
+
+Composable이 아닌 인라인 람다는 의도적으로 변환되지 않습니다. 왜냐하면 컴파일 시 호출자에 인라인되면서 사라지기 때문입니다. 
+또한, expect 함수도 변환되지 않는데, 이 함수들은 타입 해석 시 실제 함수로 해결되기 때문입니다.
+
+## Comparison propagation
+
+컴파일러가 $composer 추가 파라미터를 주입하고 모든 Composable 호출에 전달하는 방법에 대해 배웠습니다. 
+여기에는 모든 Composable에 추가되는 몇 가지 추가 메타데이터가 있습니다. 그 중 하나는 $changed 파라미터입니다. 
+$changed 파라미터는 현재 Composable의 입력 파라미터가 이전 구성 이후 변경되었을 수 있는지에 대한 단서를 제공합니다. 이를 통해 재구성을 건너뛸 수 있습니다.
+
+```kotlin
+@Composable
+fun Header(text: String, $composer: Composer, $changed: Int)
+```
+
+$changed 파라미터는 각 함수 입력 파라미터에 대한 조건을 나타내는 비트의 조합으로 합성됩니다.
+모든 n개의 입력 파라미터(약 10개)의 조건을 인코딩하는 단일 $changed 파라미터가 있습니다.
+사용하는 비트의 수에 따라 2개 이상의 플래그가 추가될 수 있습니다. 비트를 사용하는 이유는 프로세서가 비트 처리에 매우 능숙하기 때문입니다.
+
+이 정보를 가지고 있으면 런타임에서 특정 최적화를 수행할 수 있습니다:
+
+- 입력 파라미터가 이전 컴포지션 이후 변경되었는지 확인하기 위해 equals 비교를 건너뛸 수 있습니다. 
+이는 입력 파라미터가 컴파일 시 알려진 상태일 때 발생합니다. $changed 비트마스크는 이 정보를 제공합니다. 
+위의 스니펫에서와 같이 String 리터럴, 상수 또는 유사한 것일 수 있습니다. 
+비트는 런타임이 이 값이 컴파일 시 알려진 상태이므로 이 값이 변경되지 않을 것이라고 알 수 있으므로 이를 비교하지 않아도 된다는 것을 알려줍니다.
+
+- 이전 컴포지션 이후 입력이 변경되었음을 이미 알고 있는 경우도 있습니다. 런타임이 이미 알고 있다면 이를 비교할 필요가 없습니다. 
+이 경우 재구성이 확실하게 트리거되므로, 슬롯 테이블에 값을 저장할 필요 없이 단순히 폐기할 수 있습니다.
+
+- 다른 경우에는 상태가 "불확실"하다고 간주되므로, 런타임은 `equals`를 사용하여 값을 비교하고 슬롯 테이블에 저장할 수 있습니다.
+이 경우 $changed 파라미터의 비트 값은 0이며, 이는 기본적인 경우입니다. 0이 $changed 파라미터로 전달되면 런타임에 모든 작업을 수행하도록 지시합니다.
+
+다음은 $changed 파라미터를 주입하고 이를 처리하기 위한 필수 논리를 추가한 Composable 함수 본문의 예시입니다:
+
+```kotlin
+@Composable
+fun Header(text: String, $composer: Composer, $changed: Int) {
+    var $dirty = $changed
+    if ($changed and 0b0110 === 0) {
+        $dirty = $dirty or if ($composer.changed(text)) 0b0010 else 0b0100
+    }
+    if (%dirty and 0b1011 xor 0b1010 !== 0 || !$composer.skipping) { 
+        f(text) // executes body
+    } else { 
+        $composer.skipToGroupEnd()
+    }
+}
+```
+
+여기에는 몇 가지 비트 처리가 있지만, 저수준의 세부 사항을 무시하고 보면, $dirty라는 로컬 변수가 사용되는 것을 볼 수 있습니다.
+이 변수는 파라미터가 변경되었는지 여부를 저장하며, 이는 $changed 파라미터 비트마스크와 필요한 경우 슬롯 테이블에 이전에 저장된 값에 의해 결정됩니다.
+**값이 "dirty"로 간주되면 (변경되었으면), 함수 본문이 호출됩니다 (재구성됩니다). 그렇지 않으면 Composable은 재구성을 건너뜁니다.**
+
+재구성이 여러 번 발생할 수 있으므로, 입력 상태가 어떻게 변화하는지에 대한 정보를 전달하는 것은 계산 시간을 상당히 절약할 수 있습니다.
+
+Composable이 호출자에 의해 전달된 $changed 파라미터를 받는 것과 같은 방식으로, 이 Composable은 트리 아래로 전달된 모든 파라미터에 대한 정보를 전달할 책임이 있습니다.
+이를 "비교 전파"라고 합니다. 이는 컴포지션 중에 사용할 수 있는 정보이므로, 입력이 변경되었는지, 정적 여부를 알고 있다면, 해당 파라미터를 재사용하는 하위 Composable의 $changed 파라미터로 해당 정보를 전달할 수 있습니다.
+
+## Default parameters
+
+컴파일 시간에 각 Composable 함수에 추가되는 또 다른 메타데이터는 $default 파라미터입니다.
+
+Kotlin의 기본 인자 지원은 Composable 함수의 인수에 사용할 수 없습니다. Composable 함수는 함수는 기본 인자의 표현식을 함수의 범위(생성된 그룹) 내에서 실행해야 하기 때문입니다.
+이를 위해 Compose는 기본 인자 해결 메커니즘의 대체 구현을 제공합니다.
+
+Compose는 $default 비트마스크 파라미터를 사용하여 기본 인자를 나타내며, 각 파라미터 인덱스를 마스크의 비트에 매핑합니다.
+이는 $changed 파라미터와 비슷한 방식으로 작동합니다. 기본 값을 가진 입력 파라미터마다 하나의 $default 파라미터가 있습니다.
+이 비트마스크는 호출 지점에서 값이 제공되었는지 여부를 결정하여 기본 표현식을 사용해야 하는지 여부를 결정합니다.
+
+다음은 라이브러리 문서에서 추출한 예시로, $default 비트마스크가 주입되기 전과 후의 Composable 함수가 어떻게 보이는지, 그리고 이를 읽고 필요한 경우 기본 인자 값을 사용하는 코드를 보여줍니다.
+
+```kotlin
+// Before compiler (source)
+@Composable fun A(x: Int = 0) { f(x) }
+
+// After compiler
+@Composable fun A(x: Int, $changed: Int, $default: Int) {
+    // ...
+    val x = if ($default and 0b1 != 0) 0 else x
+    f(x)
+}
+```
+
+다시 말해, 여기에는 일부 비트 처리가 있지만, 비교는 단순히 $default 비트마스크를 확인하여 0으로 기본 인자를 설정할지 아니면 전달된 값을 사용할지 결정합니다.
