@@ -799,3 +799,177 @@ Compose는 $default 비트마스크 파라미터를 사용하여 기본 인자�
 ```
 
 다시 말해, 여기에는 일부 비트 처리가 있지만, 비교는 단순히 $default 비트마스크를 확인하여 0으로 기본 인자를 설정할지 아니면 전달된 값을 사용할지 결정합니다.
+
+## Control flow group generation
+
+Compose 컴파일러는 각 Composable 함수의 본문에 "그룹"을 삽입합니다.   
+본문 내에서 발견되는 제어 흐름 구조에 따라 생성되는 다양한 유형의 그룹이 있습니다:
+
+- Replaceable groups. 
+- Movable groups.
+- Restartable groups.
+
+Composable 함수는 런타임에 그룹을 발행하며, 이 그룹은 Composable 호출의 현재 상태에 대한 모든 관련 정보를 래핑합니다.
+이를 통해 컴포지션은 그룹을 교체할 때 데이터를 정리(Replace group)하거나, 항상 Composable의 아이덴티티를 유지하면서 데이터를 이동(movable group)하거나, 재구성 중에 함수를 다시 시작(restartable group)할 수 있습니다.
+
+결국 런타임은 메모리에 저장된 컴포지션 정보를 기반으로 제어 흐름을 처리하는 방법을 알아야 합니다.
+
+그룹은 호출 지점에 대한 정보를 포함합니다. 이는 텍스트의 범위를 래핑하고 호출의 위치를 사용하여 생성된 키를 가지며, 이를 통해 그룹을 저장하고 위치 메모이제이션을 활성화할 수 있습니다.
+
+### Replaceable groups
+
+Composable 람다의 본문은 자동으로 Composable 팩토리 함수를 호출하여 $composer, 생성된 $key, 실제 Composable 람다 표현식 등의 정보를 전달받아 래핑됩니다.
+
+이 팩토리 함수는 다음과 같습니다:
+
+````kotlin
+fun composableLambda(
+    composer: Composer,
+    key: Int,
+    tracked: Boolean,
+    block: Any
+): ComposableLambda {
+    composer.startReplaceableGroup(key)
+    val slot = composer.rememberedValue()
+    val result = if (slot === Composer.Empty) {
+        val value = ComposableLambdaImpl(key, tracked)
+        composer.updateRememberedValue(value)
+        value
+    } else {
+        slot as ComposableLambdaImpl
+    }
+    result.update(block)
+    composer.endReplaceableGroup()
+    return result
+}
+````
+
+이 팩토리 함수는 Composable 람다에 대해 호출되며, Composable 함수의 본문을 래핑합니다.   
+이 함수는 먼저 키로 대체 가능한 그룹을 시작하고, 중간의 모든 텍스트 범위를 래핑한 후 그룹을 닫습니다.    
+시작과 끝 호출 사이에서 관련 정보를 사용하여 컴포지션을 업데이트합니다. 이 경우에는 래핑하는 람다 표현식(block)입니다.
+
+이는 Composable 람다에 대한 것이지만, 다른 Composable 호출에 대해서도 동일하게 작동합니다.   
+다음은 non-restartable으로 플래그가 지정된 평균 Composable 함수가 변환되는 방법에 대한 예시입니다:
+
+```kotlin
+// Before compiler (source)
+@NonRestartableComposable
+@Composable
+fun Foo(x: Int) { 
+    Wat()
+}
+
+// After compiler
+@NonRestartableComposable
+@Composable
+fun Foo(x: Int, %composer: Composer?, %changed: Int) {
+    %composer.startReplaceableGroup(<>)
+    Wat(%composer, 0)
+    %composer.endReplaceableGroup()
+}
+```
+
+Composable 호출은 컴포지션에 저장될 replaceable 그룹을 발행합니다.
+
+그룹은 트리처럼 동작합니다. 각 그룹은 자식 그룹을 임의의 수만큼 포함할 수 있습니다.  
+만약, `Wat` 호출도 Composable이라면, 컴파일러는 이를 위한 그룹을 삽입할 것입니다.
+
+다음 예제는 Composable 호출의 위치에 따라 아이덴티티를 유지할 수 있도록 하는 방법을 보여주기 위해 사용된 예제입니다:
+
+```kotlin
+if (condition) Text("Hello") 
+else Text("World")
+```
+
+이와 같이 조건부 논리를 수행하는 Composable 함수도 replaceable 그룹을 발행하므로, 조건이 변경될 때 나중에 그룹을 교체할 수 있습니다.
+
+### Movable groups
+
+movable 그룹은 아이덴티티를 잃지 않고 재정렬될 수 있는 그룹입니다. 현재는 `key` 호출의 본문에만 필요합니다. 
+이전 장에서 사용한 예시를 다시 살펴보겠습니다:
+
+````kotlin
+@Composable
+fun TalkScreen(talks: List<Talk>) {
+    Column {
+        for (talk in talks) {
+            key(talk.id) { // Unique key
+                Talk(talk)
+            }
+        }
+    }
+}
+````
+
+`Talk`를 `key` Composable로 래핑하면 예외 없이 고유한 아이덴티티가 부여됩니다.  
+`key`로 Composable을 래핑하면 movable 그룹이 생성됩니다. 이는 아이템의 아이덴티티를 잃지 않고 호출을 재정렬하는 데 도움이 됩니다.
+
+`key`를 사용하는 Composable 함수는 다음과 같이 변환됩니다:
+
+```kotlin
+// Before compiler (source)
+@Composable
+fun Test(value: Int) {
+    key(value) {
+        Wrapper {
+            Leaf("Value ${'$'}value")
+        }
+    }
+}
+
+// After
+@Composable
+fun Test(value: Int, %composer: Composer?, %changed: Int) {
+    // ...
+    %composer.startMovableGroup(<>, value)
+    Wrapper(
+        composableLambda(%composer, <>, true) { %composer: Composer?, %changed: Int ->
+          Leaf"Value ${'$'}value", %composer, 0)
+        }, 
+        %composer,
+        0b0110
+    )
+    %composer.endMovableGroup()
+}
+```
+
+### Restartable groups
+
+restartable 그룹은 가장 흥미로운 그룹 중 하나입니다. 이는 restartable Composable 함수에만 삽입됩니다.  
+해당 Composable 호출을 래핑하지만, 끝 호출을 약간 확장하여 nullable 값을 반환합니다.  
+이 값은 Composable 호출의 본문이 변할 수 있는 상태를 읽지 않을 때만 null이 됩니다. 
+이 경우 재구성이 필요하지 않으므로, 런타임에 이 Composable을 재구성하는 방법을 가르칠 필요가 없습니다.
+그렇지 않으면 non-null 값을 반환하며, 컴파일러는 런타임이 Composable을 "재시작"(다시 실행)하여 컴포지션을 업데이트하는 방법을 가르치는 람다를 생성합니다.
+
+코드로 보면 다음과 같습니다:
+
+```kotlin
+// Before compiler (source)
+@composable fun A(x :Int) {
+    f(x)
+}
+
+// After compiler
+@Composable
+fun A(x: Int, $composer: Composer<*>, $changed: Int) {
+    $composer.startRestartGroup()
+    // ...
+    f(x)
+    $composer.endRestartGroup()?.updateScope { next -> 
+        A(x, next, $changed or 0b1)
+  }
+}
+```
+
+재구성을 위한 업데이트 범위가 동일한 Composable에 대한 새로운 호출을 포함하는 것을 볼 수 있습니다.
+
+이 그릅은 상태를 읽는 모든 Composable 함수에 대해 생성됩니다.
+
+Before wrapping this section I want to add some extra reasoning applied by the Compiler to executable blocks found in order to generate the different types of groups. This was extracted from the official docs:
+
+이 섹션을 마치기 전에 컴파일러가 다른 타입의 그룹을 생성하기 위해 executable 블록에서 적용하는 추가적인 추론에 대해 설명하겠습니다. 
+이는 공식 문서에서 추출한 것입니다:
+
+- 블록이 항상 한 번만 실행되면 그룹이 필요하지 않습니다.
+- 블록 집합이 항상 한 번에 하나씩 실행되는 경우(예: if 문의 결과 블록 또는 when 절), 각 블록 주위에 replaceable 그룹을 삽입합니다. 이는 조건부 로직을 가지고 있습니다.
+- movable 그룹은 `key` 호출의 content 람다에만 필요합니다.
