@@ -550,25 +550,25 @@ Compose 컴파일러는 라이브러리에서 지원하는 일부 개념을 낮�
   - 이러한 비교로 일관성을 가질 수 있고, 이는 런타임이 신뢰할 수 있음을 의미합니다.
 - 공개 프로퍼티가 변경될 때마다 항상 컴포지션에 알려야 합니다.  
   - 그렇지 않으면, 컴포저블의 입력과 실제 반영되는 최신 상태 간의 비동기화(desynchronization)가 발생할 수 있습니다.
-  - 이 경우에는 항상 재구성을 트리거하여 방지해야 합니다. 
-  - 이처럼 항상 재구성이 트리거되면 스마트 재구성은 해당 프로퍼티에 의존할 수 없습니다.
+  - 이처럼 상태 간 비동기화가 발생하면, 항상 재구성을 트리거하여 방지해야 합니다. 
+  - 또한, 항상 재구성이 트리거되면 스마트 재구성은 해당 프로퍼티에 의존할 수 없습니다.
 - 모든 공개 프로퍼티는 원시(primitive) 타입이거나 안정적인 타입으로 간주되는 타입이어야 합니다.
 
 모든 원시 타입 및 함수 타입, String은 정의상 불변이기 때문에 안정적인 타입으로 간주됩니다.  
 불변 타입은 변경되지 않기에 컴포지션에 변경 사항을 알릴 필요가 없습니다.
 
 또한, 불변은 아니지만 Compose에서 안정적이라고 간주되는 타입들이 있습니다.  
-이 예시로 `MutableState`가 있으며, 이는 상태가 변경될 때마다 컴포지션에 알리기에 스마트 재구성이 안전하게 의존할 수 있습니다.
+대표적으로 `MutableState`가 있으며, 이는 상태가 변경될 때마다 컴포지션에 알리기에 스마트 재구성이 안전하게 의존할 수 있습니다.
 
-코드에서 생성하는 사용자 정의 타입의 경우, 위에서 언급한 속성을 준수하는지 확인하여 `@Immutable` 또는 `@Stable`로 어노테이트하여 안정적인 타입으로 표시할 수 있습니다.  
-그러나, 개발자가 이 계약을 항상 준수하는 것은 매우 위험하고 시간이 지남에 따라 유지하기 어려울 수 있습니다.
+코드에서 생성하는 사용자 정의 타입의 경우, 위에서 언급한 3가지 속성을 준수하는지 확인하여 `@Immutable` 또는 `@Stable`로 어노테이트하여 안정적인 타입으로 표시할 수 있습니다.  
+그러나, 개발자가 이 계약을 항상 준수하는 것은 매우 위험하고 시간이 지남에 따라 유지하기 어려울 수 있습니다.  
 이를 대신하여 클래스 안정성을 자동으로 추론하는 것이 바람직합니다.
 
-Compose는 자동으로 클래스 안정성을 추론하는 것을 수행합니다.  
-안정성을 추론하는 알고리즘은 계속 발전하고 있지만, 기본적인 개념은 모든 클래스를 방문하여 `@StabilityInferred` 어노테이션을 생성하는 것입니다.  
+Compose는 클래스 안정성을 자동으로 추론하는 것을 수행합니다.  
+안정성을 추론하는 알고리즘은 계속 발전하고 있지만, 기본 개념은 모든 클래스를 방문하여 `@StabilityInferred` 어노테이션을 생성하는 것입니다.  
 또한, 클래스의 안정성 정보를 인코딩하는 'synthetic static final int $stable' 값을 추가합니다.  
 이 값은 컴파일러가 런타임에 클래스의 안정성을 결정하는데 필요한 추가 메커니즘을 생성하는데 도움이 됩니다.  
-이를 통해 Compose는 이 클래스에 의존하는 컴포저블들의 재구성 필요 여부를 결정할 수 있습니다.
+이를 통해 Compose는 이러한 클래스에 의존하는 컴포저블들의 재구성 필요 여부를 결정할 수 있습니다.
 
 > 실제로는 모든 클래스를 방문하는 것이 아닌, 특정 조건을 충족하는 클래스만을 대상으로 방문합니다.  
 > 다음과 같은 클래스들은 방문에서 제외됩니다: enum, enum entry, interface, annotation, anonymous object, expect element, inner class, companion object, inline class   
@@ -578,7 +578,7 @@ Compose는 자동으로 클래스 안정성을 추론하는 것을 수행합니�
 > 이는 컴포저블의 입력을 모델링할 때 사용할 것이기 때문에 의미가 있습니다.
 
 Compose는 클래스의 안정성을 추론하기 위해 여러 요소들을 고려합니다.  
-모든 생성자 파라미터가 안정적인 경우에는 해당 클래스를 안정적으로 간주합니다.  
+생성자 파라미터 모두 안정적인 경우에는 해당 클래스를 안정적으로 간주합니다.  
 예를 들어, `class Foo`, `class Foo(val value: Int)`와 같은 클래스는 파라미터가 없거나 안정적인 파라미터만 있으므로 안정적으로 추론됩니다.  
 반면, `class Foo(var value: Int)`와 같은 경우는 즉시 불안정한 것으로 추론됩니다.
 
@@ -591,8 +591,9 @@ class Foo<T>(val value: T)
 위와 같은 경우, `T`는 클래스의 생성자 파라미터 중 하나로 사용되기에 `Foo`의 안정성은 `T`에 전달된 타입의 안정성에 의존합니다.  
 추가로, `T`가 실체화된(`reified`) 타입이 아니므로 런타임까지는 `T`의 타입이 무엇인지 알 수 없습니다.  
 그렇기에 `T`에 전달된 타입이 알려진 후에 클래스의 안정성을 결정하는 메커니즘이 필요합니다.  
-이를 해결하기 위해 Compose 컴파일러는 `@StabilityInferred`에 비트마스크(bitmask)를 계산하여 추가합니다.  
-이 비트마스크는 런타임에 해당 클래스의 안정성을 계산할 때, 해당 타입 파라미터의 안정성에 의존해야 함을 나타냅니다.
+
+이를 위해 Compose 컴파일러는 `@StabilityInferred`에 비트마스크(bitmask)를 계산하여 추가합니다.  
+이 비트마스크는 런타임에 해당 클래스의 안정성을 결정할 때, 해당 타입 파라미터의 안정성에 의존해야 함을 나타냅니다.
 
 제네릭 타입을 사용한다고 해서 반드시 불안정한 타입이라는 것은 아닙니다.  
 예를 들어, 다음 코드는 컴파일러가 안정적인 타입으로 추론합니다:
@@ -634,12 +635,12 @@ fun <T> MyListOfItems(items: List<T>) {
 ```
 
 위 예시에서는 `List`를 인수로 받는데, 이는 `ArrayList`와 같이 가변적으로 구현될 수 있습니다.  
-컴파일러는 불변적인 구현만 사용할 것이라고 추론할 수 없기에, 이는 불안정한 것으로 간주됩니다.
+컴파일러는 불변적인 구현만 사용할 것이라고 추론할 수 없기에, 불안정한 타입으로 간주합니다.
 
-또 다른 예로, 구현이 불변일 수 있는 가변성을 가진 공개 프로퍼티 타입이 있습니다.   
+또 다른 예로, 구현이 불변일 수 있는 공개(public) 가변 프로퍼티 타입이 있습니다.   
 컴파일러는 이를 추론할 수 없기에, 기본적으로 이 타입도 불안정하다고 간주합니다.
 
-구현이 불변일 수 있는 가변 공개 프로퍼티 타입의 경우, 많은 상황에서 불변으로 구현될 수 있고, Compose 런타임에서는 충분히 안정적으로 동작시킬 수 있습니다.  
+구현이 불변일 수 있는 공개 가변 프로퍼티 타입의 경우, 많은 상황에서 불변으로 구현될 수 있고, Compose 런타임에서는 안정적으로 동작시킬 수 있습니다.  
 그래서 컴포저블의 입력으로 사용하는 모델이 Compose에서 불안정하다고 판단되더라도, 개발자들이 더 많은 정보를 가지고 있고 제어할 수 있다면 명시적으로 `@Stable`로 표시할 수 있습니다.
 
 공식 문서에서는 다음과 같은 예시를 제공합니다:
@@ -661,25 +662,25 @@ interface UiState<T : Result<T>> {
 
 ## Enabling live literals
 
-컴파일러에 전달할 수 있는 플래그 중 하나는 라이브 리터럴(live literals)입니다. 
-시간이 지남에 따라 이 기능의 두 가지 존재하게 되었으며, liveLiterals(v1) 또는 liveLiteralsEnabled(v2) 플래그를 사용하여 둘 중 하나를 활성화할 수 있습니다.
+컴파일러에 전달할 수 있는 플래그 중 하나는 라이브 리터럴(live literals)입니다.  
+라이브 리터럴은 두 가지 구현이 있으며, `liveLiterals(v1)` 또는 `liveLiteralsEnabled(v2)` 플래그를 사용하여 둘 중 하나를 활성화할 수 있습니다. 
 
-라이브 리터럴은 컴파일 없이 미리보기(preview)에서 변경 사항을 실시간으로 반영할 수 있는 기능입니다. 
-Compose 컴파일러가 하는 일은 이러한 표현식을 MutableState에서 값을 읽는 새 버전으로 대체하는 것입니다. 
-이를 통해 런타임은 프로젝트를 다시 컴파일할 필요 없이 즉시 변경 사항을 알릴 수 있습니다. 
+라이브 리터럴은 컴파일 없이 Compose 도구가 프리뷰에서 변경 사항을 실시간으로 반영할 수 있게 해주는 기능입니다.  
+컴파일러는 상수(e.g: 문자열, 숫자, boolean 등) 표현식을 `MutableState`에서 읽어오는 코드로 바꿉니다.  
+이를 통해 프로젝트를 다시 컴파일하지 않아도 런타임에서 변경 사항을 즉시 알릴 수 있습니다.  
+Kdocs에서는 이를 다음과 같이 설명합니다:
+이러한 변환은 DX(developer experience)를 향상시키기 위한 것이며, 성능에 민감한 코드에서는 성능이 크게 저하되므로 릴리즈 빌드에서는 절대로 활성화해서는 안됩니다.
 
-라이브러리의 kdocs에서는 다음과 같이 설명하고 있습니다: 
-“This transformation is intended to improve developer experience and should never be enabled in a release build as it will significantly slow down performance-conscious code”
+Compose 컴파일러는 코드베이스의 각 상수 표현식에 대해 유니크 ID를 생성한 후, 
+파일당 생성되는 싱글톤 클래스의 `MutableState`에서 모든 상수 표현식을 프로퍼티 getter로 변환합니다.  
+런타임에서는 생성된 키를 사용하여 해당 상수의 값을 얻기 위한 API가 제공됩니다.
 
-Compose 컴파일러는 코드베이스의 각 상수 표현식에 대해 고유한 ID를 생성한 다음, 모든 상수를 MutableState에서 값을 읽는 프로퍼티 getter로 변환합니다.
-이는 각 파일에 대해 생성된 싱글톤 클래스에 보관됩니다. 런타임에는 생성된 키를 사용하여 이러한 상수의 값을 얻을 수 있는 API가 제공됩니다.
-
-다음은 라이브러리 kdocs에서 추출한 예시입니다. 다음과 같은 Composable이 있다고 가정해봅시다:
+Kdocs 라이브러리에서 가져온 예시로, 다음과 같은 컴포저블이 있다고 가정하겠습니다:
 
 ```kotlin
 @Composable
 fun Foo() {
-    print("Hello")
+    print("Hello World")
 }
 ```
 
@@ -689,114 +690,141 @@ fun Foo() {
 // file: Foo.kt
 @Composable
 fun Foo() {
-    print(LiveLiterals$FooKt.`getString$arg-0$call-print$fun-Foo`())
+    print(
+        LiveLiterals$FooKt.`getString$arg-0$call-print$fun-Foo`()
+    )
 }
 
 object LiveLiterals$FooKt {
-    var `String$arg-0$call-print$fun-Foo`: String = "Hello"
+    var `String$arg-0$call-print$fun-Foo`: String = "Hello World"
     var `State$String$arg-0$call-print$fun-Foo`: MutableState<String>? = null
-    
+
     fun `getString$arg-0$call-print$fun-Foo`(): String {
-        val field = this.`State$String$arg-0$call-print$fun-Foo`
-        
-        val state = if (field == null) {
-            val tmp = liveLiteral(
-                key = "String$arg-0$call-print$fun-Foo",
-                defaultValue = this.`String$arg-0$call-print$fun-Foo`
-            )
-            this.`State$String$arg-0$call-print$fun-Foo` = tmp
-            tmp
-        } else {
-            field
+        val state = this.`State$String$arg-0$call-print$fun-Foo`
+        if (state == null) {
+            val tmpState = mutableStateOf(this.`String$arg-0$call-print$fun-Foo`)
+            this.`State$String$arg-0$call-print$fun-Foo` = tmpState
+            return tmpState.value
         }
-        
-        return field.value
+        return state.value
     }
 }
 ```
 
-상수가 해당 파일에 대한 생성된 싱글톤에 보관된 MutableState에서 값을 읽는 getter로 변환되는 것을 볼 수 있습니다.
+위 예제를 통해 상수가 `MutableState`에 저장되고, 런타임에서 해당 상수를 읽는 방법을 알 수 있습니다.
 
 ## Compose lambda memoization
 
-Composable 함수에 전달되는 람다의 실행을 최적화하는 방법을 런타임에 알려주기 위한 IR을 생성합니다.
+컴파일러는 컴포저블에 전달된 람다의 실행을 최적화하는 방법을 런타임이 쉽게 학습하도록 IR을 생성하며, 다음 두 가지 방법을 사용합니다:
 
-- Non-composable lambdas : 컴파일러는 이 람다들을 `remember` 호출로 래핑하여 메모이제이션하도록 IR을 생성합니다. 
-- Composable lambdas : 컴파일러는 이 람다들을 래핑하고 런타임에 컴포지션에 저장하고 읽는 방법을 알려주는 IR을 생성합니다.
+- Non-composable lambdas
+  - 컴파일러는 각 람다를 `remember`로 래핑하여 메모이제이션을 위한 IR을 생성합니다.
+  - 예를 들어, 컴포저블에 전달하는 콜백 람다를 생각할 수 잇습니다.
+- Composable lambdas
+  - 컴파일러는 람다를 래핑하고, 이를 런타임이 컴포지션에서 저장하고 읽는 방법을 학습할 수 있도록 관련 정보를 추가하는 IR을 생성합니다.
+  - 예를 들어, Compose UI 노드에 전달되는 `content` 컴포저블 람다를 생각할 수 있습니다.
  
 ### Non-composable lambdas
 
-이 작업은 Composable 함수에 전달되는 람다 호출을 최적화하여 재사용할 수 있도록 합니다. 
-Kotlin은 값을 캡처하지 않는 람다를 싱글톤 인스턴스로 모델링하여 최적화합니다.
-그러나 람다가 값을 캡처하면 호출마다 값이 달라질 수 있어 각각의 람다에 대해 다른 인스턴스가 필요합니다.
-Compose는 이 특정 경우에 대해 더 스마트한 최적화를 제공합니다. 예를 들어:
+이 작업은 컴포저블에 전달되는 람다 호출을 최적화하여 재사용할 수 있게 합니다.  
+이미 Kotlin은 값을 캡처하지 않는 람다를 싱글톤으로 모델링하여 최적화합니다. 즉, 프로그램 전체에서 싱글 인스턴스로 재사용합니다.  
+하지만 람다가 값을 캡처하면, 호출마다 해당 값이 다를수 있어 각 람다마다 다른 인스턴스가 필요합니다.  
+Compose는 이러한 특정 상황에 대해 더 스마트하게 동작합니다. 예를 들어:
 
 ```kotlin
 @Composable
-fun NamePlate(name: String, onClick: () -> Unit) {
+fun NamePlate(
+    name: String,
+    onClick: () -> Unit
+) {
     // onClick()
 }
 ```
 
-여기서, `onClick`은 Composable 함수에 전달된 일반 Kotlin 람다입니다.
-호출 지점에서 전달된 람다가 값을 캡처하면 Compose는 런타임에 이를 메모이제이션하는 방법을 알려주기 위해 IR을 생성할 수 있습니다.
-이는 람다 표현식을 `remember` 호출로 래핑하는 것을 의미합니다. 이 호출은 캡처된 값이 안정적인 경우 람다 표현식을 기억합니다.
-이를 통해 캡처된 값이 일치하면 새로운 람다를 생성하는 대신 기존 람다를 재사용할 수 있습니다.
+위 예시에서, `onClick`은 컴포저블에 전달된 일반적인 Kotlin 람다입니다.  
+만약, 호출 시점에서 람다가 어떤 값을 캡처하면, Compose는 생성된 IR을 통해 런타임이 이를 메모이제이션하도록 `remember`로 래핑합니다.
 
-> 캡처된 값이 안정적인 것으로 요구되는 이유는 이 값들이 `remember` 호출의 조건 인자로 사용되기 때문에 비교를 위해 신뢰할 수 있어야 합니다. 
-> 메모이제이션된 람다는 인라인될 수 없습니다. 그렇지 않으면 컴파일 시간에 호출자에서 인라인되고 나면 기억할 것이 없기 때문입니다.  
-> 또 다른 요구 사항은 래핑된 Composable 함수는 값을 반환할 수 없다는 것입니다. 설계 상 `remember`는 값을 반환하지 않는 함수에서만 사용될 수 있기 때문입니다.
+이 호출은 람다에 캡처된 값이 안정적인 한, 람다 표현식을 기억합니다.  
+즉, 캡처된 값이 동일한 경우 새로운 람다를 생성하는 대신 기존의 람다를 재사용할 수 있습니다.
 
-이 최적화는 값을 캡처하는 람다에만 의미가 있습니다. 값이 캡처되지 않는 경우, Kotlin의 기본 최적화(이를 싱글톤으로 표현)가 충분합니다.
+> 람다로 캡처된 값은 `remember` 호출의 조건 인자로 사용되기에, 메모이제이션의 효과를 얻으려면 캡처된 값이 안정적이어야 합니다.
+> 
+> 메모이제이션된 람다는 인라인될 수 없다는 점을 주의해야 합니다.  
+> 인라인되면 컴파일 시 호출자에게 삽입되므로 메모이제이션할 값이 없게 됩니다.  
+>
+> 또 다른 요구 사항은 람다를 포함하는 컴포저블이 값을 반환해서는 안된다는 것입니다.  
+> 왜냐하면, `remember`는 함수 내에서만 사용할 수 있기 때문입니다.
 
-위에서 설명한 것처럼, 메모이제이션은 람다가 캡처한 값을 기반으로 이루어집니다.
-표현식에 대한 IR을 생성할 때, 컴파일러는 반환 타입이 메모이제이션된 표현식의 타입과 일치하도록 `remember` 호출을 미리 추가합니다.
-그런 다음, 호출에 제네릭 타입 인자를 추가하여 표현식의 반환 타입과 일치하도록 합니다. 
-바로 다음으로, 람다가 캡처한 모든 값을 조건 인자로 추가하여 비교에 사용할 수 있도록 합니다.
-마지막으로 표현식을 위한 람다를 추가합니다. 이는 트레일링 람다(trailing lambda)로 작동하도록 합니다.
+위와 같은 최적화는 값을 캡처하는 람다에서만 의미가 있습니다.  
+값을 캡처하지 않는 경우, Kotlin의 기본 최적화(이 람다를 싱글톤으로 사용)만으로 충분합니다.
 
-캡처된 값을 조건 인자로 사용하면 표현식의 결과를 기억할 때 키로 사용되므로, 그 값이 변할 때마다 무효화됩니다.
+앞서 설명한 것처럼, 메모이제이션은 람다가 캡처한 값을 기반으로 수행됩니다.  
+컴파일러는 람다 메모이제이션을 위한 IR 생성을 다음 단계로 수행합니다:
 
-Composable 함수에 전달된 람다를 자동으로 기억하면 재구성이 발생할 때 재사용성을 활성화할 수 있습니다.
+1. 메모이제이션된 표현식의 반환 타입과 일치하는 `remember` 호출을 추가합니다.
+2. 제네릭 타입 인자를 추가하여 표현식의 반환 타입과 일치시킵니다 : `remember<T>`
+3. 람다가 캡처한 모든 값을 조건 인수로 추가합니다 : `remember<T>(arg1, arg2....)`
+4. 표현식을 위한 트레일링 람다를 추가합니다 : `remember<T>(arg1, arg2..., expression)`
+
+캡처된 값을 조건 인수로 사용하면, 이 값들이 람다 표현식 결과를 기억하는 키로 사용됩니다.  
+따라서 캡처된 값이 변경되면 메모이제이션된 결과가 무효화됩니다.
+
+컴포저블에 전달된 람다를 자동으로 메모이제이션하면, 재구성이 발생할 때 람다의 재사용이 가능해집니다.
 
 ### Composable lambdas
 
-Compose 컴파일러는 모든 Composable 람다를 래핑하여, 런타임에 컴포지션에 저장하고 읽는 방법을 알려주는 IR을 생성할 수 있습니다.
-이는 또 다른 형태의 람다 메모이제이션입니다.
+Compose 컴파일러는 모든 '컴포저블 람다'를 래핑하여, 컴포지션에서 저장하고 검색하는 방법을 런타임에 알려줄 수 있습니다.  
+이는 또 다른 형태의 람다 메모이제이션 입니다.
 
-다음은 Composable 람다를 래핑하는 방법을 보여주는 간단한 예시입니다:
+다음은 컴포저블 람다를 래핑하는 간단한 예시입니다:
 
 ```kotlin
 @Composable
-fun Container(content: @Composable () -> Unit) {
+fun Container(
+    content: @Composable () -> Unit
+) {
     // content()
 }
 ```
 
-1. 래핑을 수행하기 위해, 람다 표현식의 IR을 조정하여 특정 파라미터를 가진 composable 팩토리 함수를 먼저 호출하도록 합니다: `composableLambda(...)`
-2. 추가되는 첫 번째 파라미터는 현재 `composer`이며, 예상대로 전달됩니다. `composableLambda($composer, ...)`
-3. 그런 다음 키 파라미터가 추가됩니다. 이는 Composable 람다의 완전한 이름의 해시코드와 표현식 시작 오프셋의 조합에서 얻은 것으로, 고유한 키를 만들기 위해 사용됩니다. (위치 메모이제이션): `composableLambda($composer, $key, ...)`
-4. 그 후, `boolean` 파라미터 `shouldBeTracked`이 추가됩니다. 
-이 파라미터는 이 Composable 람다 호출이 추적되어야 하는지 여부를 결정합니다. 
-람다가 캡처하지 않는 경우 Kotlin은 이를 싱글톤 인스턴스로 변환하므로 Compose에서 추적할 필요가 없습니다. `composableLambda($composer, $key, $shouldBeTracked, ...)`
-5. 표현식의 파라미터가 22개 이상인 경우에만 필요한 표현식의 arity에 대한 선택적 파라미터도 추가될 수 있습니다. `composableLambda($composer, $key, $shouldBeTracked, $arity, ...)`
-6. 마지막으로, 람다 표현식 자체가 래핑의 마지막 파라미터로 추가됩니다. `composableLambda($composer, $key, $shouldBeTracked, $arity, expression)`
+컴파일러는 람다 표현식을 래핑하기 위해, 해당 표현식의 IR을 수정하여 특정 파라미터를 포함한 `composableLambda(...)`를 먼저 호출하도록 만듭니다.
 
-래핑된 본문에서 호출되는 Composable 함수 팩토리의 목적은 간단합니다:
-생성된 키를 사용하여 컴포지션에 람다 표현식을 저장하는 대체 그룹을 추가합니다. 이는 나중에 Composable 람다를 찾을 때 사용됩니다.
-이를 통해 런타임에 Composable 표현식을 저장하고 검색하는 방법을 가르치는 것입니다.
+첫 번째로 추가되는 파라미터는 현재의 '$composer'입니다. 이는 다음과 같이 전달됩니다:  
+`composableLambda($composer, ...)`
 
-이 래핑 외에도 Compose는 Kotlin이 하는 것과 동일한 방식으로 값을 캡처하지 않는 Composable 람다를 최적화할 수 있습니다.
-이를 위해 파일당 하나의 synthetic "ComposableSingletons" 내부 객체를 생성합니다.
-이 객체는 이러한 Composable 람다에 대한 정적 참조를 유지(메모이제이션)하고, 나중에 이를 검색할 수 있도록 getter를 포함합니다.
+그 다음으로 추가되는 파라미터는 키입니다.  
+이 키는 컴포저블 람다의 정규화된 이름(fully qualified name)에서 얻은 해시코드와 람다 표현식의 시작 오프셋(파일에서 본질적으로 위치하는 곳)을 조합하여 얻어집니다.
+이를 통해 키의 고유성을 보장합니다. (positional memoization) :   
+`composableLambda($composer, $key, ...)`
+
+그 다음에는 `shouldBeTracked`라는 boolean 파라미터가 추가됩니다. 이는 해당 컴포저블 람다 호출의 추적 여부를 결정합니다.  
+람다가 값을 캡처하지 않으면, Kotlin은 이를 싱글 인스턴스로 변환합니다.   
+싱글 인스턴스는 변경되지 않는다는 의미이며, Compose에서 추적할 필요가 없습니다. :   
+`composableLambda($composer, $key, $shouldBeTracked, ...)`
+
+선택적으로 표현식의 파라미터 수(22개 이상의 경우에만 필요)에 대한 파라미터가 추가될 수 있습니다. :   
+`composableLambda($composer, $key, $shouldBeTracked, $arity, ...)`
+
+마지막으로, 람다 표현식 자체가 래퍼의 마지막 파라미터로 추가됩니다.(블록, 트레일링 람다) :   
+`composableLambda($composer, $key, $shouldBeTracked, $arity, expression)`
+
+래핑된 본문에서 호출되는 컴포저블 함수 팩토리(`composableLambda`)의 목적은 간단합니다:  
+생성된 키로 'replaceable 그룹'을 컴포지션에 추가하여, 람다 표현식을 저장합니다. 이는 나중에 키를 사용하여 컴포저블 람다를 찾는데 사용됩니다.   
+이런 과정을 통해 런타임이 나중에 컴포저블 람다를 저장하고 검색하는 방법을 학습하게 됩니다.
+
+위 래핑 작업 외에도, Compose는 값을 캡처하지 않는 컴포저블 람다를 최적화할 수 있습니다.  
+이는 Kotlin이 값을 캡처하지 않는 람다를 최적화(싱글 인스턴스로 표현)하는 것과 같은 방식으로 동작합니다.  
+각 파일에서 컴포저블 람다가 발견된 곳마다 내부적으로 `ComposableSingletons`라는 `internal object`를 생성합니다.  
+이 객체는 컴포저블 람다에 대한 정적 참조(static references)를 유지(memoization)하며, 나중에 이를 검색할 수 있도록 getter를 포함합니다.
 
 ## Injecting the Composer
 
-Compose 컴파일러는 모든 Composable 함수를 새로운 버전으로 대체하고 추가적인 Composer 합성 파라미터를 추가합니다. 
-Composer 파라미터는 코드의 모든 Composable 호출에 전달되어 트리의 어느 지점에서나 항상 사용할 수 있도록 합니다. 
-여기에는 Composable 람다에 대한 호출도 포함됩니다.
+Compose 컴파일러는 모든 컴포저블에 Composer 합성(synthetic) 파라미터를 추가한 새로운 버전으로 대체합니다.  
+Composer 파라미터는 모든 컴포저블 호출에 전달되어 트리의 어느 지점에서나 항상 사용 가능하도록 합니다.  
+여기에는 컴포저블 람다 호출도 포함됩니다.
 
-컴파일러 플러그인이 Composer 파라미터를 추가하면 함수 타입이 변경되므로, 이를 위해 타입 리매핑 작업이 필요합니다.
+컴파일러 플러그인이 컴포저블에 파라미터를 추가할 때는 함수 시그니처가 변경되어, 함수 타입이 변경됩니다.  
+이러한 함수 타입 변경으 처리하기 위해 '타입 리매핑 작업'이 필요합니다.
 
 ```mermaid
 graph LR
@@ -809,7 +837,8 @@ graph LR
     Compiler --> ComposerC("@Composable fun C(composer)")
 ```
 
-이로 인해 Composer는 모든 서브트리에서 사용할 수 있게 되어 Composable 트리를 생성하고 최신 상태로 유지하는데 필요한 모든 정보를 제공합니다.
+이 작업은 실질적으로 Composer를 모든 서브트리에서 사용할 수 있게 하며,   
+Composer를 통해 컴포저블 트리를 구성하고 업데이트하는데 필요한 모든 정보를 제공합니다.
 
 아래는 예시입니다:
 
@@ -834,8 +863,8 @@ fun NamePlate(name: String, lastname: String, $composer: Composer) {
 }
 ```
 
-Composable이 아닌 인라인 람다는 의도적으로 변환되지 않습니다. 왜냐하면 컴파일 시 호출자에 인라인되면서 사라지기 때문입니다. 
-또한, expect 함수도 변환되지 않는데, 이 함수들은 타입 해석 시 실제 함수로 해결되기 때문입니다.
+'컴포저블이 아닌 인라인 람다'는 컴파일 시 호출자에게 인라인되어 사라지므로, 의도적으로 변환되지 않습니다.  
+또한, `expect` 함수도 타입 해석 시 실제 함수로 해석되므로, 변환되지 않습니다.
 
 ## Comparison propagation
 
