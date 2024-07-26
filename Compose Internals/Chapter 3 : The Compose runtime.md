@@ -353,3 +353,147 @@ Composer는 컴포지션에서 값을 기억(슬롯 테이블에 기록)하고, 
 
 업데이트할 값이 `RememberObserver`인 경우, Composer는 컴포지션에서 이 기억 작업을 추적하기 위해 추가적인 암시적 `Change`를 기록합니다.  
 이 `Change`는 나중에 기억된 모든 값들을 잊어버려야 할 때 필요합니다.
+
+## Recompose scopes
+
+재구성 범위(Recompose scope)는 Composer를 통해 관리되며, 스마트 재구성을 가능하게 합니다.  
+재구성 범위는 Restartable 그룹과 직접적으로 연결되며, Restartable 그룹이 생성될 때마다, Composer는 이 그룹에 대한 `RecomposeScope`를 생성하고, 이를 `Composition`의 `currentRecomposeScope`로 설정합니다.
+
+```mermaid
+graph LR;
+    A[Restartable 그룹 생성] --> B[Composer가 RecomposeScope 생성]
+    B --> C[Composition의 currentRecomposeScope로 설정]
+```
+
+`RecomposeScope`는 컴포지션 내에서 특정 영역을 독립적으로 재구성할 수 있도록 모델링하고, 수동으로 무효화하여 컴포저블의 재구성을 트리거할 수 있습니다.  
+무효화는 Composer를 통해 요청됩니다: `composer.currentRecomposeScope().invalidate()`  
+또한, Composer는 특정 영역을 재구성하기 위해 슬롯 테이블을 Restartable 그룹의 시작 위치로 이동시키고, 람다에 전달된 '재구성 블록(Recompose block)'을 호출합니다.  
+이는 컴포저블을 다시 호출하여, 다시 한 번 발행하여 테이블의 기존 데이터를 덮어쓰도록 요청합니다.
+
+Composer는 무효화된 재구성 범위들을 스택에 추가하고, 보류 상태로 유지하다가, 재구성이 필요할 때 이 스택을 사용하여 어떤 범위가 재구성되어야 하는지 결정합니다.   
+`currentRecomposeScope`는 이 스택에서 가장 최근에 무효화된 재구성 범위를 가리킵니다. 
+
+`RecomposeScope`는 항상 활성화되지 않으며, 컴포저블 내에서 `State` 스냅샷으로부터 읽기 작업이 수행될 때만 활성화됩니다.  
+이 경우 Composer는 `RecomposeScope`를 사용되었음으로 표시하여, "end" 호출이 null을 반환하지 않게 하고, 재구성 람다를 활성화 합니다.
+
+```kotlin
+// After compiler inserts boilerplate
+@Composable
+fun A(
+    x: Int,
+    $composer: Composer<*>,
+    $changed: Int
+) {
+    $composer.startRestartGroup()
+    // ..
+    f(x)
+    $composer.endRestartGroup()?.updateScope { next ->
+        A(x, next, $changed or 0b1)                     // Recompose block
+    }
+}
+```
+
+Composer는 재구성이 필요할 때, 현재 부모 그룹 내의 '무효화된 모든 자식 그룹'을 재구성할 수 있습니다.    
+재구성이 필요하지 않는 경우, Reader에게 해당 그룹을 건너뛰어 끝으로 이동하도록 지시할 수 있습니다.
+
+## SideEffects in the Composer
+
+Composer는 `SideEffects`를 관리하여, 항상 컴포지션이 완료된 후에 실행되도록 합니다.  
+즉, `SideEffect`는 컴포지션 트리에 변경 사항이 적용된 후, 호출될 함수로 등록됨을 말합니다.  
+
+이 부수 효과(`SideEffect`)는 컴포저블의 생명주기와는 무관하게 발생합니다.  
+예를 들어, 컴포지션을 벗어날 때 자동으로 취소되거나, 재구성 시 다시 시도되지 않습니다.  
+
+이는 `SideEffect`가 슬롯 테이블에 저장되지 않으며, 컴포지션이 실패하면 단순하게 폐기됨을 의미합니다.
+
+## Storing CompositionLocals
+
+Composer는 `CompositionLocals`를 등록하고, 키를 통해 해당 값을 얻을 수 있는 방법을 제공합니다.  
+`CompositionLocal.current` 호출은 이러한 메커니즘을 사용하여 현재 값을 반환합니다.  
+프로바이더와 현재 값은 함께 그룹으로, 슬롯 테이블에 저장되어 필요한 시점에 참조될 수 있습니다. 
+
+## Storing source information
+
+Composer는 컴포지션 과정에서 수집된 `CompositionData`를 통해 소스 코드 정보를 저장합니다.  
+이 정보들은 컴포지션 도구에서 활용되어, 컴포저블의 디버깅, 분석, 최적화 등의 작업을 지원합니다.
+
+## Linking Compositions via CompositionContext
+
+컴포지션은 단일 구조가 아니라, 여러 개의 컴포지션과 자식 컴포지션으로 이루어진 트리 형태를 가집니다.  
+자식 컴포지션은 현재 컴포지션의 컨텍스트 내에서 별도로 생성된 컴포지션으로, 독립적인 무효화를 지원하기 위해 인라인으로 생성됩니다.
+
+자식 컴포지션은 부모 컴포지션과 부모의 `CompositionContext` 참조를 통해 연결됩니다.  
+즉, `CompositionContext`는 컴포지션과 자식 컴포지션을 트리 구조로 연결하는 역할을 합니다.  
+이를 통해 `CompositionLocals`와 무효화를 마치 하나의 단일 컴포지션 내에서 이루어지는 것처럼 트리 아래로 자연스럽게 전달되고 적용됩니다.  
+또한, `CompositionContext` 자체도 슬롯 테이블에 그룹으로 저장되어, 전체 커머포지션 구조 내에서 컴포지션 간의 연관성을 유지하고 관리합니다.
+
+일반적으로 자식 컴포지션의 생성은 `rememberCompositionContext`를 통해 이루어집니다:
+
+```kotlin
+@Composable
+fun rememberCompositionContext(): CompositionContext {
+    return currentComposer.buildContext()
+}
+```
+
+이 함수는 슬롯 테이블의 현재 위치에 새로운 컴포지션을 기억하거나, 이미 기억된 경우 해당 컴포지션을 반환합니다.  
+이는 `VectorPainter`, `Dialog`, `SubcomposeLayout`, `Popup`, `AndroidView`와 같이 별도의 컴포지션이 필요한 곳에서 하위 컴포지션을 생성하는데 사용됩니다.
+(`AndroidView`는 Android View를 컴포저블 트리에 통합하기 위한 래퍼입니다.)
+
+## Accessing the current State snapshot
+
+Composer는 현재 스레드에서 가변 상태 및 다른 상태 객체들이 반환한 값의 스냅샷을 참조합니다.  
+이 스냅샷은 생성된 시점의 상태 값을 그대로 유지하며, 명시적으로 변경되지 않는 한 동일한 값을 유지합니다.  
+Composer는 이 스냅샷을 통해 현재 상태 값을 읽고, 필요에 따라 상태 값을 업데이트합니다.
+
+## Navigating the nodes
+
+노드 트리의 탐색은 `Applier`에 의해 수행되지만, 직접적으로 이루어지는 것은 아닙니다.  
+대신, Reader가 노드를 순회하면서 각 노드의 위치를 `downNodes` 배열에 저장하는 방식으로 이루어집니다.  
+노드 탐색이 완료되면 `downNodes` 배열에 저장된 모든 down 동작은 `Applier`에 전달됩니다.  
+만약 대응되는 down 동작이 실현되기 전에 up 동작이 저장되면, 이는 `downNodes` 스택에서 간단하게 제거됩니다.
+
+## Keeping reader and writer in sync
+
+약간 저수준의 개념이지만, 그룹이 삽입-삭제 또는 이동될 때, Writer와 Reader의 그룹 위치가 일시적으로 다를 수 있습니다. (변경 사항이 적용될 때까지)  
+이러한 차이를 추적하기 위해 '델타'를 유지해야 합니다.  
+
+델타는 그룹의 삽입, 삭제, 이동 동작에 따라 업데이트되며, "Reader의 현재 슬롯 위치와 일치하도록 Writer가 이동해야 하는 거리"를 나타냅니다.
+
+## Applying the changes
+
+Composer는 변경 사항을 적용하는 과정을 `Applier`에게 위임하여, 컴포지션이 완료된 후에 저장된 모든 변경 사항을 처리합니다.  
+이 과정을 "실체화"라고 부르며, `Change` 목록을 실행함으로써 이루어집니다.  
+`Change` 목록을 실행함으로써 슬롯 테이블이 업데이트되고, 해당 테이블에 저장된 컴포지션 데이터를 해석하여 실제 결과를 산출합니다.
+
+`Applier`는 플랫폼과의 통합 지점으로, 사용 사례에 따라 구현 방식이 달라집니다.  
+이에 따라 런타임은 `Applier`의 구체적인 구현에 대해 알지 못하며, 클라이언트 라이브러리가 구현해야 하는 공개적인 계약(contract)에 의존합니다.
+
+이 공개적인 계약은 다음과 같습니다:
+
+```kotlin
+interface Applier<N> {
+    val current: N
+    fun onBeginChanges() { }
+    fun onEndChanges() { }
+    fun down(node: N)
+    fun up()
+    fun insertTopDown(index: Int, instance: N)
+    fun insertBottomUp(index: Int, instance: N)
+    fun remove(index: Int, count: Int)
+    fun move(from: Int, to: Int, count: Int)
+    fun clear()
+}
+```
+
+`Applier` 다양한 노드 타입을 처리하기 위해, 제네릭 타입 파라미터 `N`을 사용합니다.  
+이를 통해 Compose는 특정 노드 타입에 구애받지 않고, 제네릭 호출 그래프나 노드 트리를 처리할 수 있습니다.  
+`Applier`는 트리를 순회하고, 노드를 삽입, 제거, 이동시키는 다양한 작업을 제공하지만, 노드의 타입이나 이들이 궁극적으로 어떻게 삽입되는지에 대해서는 알지 못합니다.  
+이러한 세부 사항은 노드 자체에 위임됩니다.
+
+계약은 주어진 범위 내에서 현재 노드의 자식 노드 모두를 제거하거나, 현재 노드의 자식 노드들을 이동하여 위치를 변경하는 방법을 정의합니다.  
+또한, `clear` 작업은 루트를 가리키고, 트리의 모든 노드를 제거하여 `Applier`와 루트를 미래의 새로운 컴포지션 타겟으로 사용할 수 있도록 준비하는 방법을 정의합니다.
+
+`Applier`는 트리 구조를 모든 노드를 순회하며, 필요한 변경 사항을 적용합니다.  
+이 과정에서 트리는 부모에서 자식으로 또는 자식에서 부모로 순회할 수 있으며, 현재 방문하고 있는 노드에 대한 참조를 유지합니다.   
+Composer는 변경 사항 적용을 시작하고 끝낼 때 `Applier`의 메서드 호출로, 부모에서 자식으로 또는 자식에서 부모로 노드를 삽입하거나 이동할 수 있는 다양한 방법을 제공합니다. 
