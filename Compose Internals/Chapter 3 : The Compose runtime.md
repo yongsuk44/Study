@@ -698,3 +698,122 @@ graph BT
 
 지금까지, Compose UI의 노드 트리가 어떻게 실체화되고, 개별 노드가 자신을 어떻게 그리는지 자세하게 살펴보았습니다.  
 이제부터 컴포지션 과정 자체에 대해 더 깊이 파고들어보겠습니다.
+
+## Composition
+
+이전 섹션에서는 Composer가 슬롯 테이블에 쓰거나 읽기 위한 변경 사항을 어떻게 기록하고, 컴포저블이 실행될 때 이러한 변경 사항이 어떻게 발생하는지, 
+그리고 최종적으로 이러한 변경 사항이 어떻게 적용되는지에 대해 살펴보았습니다. 그러나, 아직 컴포지션 과정 자체에 대해서는 다루지 않았습니다.  
+이제부터 컴포지션이 어떻게 생성되고, 누가 이를 담당하며, 언제 이루어지는지, 그리고 어떤 단계들이 포함되는지 알아보겠습니다.
+
+`Composer`가 `Composition`에 대한 참조를 가지고 있다고 언급했지만, 실제로는 `Composition`이 생성되면, 컴포지션 스스로가 `Composer`를 생성합니다.  
+생성된 Composer는 `currentComposer` 메커니즘을 통해 접근 가능하며, 컴포지션이 관리하는 트리를 생성하고 업데이트하는 데 사용됩니다.
+
+Compose 런타임에 대한 클라이언트 라이브러리의 진입점은 두 가지 부분으로 나뉩니다:
+
+- 컴포저블을 작성하여 UI와 관련된 모든 정보를 발행하여, 사용 사례와 런타임을 연결합니다.
+- 컴포저블이 정의되었더라도, 실제로 이를 실행하여 화면에 표시하려면 컴포지션 과정이 필요합니다.  
+이를 위해 컴포지션을 생성하고, 시작하는 역할인 `setContent`가 사용되며, 대상 플랫폼(Android)과의 통합 계층(integration layer)을 구축합니다.
+
+## Creating a Composition
+
+Android의 경우, 새로운 `Composition`을 반환하는 ViewGroup.`setContent`가 호출 될 수 있습니다:
+
+```kotlin
+internal fun ViewGroup.setContent(
+    parent: CompositionContext,
+    content: @Composable () -> Unit
+): Composition {
+    // ...
+    val composeView = ...
+    return doSetContent(composeView, parent, content)
+}
+
+private fun doSetContent(
+    owner: AndroidComposeView,
+    parent: CompositionContext,
+    content: @Composable () -> Unit
+): Composition {
+    // ...
+    val original = Composition(UiApplier(owner.root), parent)           // Here
+    val wrapped = owner.view.getTag(R.id.wrapped_composition_tag) 
+        as? WrappedComposition ?: WrappedComposition(owner, original).also {
+            owner.view.setTag(R.id.wrapped_composition_tag, it)    
+        }
+    wrapped.setContent(content)
+    return wrapped
+}
+```
+
+`UiApplier` 인스턴스가 `Composition`에 전달될 때, 이 인스턴스가 트리의 루트 `LayoutNode`를 가리키는 것을 주목해야 합니다.  
+이로 인해 `Applier`의 구체적인 구현을 선택하는 것은 클라이언트 라이브러리가 담당한다는 것을 명확하게 알 수 있습니다.  
+(`Applier`는 노드를 방문하며 작업을 수행하는 역할을 합니다. 따라서 루트 노드를 가리키는 상태에서 시작하는 것이 중요합니다.)
+
+`WrappedComposition`은 `Composition`을 `AndroidComposeView`와 연결하여 Android View 시스템과 직접 연결하는 역할을 하는 데코레이터입니다.  
+이 데코레이터는 키보드 가시성 변화, 접근성 등의 사항을 추적하기 위해 제어된 효과(effect)를 시작합니다.  
+또한, Android 컨텍스트에 대한 정보를 `CompositionLocals`로 전달함으로써, 모든 컴포저블에서 다양한 정보들을 암묵적으로 사용할 수 있도록 합니다.  
+다양한 정보들에는 Context, Configuration, 현재 `LifecycleOwner`, 현재 `savedStateRegistryOwner`, Owner의 View 등이 포함됩니다.
+
+마지막으로 `composition.setContent(content)`가 호출되는 부분을 볼 수 있습니다.  
+`Composition#setContent`는 컴포지션의 `content`를 설정하여, 해당 컴포저블에서 제공하는 모든 정보를 사용하여 컴포지션을 업데이트합니다.
+
+컴포지션 생성의 좋은 예로, Compose UI 라이브러리의 일부인 `VectorPainter`를 들 수 있습니다.  
+`VectorPainter`는 자체적으로 `Composition`을 만들고 유지합니다:
+
+```kotlin
+@Composable
+internal fun RenderVector(
+    name: String,
+    viewportWidth: Float,
+    viewportHeight: Float,
+    content: @Composable (viewportWidth: Float, viewportHeight: Float) -> Unit
+) {
+    // ...
+    val composition = composeVector(rememberCompositionContext(), content)
+    DisposableEffect(composition) {
+        onDispose {
+            composition.dispose()       // composition needs to be disposed in the end
+        }
+    }
+}
+
+private fun composeVector(
+    parent: CompositionContext,
+    composable: @Composable (Float, Float) -> Unit
+): Composition {
+    val existing = composition
+
+    val next = if (existing == null || existing.isDisposed) {
+        Composition(VectorApplier(vector.root), parent)      // Here
+    } else {
+        existing
+    }
+    composition = next
+    next.setContent {
+        composable(vector.viewportWidth, vector.viewportHeight)
+    }
+    return next
+}
+```
+
+곧 다룰 Compose 고급 사용 사례 장에서는 다양한 `Applier` 전략을 선택하는 방법에 대해 더 깊이 탐구할 것입니다.  
+예를 들어, 위 코드에서는 `VectorApplier`를 사용하여 벡터 트리의 루트 노드를 가리키고 있습니다. 이 루트 노드는 `VNode`가 될 것입니다.  
+이처럼, 다른 `Applier` 전략을 통해 다양한 트리 구조를 효율적으로 관리할 수 있습니다.
+
+마지막으로, 컴포지션 생성의 또 다른 예시는 Compose UI의 `SubcomposeLayout`이 있습니다.  
+`SubcomposeLayout`는 자체 컴포지션을 유지하는 `Layout`으로, 측정(measuring) 단계에서 `content`를 서브 컴포즈(sub-compose)할 수 있습니다.  
+이는 부모의 측정 결과가 자식의 컴포지션에 필요할 때 유용합니다. (e.g : 부모의 크기나 위치를 기준으로 자식의 레이아웃 조정 시)
+
+사용 사례와 상관 없이, 컴포지션이 생성될 때 `parent: CompositionContext`를 전달할 수 있습니다. (위 예제 'Here' 참고)  
+부모 컨텍스트가 전달되면 새로운 컴포지션을 기존 컴포지션과 논리적으로 연결하여, 무효화와 `CompositionLocals`가 마치 동일한 컴포지션인것처럼 동작하도록 합니다.  
+하지만 부모 컨텍스트는 선택 사항이며, `null`일 수 있습니다.
+
+`Composition`을 생성할 때 리컴포즈 컨텍스트(re-compose context)도 전달할 수 있습니다.    
+이 컨텍스트는 `Applier`가 변경 사항을 적용하고 트리를 실체화하는데 사용하는 `CoroutineContext`입니다.  
+만약 이 컨텍스트가 별도로 제공되지 않으면, Recomposer에서 제공하는 기본 값인 `EmptyCoroutineContext`가 사용됩니다.  
+트리 실체화에 `EmptyCoroutineContext`가 사용되면, Android는 기본적으로 `AndroidUIDispatcher.Main` 리컴포즈(re-compose)를 수행합니다.
+
+컴포지션은 생성된 것과 같은 방식으로 더 이상 필요하지 않을 때는 반드시 폐기되어야 합니다.   
+`composition.dispose()`를 호출하여 컴포지션이 더 이상 필요하지 않거나, 해당 UI가 필요하지 않을 때 폐기할 수 있습니다.  
+컴포지션은 소유자(`Owner`)에 따라 범위(scope)가 지정된다고 할 수 있습니다.  
+컴포지션의 폐기 과정은 라이프사이클 옵저버 뒤에서 처리되는 `ViewGroup.setContent`의 경우처럼 명시적으로 드러나지 않을 수 있습니다.  
+그러나 이 폐기 작업은 항상 존재하며, 적절한 시점에 컴포지션을 정리하고 자원을 해제하는 역할을 합니다.
