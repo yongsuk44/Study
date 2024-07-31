@@ -496,4 +496,205 @@ interface Applier<N> {
 
 `Applier`는 트리 구조를 모든 노드를 순회하며, 필요한 변경 사항을 적용합니다.  
 이 과정에서 트리는 부모에서 자식으로 또는 자식에서 부모로 순회할 수 있으며, 현재 방문하고 있는 노드에 대한 참조를 유지합니다.   
-Composer는 변경 사항 적용을 시작하고 끝낼 때 `Applier`의 메서드 호출로, 부모에서 자식으로 또는 자식에서 부모로 노드를 삽입하거나 이동할 수 있는 다양한 방법을 제공합니다. 
+Composer는 변경 사항 적용을 시작하고 끝낼 때 `Applier`의 메서드 호출로, 부모에서 자식으로 또는 자식에서 부모로 노드를 삽입하거나 이동할 수 있는 다양한 방법을 제공합니다.
+
+## Performance when building the node tree
+
+노드 트리를 구축할 때, 트리를 상단에서 하단으로(top-down) 구축하는 것과 하단에서 상단으로(bottom-up) 구축하는 것 사이에는 중요한 차이가 존재합니다.
+
+### Inserting top-down
+
+다음 트리를 보면:
+
+```mermaid
+graph BT;
+    A --> B
+    C --> B
+    B --> R
+```
+
+위 트리를 하향식(top-down)으로 구축하려면 다음 순서를 따라야 합니다:
+
+1. B를 R에 삽입
+2. A를 B에 삽입
+3. C를 B에 삽입
+
+```mermaid
+graph RL;
+    subgraph 1
+        direction BT
+        B["B"] --> R["R"]
+    end
+
+    subgraph 2
+        direction BT
+        2A("A") --> 2B("B")
+        2B("B") --> 2R("R")
+    end
+
+    subgraph 3
+        direction BT
+        3A("A") --> 3B("B")
+        3C("C") --> 3B("B")
+        3B("B") --> 3R("R")
+    end
+```
+
+### Inserting bottom-up
+
+노드 트리의 상향식(bottom-up) 구축은 A와 C를 B에 삽입한 다음, B 트리를 R에 삽입하는 것으로 시작됩니다:
+
+```mermaid
+graph RL;
+    subgraph 1
+        direction BT
+        A["A"] --> B["B"]
+    end
+
+    subgraph 2
+        direction BT
+        2A("A") --> 2B("B")
+        2C("C") --> 2B("B")
+    end
+
+    subgraph 3
+        direction BT
+        3A("A") --> 3B("B")
+        3C("C") --> 3B("B")
+        3B("B") --> 3R("R")
+    end
+```
+
+트리를 구축할 때, 하향식(top-down)과 상향식(bottom-up) 방식의 성능 차이는 각 방식이 얼마나 많은 노드에게 알림을 보내야 하는지에 따라 달라집니다.
+이는 `Applier`의 구현에 따라 이 결정들이 이루어집니다.
+
+예를 들어, Compose를 사용하여 그래프를 표현할 때, 노드가 삽입될 때마다 모든 부모 노드에게 알림을 보내야 하는 경우를 가정해보겠습니다.
+
+하향식으로 구축하는 경우
+- 루트 노드부터 시작하여 각 자식 노드를 순차적으로 추가합니다.
+- 각 노드가 삽입될 때마다 여러 상위 노드(부모, 부모의 부모 등)에게 알림을 보낼 수 있습니다.
+- 트리에 새로운 레벨이 추가될 때마다 알림을 보내야 하는 노드의 수가 기하급수적으로 증가할 수 있습니다.
+
+상향식으로 구축하는 경우
+- 말단 노드부터 시작하여 상위 노드를 차례대로 추가합니다.
+- 각 노드가 삽입될 때마다 직접적인 부모 노드에게만 알림을 보냅니다.
+- 부모 노드는 아직 트리에 연결되지 않은 상태이므로 알림의 범위가 한정됩니다.
+
+이처럼, 삽입 전략은 트리 구조와 변경 사항이 어떻게 알림 처리되는지에 따라 달라집니다.  
+여기서 중요한 점은 삽입을 위해 하나의 전략을 선택하여 일관되게 사용하는 것이 중요합니다. (둘 모두 사용할 수 없습니다.)  
+
+## How changes are applied
+
+위에서 설명한 것처럼, 클라이언트 라이브러리는 `Applier` 인터페이스의 구현을 제공합니다.  
+이에 대한 예시로 Android UI를 위한 `UiApplier`가 있습니다. 
+이를 통해 "노드 적용"이 무엇을 의미하는지, 이 적용이 특정 사용 사례에서 화면에 보이는 컴포넌트를 어떻게 생성하는지 알 수 있습니다.
+
+구현을 살펴보면, 매우 간단합니다:
+
+```kotlin
+internal class UiApplier(
+    root: LayoutNode
+): AbstractApplier<LayoutNode>(root) {
+    override fun insertTopDown(index: Int, instance: LayoutNode) {
+        // Ignored
+    }
+    
+    override fun insertBottomUp(index: Int, instance: LayoutNode) {
+        current.insertAt(index, instance)
+    }
+    
+    override fun remove(index: Int, count: Int) {
+        current.removeAt(index, count)
+    }
+    
+    override fun move(from: Int, to: Int, count: Int) {
+        current.move(from, to, count)
+    }
+    
+    override fun onClear() {
+        current.removeAll()
+    }
+    
+    override fun onEndChanges() {
+        super.onEndChanges()
+        (root.owner as? AndroidComposeView)?.clearInvalidObservations()
+    }
+}
+```
+
+처음 볼 수 있는 것은 제네릭 타입 `N`이 `LayoutNode`로 고정되어 있다는 것입니다.  
+이는 Compose UI가 렌더링할 UI 노드를 나타내기 위해 선택한 노드 타입입니다.
+
+다음으로 주목할 점은 `UiApplier`가 `AbstractApplier`를 확장한다는 점입니다.  
+`AbstractApplier`는 방문한 노드들을 스택에 저장하는 기본 구현을 제공합니다.  
+새로운 노드를 방문할 때마다 이를 스택에 추가하고, 방문자가 부모 노드로 이동할 때마다 마지막으로 방문한 노드를 스택에서 제거합니다.  
+이는 대부분의 `Applier`에서 공통적으로 사용되는 패턴이므로, 공통 부모 클래스(`AbstractApplier`)에 두어 사용하고 있습니다.
+
+또한 `UiApplier`에서 `insertTopDown` 메서드를 무시하는 것을 볼 수 있습니다.  
+이런 이유는 Android가 삽입 작업을 상향식으로 수행되기 때문입니다.  
+앞서 언급한 바와 같이, 삽입 전략은 하나로 선택하는 것이 중요하며, 두 전략을 모두 사용해서는 안됩니다.  
+상향식 삽입은 새로운 자식이 삽입될 때 중복 알림을 피할 수 있기 때문에 성능상 이점이 있습니다.
+
+노드를 삽입-제거-이동하는 작업 모두, 해당 노드 자체에 위임됩니다.  
+`LayoutNode`는 Compose UI에서 UI 노드를 모델링하는 방식으로, 부모 노드와 자식 노드에 대한 모든 정보를 알고 있습니다.  
+- 노드 삽입은 주어진 위치에서 해당 노드를 새로운 부모 노드와 연결하는 것을 의미합니다.
+  - 이는 부모 노드가 여러 자식을 가질 수 있음을 의미합니다.  
+- 노드 이동은 부모 노드의 자식 목록을 재정렬하는 작업입니다.  
+- 노드 제거는 부모 노드의 자식 목록에서 해당 노드를 삭제하는 것을 의미합니다.
+
+변경 사항 적용이 완료되면 `onEndChanges()`를 호출하여 루트 노드 소유자(root node owner)에게 최종 작업을 위임합니다.  
+`onBeginChanges()`는 변경 사항 적용 전에 항상 호출된다고 가정되므로, `onEndChanges()`는 변경 사항 적용 후 반드시 호출되어야 합니다. 
+이 시점에서 보류 중인 모든 무효 관찰(invalid observations)이 제거됩니다.
+
+무효 관찰은 스냅샷 관찰로, 컴포저블이 읽고 있는 값이 변경될 때 자동으로 해당 컴포저블을 다시 그리거나 레이아웃을 다시 계산하도록 설계된 메커니즘입니다.
+예를 들어, 트리 구조에서 노드 추가-삽입-교체-이동 등 이러한 변화는 레이아웃(layout)이나 측정(measuring)에 영향을 줄 수 있습니다.
+
+## Attaching and drawing the nodes
+
+이제는 다음과 같은 질문에 답을 할 수 있습니다:  
+
+Q : 트리에 노드를 삽입하면(부모에 연결하면) 어떻게 화면에 표시되는가?  
+A : 노드는 자신을 그릴 수 있는 방법을 알고 있습니다.
+
+`LayoutNode`는 이 특정 사용 사례(Android UI)를 위해 선택된 노드 타입입니다.  
+`UiApplier` 구현이 노드 삽입을 `LayoutNode`에 위임하면 다음과 같은 순서로 작업이 진행됩니다:
+
+1. 노드를 삽입하기 전, 조건이 충족되었는지 확인합니다. (e.g : 노드가 이미 부모를 가지고 있지 않은지)
+2. 노드를 자식 목록에 추가하고, Z 인덱스에서의 빠른 정렬을 위해 정렬된 자식 목록을 업데이트합니다.
+3. 새로운 노드를 부모(`Owner`)에 연결합니다.
+
+> `Owner`는 트리의 루트에 위치하며, 기본 View 시스템과 연결을 구현합니다.  
+> 이를 통해 노드는 실제로 Android View 시스템에 연결되며, 레이아웃, 그리기, 입력 및 접근성 기능을 사용할 수 있습니다.
+> 
+> `Owner`는 `AndroidComposeView`에 의해 구현되며, 자체적으로 `View` 입니다.  
+> `LayoutNode`는 화면에 표시되기 위해 `Owner`에 연결되어야 하며, 그 부모 노드도 동일한 `Owner`에 연결되어 있어야 합니다.
+> `Owner`도 Compose UI의 일부입니다.
+
+```mermaid
+graph BT
+    LN1("LayoutNode") --> LNM1("LayoutNode")
+    LN2("LayoutNode") --> LNM1("LayoutNode")
+    LN3("LayoutNode") --> LNM2("LayoutNode")
+    LN4("LayoutNode") --> LNM2("LayoutNode")
+    LNM1 --> Owner("Owner")
+    LNM2 --> Owner("Owner")
+```
+
+노드를 연결할 때 추가로 수행되는 작업들은 노드가 올바르게 트리에 통합되고 화면에 렌더링되도록 보장합니다.  
+이 작업들은 다음과 같습니다:
+
+- 노드가 이미 연결되어 있는지, 또는 부모의 `Owner`와 다른 `Owner`에 연결하려고 시도하는지 확인합니다.
+  - 노드는 부모 노드와 동일한 `Owner`에 연결되어야만 화면에 올바르게 표시될 수 있습니다.
+- 새로운 시멘틱 노드가 시멘틱 트리에 추가되므로, 부모 노드의 시멘틱 정보를 업데이트합니다.
+  - 시멘틱 트리는 접근성 서비스나 UI 테스트에서 사용되는 중요한 정보를 포함하는 병렬 트리입니다.
+- `Owner`에게 레이어 생성을 요청하여, Compose UI 캔버스를 사용해 `LayoutNode` 콘텐츠를 그리는 방법을 알려줍니다.
+  - Compose UI 캔버스는 Android 캔버스를 래핑하고 위임하여, Android 전용으로 구현된 추상화 개념입니다.
+- `Owner`는 `AndroidComposeView`에 의해 구현되므로, 노드가 변경된 후 View의 원시 기능 모두에 접근하여 무효화 작업을 수행합니다.
+- 노드가 부모와 연결된 후, `Owner`와 부모 노드에게 다시 측정을 요청합니다.
+
+마침내, Compose UI가 Android에서 노드 트리를 어떻게 실체화하는지 알 수 있게 되었습니다.  
+`Applier` 구현은 노드 트리를 구성하는 개별 노드들에 작업을 위임합니다.  
+각 노드는 자신을 캔버스에 그리는 방법을 알고 있으며, 변경 사항이 발생할 때 이를 반영하기 위해 필요한 무효화를 수행합니다.  
+
+지금까지, Compose UI의 노드 트리가 어떻게 실체화되고, 개별 노드가 자신을 어떻게 그리는지 자세하게 살펴보았습니다.  
+이제부터 컴포지션 과정 자체에 대해 더 깊이 파고들어보겠습니다.
