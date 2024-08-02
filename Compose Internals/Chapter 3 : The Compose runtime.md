@@ -817,3 +817,77 @@ private fun composeVector(
 컴포지션은 소유자(`Owner`)에 따라 범위(scope)가 지정된다고 할 수 있습니다.  
 컴포지션의 폐기 과정은 라이프사이클 옵저버 뒤에서 처리되는 `ViewGroup.setContent`의 경우처럼 명시적으로 드러나지 않을 수 있습니다.  
 그러나 이 폐기 작업은 항상 존재하며, 적절한 시점에 컴포지션을 정리하고 자원을 해제하는 역할을 합니다.
+
+## The initial Composition process
+
+이전 예제 코드를 보면, 새로운 컴포지션이 생성될 때마다 `composition.setContent(content)`이 항상 호출됩니다.  
+이는 컴포지션이 처음으로 데이터를 채우는 과정이며, 이 과정에서 슬롯 테이블은 컴포지션의 상태와 UI 요소들의 데이터로 채워집니다.
+
+`composition.setContent(content)` 호출은 부모 컴포지션에 위임되어 초기 컴포지션 과정을 시작합니다.  
+(컴포지션과 서브 컴포지션이 부모의 `CompositionContext`를 통해 연결되는 방식을 기억해보세요.)
+
+```kotlin
+override fun setContent(content: @Composable () -> Unit) {
+    // ...
+    this.composable = content
+    parent.composeInitial(this, composable) // `this` is the current Composition
+}
+```
+
+서브 컴포지션의 부모는 다른 컴포지션이 되고, 루트 컴포지션의 부모는 `Recomposer`가 됩니다.  
+그러나, 초기 컴포지션을 수행하는 모든 로직은 `Recomposer`에 의존합니다.  
+서브 컴포지션에서 `composeInitial` 호출은 부모 컴포지션에 위임되며, 이러한 위임 과정이 계속 반복되어 루트 컴포지션에 도달하게 되면
+루트 컴포지션에서 `Recomposer`가 초기 컴포지션 과정을 수행합니다.
+
+따라서 `parent.composeInitial(composition, content)` 호출은 `recomposer.composeInitial(composition, content)`로 변환되어 초기 컴포지션을 채우기 위한 몇 가지 중요한 작업을 수행합니다:
+
+1. 모든 상태(State) 객체의 현재 값을 스냅샷으로 저장합니다. 이 값들은 다른 스냅샷의 변경 사항으로부터 격리됩니다.    
+또한, 이 스냅샷은 **수정** 가능하고, 동시성 안정성(concurrency safe)을 보장합니다.  
+상태 객체의 모든 변경 사항은 해당 스냅샷에만 적용되기에 다른 스냅샷에 영향을 주지 않고 안전하게 수정될 수 있습니다.  
+이후 단계에서 상태 객체의 모든 변경 사항은 전역 공유 상태(global shared state)와 원자적으로 동기화됩니다.
+
+2. 가변 스냅샷의 상태 값은 `snapshot.enter(block: () -> T)`를 호출할 때 전달된 블록 내에서만 수정될 수 있습니다.
+   
+3. 스냅샷을 찍을 때 `Recomposer`는 상태 객체에 대한 읽기/쓰기 작업을 감지할 수 있는 관찰자(observers)를 전달하여,   
+상태 객체가 읽히거나 쓰일 때마다 컴포지션에 알림을 줍니다. 
+이를 통해 `Composition`은 영향을 받는 재구성 범위를 `used`로 플래그 처리하고, 해당 범위가 나중에 다시 재구성될 수 있도록 합니다.
+
+4. `snapshot.enter(block)`을 호출하여, 실제로 컴포지션이 이루어지는 블록(`composition.composeContent(content)`)을 전달함으로써 스냅샷에 진입합니다.
+스냅샷에 진입하는 작업은 컴포지션 동안 읽거나 쓰는 모든 상태 객체가 `Recomposer`에 의해 추적되도록 하여, 상태 변경 사항이 컴포지션에 통보되도록 합니다.
+
+5. 컴포지션 과정은 Composer에게 위임됩니다. (이 단계에 대해서는 아래에서 더 자세히 다룰 것입니다.)
+
+6. 컴포지션이 완료되면, 상태 객체에 대한 모든 변경 사항은 현재 상태 스냅샷에만 적용됩니다.  
+따라서 이러한 변경 사항을 전역 상태로 전파할 필요가 있으며, 이는 `snapshot.apply()`를 호출하여 수행됩니다.
+
+이것이 '초기 컴포지션 과정'의 대략적인 순서입니다. 상태 스냅샷 시스템에 관한 모든 내용은 다음 장에서 더 자세히 다루게 됩니다.
+
+이제 컴포지션 과정을 구체적으로 설명하겠습니다.  
+이 과정은 Composer에게 위임되며, 대략적으로 다음 순서로 진행됩니다:
+
+1. 컴포지션이 이미 실행 중인 경우, 컴포지션을 시작할 수 없습니다.  
+이 경우 예외가 발생하고, 새로운 컴포지션은 무시됩니다. 이는 컴포지션의 재진입을 방지하기 위한 조치입니다.
+2. 보류 중인 무효화가 있는 경우, 이를 Composer가 관리하는 무효화 목록으로 복사됩니다.  
+이 무효화 목록은 재구성이 필요한 `RecomposeScopes`를 추적하고 관리하는데 사용됩니다.
+3. 컴포지션이 시작되기 전에 `isComposing` 플래그를 `true`로 설정하여, 현재 컴포지션이 진행 중임을 표시합니다.
+4. `startRoot()`를 호출하여 컴포지션을 시작합니다.  
+이는 슬롯 테이블에서 컴포지션의 루트 그룹을 시작하고, 필요한 다른 필드와 구조를 초기화 합니다.
+5. `startGroup()`을 호출하여 슬롯 테이블에서 `content`에 대한 그룹을 시작합니다.
+6. `content` 람다를 호출하여 모든 변경 사항을 발행합니다.
+7. `endGroup()`을 호출하여 컴포지션을 종료합니다.
+8. 컴포지션이 완료되었으므로 `isComposing` 플래그를 `false`로 설정하여, 현재 컴포지션이 종료되었음을 표시합니다.
+9. 임시 데이터를 유지하는 다른 구조를 정리합니다.
+
+## Applying changes after initial Composition
+
+초기 컴포지션이 완료된 후, `Applier`는 `composition.applyChanges()`를 통해 기록된 모든 변경 사항을 적용하도록 알립니다.
+이 과정은 컴포지션을 통해 수명되며, 다음 단계로 진행됩니다:
+
+1. `Composition`은 `applier.onBeginChanges()`를 호출하여 변경 사항 적용을 시작합니다.
+2. `Composition`은 변경 사항 목록을 순회하면서 각 변경 사항을 실행하고, 필요한 `Applier`와 `SlotWriter` 인스턴스를 각 변경 사항에 전달합니다.
+3. 모든 변경 사항이 적용된 후, `applier.onEndChanges()`를 호출하여 변경 사항 적용을 종료합니다.
+
+이 후, 등록된 모든 `RememberedObservers`를 디스패치하여, 컴포지션에 들어가거나 나갈 때 `RememberObserver` 계약을 구현하는 클래스들이 알림을 받을 수 있도록 합니다.
+이 계약을 구현하는 클래스로는 `LaunchedEffect`나 `DisposableEffect` 등이 있으며, 이를 통해 컴포지션 내에서 컴포저블 생명주기에 효과(effect)를 제한할 수 있습니다.
+
+마지막으로, 모든 `SideEffects`가 기록된 순서대로 트리거됩니다.
