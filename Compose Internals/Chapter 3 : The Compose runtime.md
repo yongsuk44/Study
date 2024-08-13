@@ -848,7 +848,7 @@ override fun setContent(content: @Composable () -> Unit) {
 
 2. 가변 스냅샷의 상태 값은 `snapshot.enter(block: () -> T)`를 호출할 때 전달된 블록 내에서만 수정될 수 있습니다.
    
-3. 스냅샷을 찍을 때 `Recomposer`는 상태 객체에 대한 읽기/쓰기 작업을 감지할 수 있는 관찰자(observers)를 전달하여,   
+3. 스냅샷을 찍을 때 `Recomposer`는 상태 객체에 대한 읽기/쓰기 작업을 감지할 수 있는 옵저버를 전달하여,   
 상태 객체가 읽히거나 쓰일 때마다 컴포지션에 알림을 줍니다. 
 이를 통해 `Composition`은 영향을 받는 재구성 범위를 `used`로 플래그 처리하고, 해당 범위가 나중에 다시 재구성될 수 있도록 합니다.
 
@@ -926,3 +926,181 @@ Composer는 다음 조건을 만족할 때, 재구성을 건너뛴다고 가정�
 또한, 컴포지션이나 재구성을 수행할 스레드와 변경 사항을 적용할 스레드를 결정하는 역할을 합니다.
 
 `Recomposer`를 생성하고 무효화를 대기하도록 설정하는 방법을 알아보겠습니다.
+
+## Spawning the Recomposer
+
+Compose에서 클라이언트 라이브러리가 시작하는 첫 단계는 컴포지션을 생성하고, 이를 통해 `setContent`를 호출하는 것입니다.  
+이는 앞서 설명한 [Creating a Composition](#creating-a-composition)에서 다룬 내용입니다.  
+컴포지션을 생성할 때는 반드시 '부모'를 제공해야 합니다.  
+여기서, 루트 컴포지션의 부모는 `Recomposer`이므로, 컴포지션을 생성할 때는 `Recomposer`도 생성해야 합니다.
+
+`setContent`를 호출하는 과정은 플랫폼과 Compose 런타임을 연결하는 중요한 단계이며, 이는 클라이언트가 제공하는 코드로 이루어집니다.  
+Android에서는 이와 같은 역할을 Compose UI가 담당합니다. 클라이언트 라이브러리는 컴포지션을 생성하고(내부적으로는 자체 Composer를 생성), 부모로 사용할 `Recomposer`를 생성합니다.
+
+> 각 플랫폼에서는 각각의 컴포지션을 생성할 가능성이 있습니다.  
+> 또한, 이와 마찬가지로 각자 자신의 `Recomposer`를 생성할 가능성도 있다는 점을 기억하세요.
+
+Android의 `ViewGroup`에서 Compose를 사용하려면 `ViewGroup.setContent`를 호출해야 합니다.  
+이 호출은 여러 단계를 거쳐서, 'Recomposer Factory'에게 부모 컨텍스트를 생성하는 작업을 위임합니다:
+
+```kotlin
+fun interface WindowRecomposerFactory {
+    fun createRecomposer(windowRootView: View): Recomposer
+    
+    companion object {
+        val LifecycleAware: WindowRecomposerFactory = WindowRecomposerFactory { rootView ->
+            rootView.createLifecycleAwareViewTreeRecomposer()
+        }
+    }
+}
+```
+
+이 팩토리는 현재 윈도우에 대한 `Recomposer`를 생성합니다.  
+이 생성 과정은 Android가 Compose와 통합하는 방법에 대한 많은 단서를 제공하므로, 매우 흥미로운 주제입니다.
+
+`createRecomposer`를 호출하려면 루트 뷰에 대한 참조를 전달해야 합니다.  
+이렇게 하면 생성된 `Recomposer`가 라이프사이클을 인식하게 되어, 뷰 계층 구조 루트에 있는 `ViewTreeLifecycleOwner`와 연결됩니다.  
+이를 통해, 뷰 트리가 분리될 때 `Recomposer`를 취소(종료)할 수 있으며, 이 방식은 재구성 프로세스가 메모리 누수 없이 안전하게 종료되도록 하는데 중요합니다.  
+(재구성 프로세스는 `suspend` 함수로 모델링되었으며, suspend 함수가 아닌 경우 메모리 누수가 발생할 수 있습니다.)
+
+> Compose UI에서는 모든 UI 작업이 `AndroidUiDispatcher`를 사용하여 조정되거나 디스패치됩니다.  
+> 이 디스패처는 `Choreographer` 인스턴스와 메인 `Looper`의 핸들러와 연결되어 있으며, 핸들러 콜백이나 `Choreographer`의 애니메이션 프레임 단계 중 먼저 발생하는 이벤트 디스패치를 수행합니다. 
+> 또한, 이 디스패처는 프레임 렌더링을 조정하기 위해 `suspend`를 사용하는 `MonotonicFrameClock`와 연결되어 있습니다.  
+> 
+> 이 과정이 Compose 전체 UX를 구동하며, 애니메이션과 같은 작업이 시스템 프레임과 동기화되어 부드러운 UX를 제공하는데 많이 의존합니다.
+
+팩토리 함수는 가장 먼저 `AndroidUiDispatcher`의 'Monotonic Clock'을 래핑하는 `PausableMonotonicFrameClock`를 생성합니다.  
+이 클래스는 `withFrameNanos` 이벤트의 디스패치를 수동으로 일시 중지하고, 다시 시작할 수 있도록 지원합니다.   
+이는 UI를 호스팅하는 윈도우가 더 이상 보이지 않을 때와 같이 특정 시간 동안 프레임을 생성하지 않아야 하는 경우에 유용합니다.
+
+모든 `MonotonicFrameClock`은 `CoroutineContext.Element`이기도 하므로, 다른 `CoroutineContext`와 결합할 수 있습니다.
+
+`Recomposer`를 인스턴스화할 땐, 반드시 `CoroutineContext`를 제공해야 합니다.  
+이 컨텍스트는 `AndroidUiDispatcher`의 현재 스레드 컨텍스트와 생성된 `PausableMonotonicFrameClock`을 결합하여 생성됩니다.
+
+```kotlin
+val contextWithClock = currentThreadContext + (pauseableClock ?: EmptyCoroutineContext)
+val recomposer = Recomposer(effectCoroutineContext = contextWithClock)
+```
+
+이렇게 결합된 컨텍스트는 `Recomposer`가 내부 `Job`을 생성하여, `Recomposer`가 종료될 때, 모든 컴포지션 또는 재구성 이펙트를 안전하게 취소할 수 있도록 합니다. 
+예를 들어, Android 윈도우가 파괴(destroyed)되거나 분리(unattached)될 때 이 작업이 필요합니다.  
+
+또한, 결합된 컨텍스트는 컴포지션 또는 재구성 후 변경 사항을 적용하는 데 사용되며, 추가로 `LaunchedEffect`가 이펙트를 실행하는 데 사용되는 기본 컨텍스트가 됩니다. 
+이로 인해, 이펙트가 변경 사항을 적용하는 데 사용하는 스레드와 동일한 스레드에서 시작되며, Android에서는 일반적으로 메인 스레드를 사용합니다.  
+물론, 이펙트 내에서 필요에 따라 언제든지 메인 스레드를 벗어날 수 있습니다.
+
+> `LaunchedEffect`는 이펙트 핸들러로, 이에 대한 자세한 내용은 해당 주제에 대한 장에서 다룰 예정입니다.  
+> 모든 이펙트 핸들러는 컴포저블 함수이며, 변경 사항을 발생시키고 이를 기록합니다. `LaunchedEffect`는 실제로 기록되며, 적절한 시점에 슬롯 테이블에 저장됩니다. 
+> 따라서 `LaunchedEffect`는 `SideEffect`와 달리 컴포지셔 라이프사이클을 인식합니다.
+
+마지막으로, 결합된 컨텍스트를 사용하여 `CoroutineScope`를 생성합니다.  
+이 스코프는 재구성 작업(suspend 함수)을 시작하는 데 사용되며, 무효화가 발생할 떄까지 기다린 후, 재구성을 트리거합니다.
+
+```kotlin
+val runRecomposeScope = CoroutineScope(contextWithClock)
+```
+
+뷰 계층 구조 루트에 있는 `ViewTreeLifecycleOwner`와 연결되는 코드를 살펴보겠습니다:  
+
+```kotlin
+viewTreeLifecycleOwner.lifecycle.addObserver(
+    object : LifecycleEventObserver { 
+        override fun onStateChanged(owner: LifecycleOwner, event: Lifecycle.Event) {
+            val self = this
+            
+            when (event) {
+                Lifecycle.Event.ON_CREATE -> {
+                    runRecomposeScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        try {
+                            recomposer.runRecomposeAndApplyChanges()
+                        } finally {
+                            // After completion or cancellation
+                            owner.lifecycle.removeObserver(self)
+                        }
+                    }
+                }
+                Lifecycle.Event.ON_START -> pausableClock?.resume()
+                Lifecycle.Event.ON_STOP -> pausableClock?.pause()
+                Lifecycle.Event.ON_DESTROY -> recomposer.cancel()
+            }
+        }
+    }
+)
+```
+
+뷰 트리의 라이프사이클에 옵저버가 추가되며, 'Pausable Clock'을 사용하여 뷰 트리가 시작될 때 이벤트 디스패치를 재개하고, 중지될 때 이벤트 디스패치를 일시 중지합니다.
+또한, 뷰 트리가 파괴될 때 `Recomposer`를 종료(취소)하고, 뷰 트리가 생성될 때 재구성 작업을 시작합니다.
+
+재구성 작업은 `recomposer.runRecomposeAndApplyChanges()`에 의해 시작됩니다.  
+이 함수는 앞서 언급한 suspend 함수로, 연관된 Composer(및 그들의 `RecomposeScope`)의 무효화를 기다린 후, 재구성을 수행하고, 마지막으로 새로운 변경 사항을 컴포지션에 적용합니다.
+
+'Recomposer Factory'는 Compose UI에서 Android 라이프사이클에 연결된 `Recomposer`를 생성하는 방법입니다.  
+이는 플랫폼과의 통합 지점에서 컴포지션과 함께 `Recomposer`가 어떻게 생성되는지를 잘 보여주는 예시입니다.  
+다시 한번 상시시키자면, `ViewGroup`에 `content`를 설정할 때 컴포지션이 어떻게 생성되는지 살펴보겠습니다:
+
+```kotlin
+internal fun ViewGroup.setContent(
+    parent: CompositionContext,
+    content: @Composable () -> Unit
+): Composition {
+    // ...
+    val composeView = ...
+    return doSetContent(composeView, parent, content)
+}
+
+private fun doSetContent(
+    owner: AndroidComposeView,
+    parent: CompositionContext,
+    content: @Composable () -> Unit
+): Composition {
+    // ...
+    val original = Composition(UiApplier(owner.root), parent)           // Here
+    val wrapped = owner.view.getTag(R.id.wrapped_composition_tag) 
+        as? WrappedComposition ?: WrappedComposition(owner, original).also {
+            owner.view.setTag(R.id.wrapped_composition_tag, it)    
+        }
+    wrapped.setContent(content)
+    return wrapped
+}
+```
+
+이곳의 부모는 `Recomposer`가 될 것이며, `setContent`를 호출하는 쪽에서 제공됩니다.  
+이 사용 사례에서는 `AbstractComposeView`가 될 것입니다.
+
+## Recomposition process
+
+`recomposer.runRecomposeAndApplyChanges()` 함수는 무효화를 기다리고, 무효화가 발생하면 자동으로 재구성을 수행하기 위해 호출됩니다.  
+이제 이 과정에 포함된 다양한 단계들을 살펴보곘습니다.
+
+이전 섹션에서 스냅샷 상태가 자신의 스냅샷 내에서 어떻게 수정되는지 배웠지만, 이후 이러한 변경 사항은 `snapshot.apply()`를 통해 전역 상태로 전파되어 동기화되어야 합니다.
+`recomposer.runRecomposeAndApplyChanges()`를 호출하면 가장 먼저, 이 변경 사항을 전파하기 위한 옵저버를 등록합니다.
+이후 변경 사항이 발생하면 이 옵저버가 활성화되어 모든 변경 사항을 스냅샷 무효화 목록에 추가하고, 이를 알려진 모든 Composer에게 전파하여 어떤 부분이 재구성되어야 하는지를 기록할 수 있도록 합니다.
+간단히 말해, 이 옵저버는 상태가 변경될 때 자동으로 재구성을 트리거하는 중요한 역할을 합니다.
+
+스냅샷을 적용하는 옵저버를 등록한 후, `Recomposer`는 모든 컴포지션을 무효화하여 이전에 발생한 모든 변경 사항을 반영하지 않았다고 가정하고 처음부터 다시 시작합니다.
+이는 이전에 발생한 변경 사항들이 추적되지 않았기 때문에, 이를 보완하기 위해 모든 것을 새로 시작하는 것입니다.
+그런 다음 `Recomposer`는 재구성이 필요한 작업이 있을 때까지 대기합니다.
+여기서 "작업이 있다"는 것은 보류 중인 상태 스냅샷 무효화가 있거나, `RecomposeScope`에서 컴포지션이 무효화된 상황을 의미합니다.
+
+`Recomposer`가 다음으로 수행하는 작업은, 생성할 때 제공된 'Monotonic Clock'을 사용하여 `parentFrameClock.withFrameNanos { }`를 호출하고, 다음 프레임이 도착할 때까지 기다리는 것입니다.
+이후의 모든 작업은 이 프레임이 도착한 시점에 수행되며, 그 이전에는 작업이 수행되지 않습니다.  
+이렇게 하는 이유는 여러 변경 사항들을 하나의 프레임에 맞춰서 함께 처리하기 위함입니다.
+
+이 블록 안에서 `Recomposer`는 먼저 'Monotonic Clock' 프레임을 디스패치하여, 애니메이션과 같은 잠재적인 대기자들에게 전달합니다.  
+이 과정에서 새로운 무효화가 발생할 수 있으며, 이 무효화 역시 추적해야 합니다.  
+예를 들어, 애니메이션이 끝날 때 조건부 컴포저블의 상태가 변경되는 경우가 이에 해당합니다.
+
+이제 본격적인 작업이 시작됩니다. `Recomposer`는 마지막 재구성 호출 이후 수정된 모든 상태 값(보류 중인 모든 스냅샷 무효화)을 가져와, 모든 변경 사항을 Composer에 기록하여 재구성 대기 작업으로 만듭니다.
+
+`composition.invalidate()`를 통해 무효화된 컴포지션이 있을 수도 있습니다. 예를 들어, 상태가 컴포저블 람다 내에서 변경된 경우가 이에 해당합니다.
+`Recomposer`는 이러한 모든 무효화된 컴포지션에 대해 재구성을 수행하고, 변경 사항을 적용할 대기 중인 컴포지션 목록에 추가합니다.
+
+재구성이란, 컴포지션 상태(슬롯 테이블)와 실체화된 트리(Applier)에 필요한 모든 변경 사항을 다시 계산하는 것을 의미합니다.  
+이 과정은 이미 [The initial Composition process](#the-initial-composition-process)에서 다뤘으므로, 이 섹션을 참조하세요. 
+
+이후에 컴포지션으로 값이 변경되어 재구성이 필요한 잠재적인 후행 재구성을 찾아, 이를 재구성할 수 있도록 예약합니다.  
+예를 들어, 부모 컴포지션에서 `CompositionLocal` 값이 변경되고, 이 값이 자식 컴포지션에서 사용되었을 때, 자식 컴포지션이 여전히 유효하더라도 재구성이 필요할 수 있습니다.
+
+마지막으로, `Recomposer`는 변경 사항이 적용되어야 하는 모듴 컴포지션을 순회하며 `composition.applyChanges()`를 호출합니다.  
+그 후, `Recomposer`의 상태를 업데이트합니다.
