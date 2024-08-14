@@ -1041,7 +1041,7 @@ viewTreeLifecycleOwner.lifecycle.addObserver(
 
 ```kotlin
 internal fun ViewGroup.setContent(
-    parent: CompositionContext,
+    parent: CompositionContext,                         // Recomposer is passed here
     content: @Composable () -> Unit
 ): Composition {
     // ...
@@ -1070,7 +1070,7 @@ private fun doSetContent(
 
 ## Recomposition process
 
-`recomposer.runRecomposeAndApplyChanges()` 함수는 무효화를 기다리고, 무효화가 발생하면 자동으로 재구성을 수행하기 위해 호출됩니다.  
+`recomposer.runRecomposeAndApplyChanges()`는 무효화를 기다리고, 무효화가 발생하면 자동으로 재구성을 수행하기 위해 호출됩니다.  
 이제 이 과정에 포함된 다양한 단계들을 살펴보곘습니다.
 
 이전 섹션에서 스냅샷 상태가 자신의 스냅샷 내에서 어떻게 수정되는지 배웠지만, 이후 이러한 변경 사항은 `snapshot.apply()`를 통해 전역 상태로 전파되어 동기화되어야 합니다.
@@ -1104,3 +1104,56 @@ private fun doSetContent(
 
 마지막으로, `Recomposer`는 변경 사항이 적용되어야 하는 모듴 컴포지션을 순회하며 `composition.applyChanges()`를 호출합니다.  
 그 후, `Recomposer`의 상태를 업데이트합니다.
+
+## Concurrent recomposition
+
+Recomposer는 재구성을 동시에 수행할 수 있는 기능을 가지고 있습니다.  
+비록 Compose UI에서 이 기능을 사용하지 않더라도, 다른 클라이언트 라이브러리는 필요에 따라 이를 활용할 수 있습니다.
+
+Recomposer는 `runRecomposeAndApplyChanges()`의 동시 수행 버전인 `runRecomposeConcurrentlyAndApplyChanges()`를 제공합니다. 
+이 함수는 상태 스냅샷의 무효화를 대기하고, 자동으로 재구성을 수행하는 `suspend` 함수로, 이전 함수와 동일한 기능을 수행합니다.   
+
+다만, `runRecomposeConcurrentlyAndApplyChanges` 함수는 무효화된 컴포지션을 외부에서 제공된 `CoroutineContext`에서 재구성한다는 점에서 차이가 있습니다:
+
+```kotlin
+suspend fun runRecomposeConcurrentlyAndApplyChanges(
+    context: CoroutineContext
+) { ... }
+```
+
+이 `suspend` 함수는 전달된 `CoroutineContext`를 사용하여 자체적인 `CoroutineScope`를 생성하고, 이 스코프 내에서 필요한 모든 동시 재구성(concurrent recomposition) 작업을 위한 `Job`을 생성하고 조정합니다. 
+
+## Recomposer states
+
+Recomposer는 수명 주기 동안 다양한 상태를 거칩니다:
+
+```kotlin
+enum class State {
+    ShutDown,
+    ShuttingDown,
+    Inactive,
+    InactivePendingWork,
+    Idle,
+    PendingWork
+}
+```
+
+다음은 kdocs에서 직접 가져온 정보로, 다시 정리할 필요가 없습니다. 각 상태의 의미는 다음과 같습니다:
+
+- ShutDown 
+  - Recomposer가 취소되었으며, 정리 작업이 완료되었습니다.
+  - 더 이상 사용할 수 없습니다.
+- ShuttingDown
+  - Recomposer가 취소되었지만, 정리 작업이 진행 중입니다.
+  - 더 이상 사용할 수 없습니다.
+- Inactive
+  - Recomposer가 Composer에서 발생하는 무효화를 무시하고, 이에 따라 재구성을 트리거하지 않습니다.
+  - `runRecomposeAndApplyChanges()`를 호출해야 무효화를 감지하고 처리하기 시작합니다.
+  - Inactive 상태는 Recomposer가 생성된 직후의 초기 상태입니다.
+- InactivePendingWork 
+  - Recomposer가 비활성 상태이지만, 이미 프레임을 기다리고 있는 보류 중인 이펙트가 있는 상태입니다.
+  - Recomposer가 실행되면 프레임이 생성됩니다.
+- Idle
+  - Recomposer가 컴푖션과 스냅샷 무효화를 추적하지만, 현재 처리할 작업이 없는 상태입니다.
+- PendingWork
+  - Recomposer가 보류 중인 작업을 인지하고 있으며, 이미 그 작업을 수행 중이거나, 수행할 준비를 하고 있는 상태입니다.
