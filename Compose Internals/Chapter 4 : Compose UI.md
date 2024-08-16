@@ -357,3 +357,203 @@ Compose UI는 Android 플랫폼과 Compose 런타임을 통합하기 위해 두 
 새로운 자식 노드가 `VNode`에 삽입될 때는 해당 노드의 리스너에게 알림을 보내지만, 자식 노드나 부모 노드에게는 알림이 전파되지 않습니다.
 
 이제 Compose UI 라이브러리가 사용하는 두 가지 `Applier` 구현에 대해 이해했으니, 이들이 최종적으로 UI에서 변경 사항(Changes)을 어떻게 실체화하는지 알아볼 차례입니다.
+
+## Materializing a new LayoutNode
+
+다음은 Compose UI에서 사용되는 `UiApplier`의 단순화된 버전입니다:
+
+```kotlin
+internal class UiApplier(
+    root: LayoutNode,
+) : AbstractApplier<LayoutNode>(root) {
+    
+    override fun insertTopDown(index: Int, instance: LayoutNode) {
+        // Ignored. (The tree is built bottom-up with this one).
+    }
+  
+    override fun insertBottomUp(index: Int, instance: LayoutNode) { 
+        current.insertAt(index, instance)
+    }
+  
+    override fun remove(index: Int, count: Int) { 
+        current.removeAt(index, count)
+    }
+  
+    override fun move(from: Int, to: Int, count: Int) {
+        current.move(from, to, count)
+    }
+  
+    override fun onClear() { 
+        root.removeAll()
+    }
+
+    ...
+}
+```
+
+위 구현에서는 노드 타입이 `LayoutNode`로 고정되어 있으며, 트리에서 노드를 삽입, 제거 또는 이동하는 모든 작업이 현재 방문 중인 노드에 위임됩니다.  
+`LayoutNode`는 스스로를 실체화하는 방법을 알고 있어서, 런타임은 이 세부 사항에 대해 알 필요가 없기에, 노드에 위임하는 방식은 합리적인 방식입니다.
+
+`LayoutNode`는 다음과 같은 특징을 가지고 있습니다:
+
+- 플랫폼에 의존하지 않는 순수 Kotlin 클래스로, 이런 특성으로 여러 플랫폼(Android, Desktop)에서 사용할 수 있도록 설계되었습니다.
+- UI 노드를 모델링하며, 자식 노드 목록을 유지하고, 자식 노드를 삽입-제거-이동(재정렬) 하는 작업을 제공합니다.
+- 트리 구조로 연결되어 있어, 각 `LayoutNode`는 부모에 대한 참조를 가지고 있고, 모두 동일한 `Owner`와 연결됩니다.
+
+부모에 대한 참조를 가지고, 모두 동일한 `Owner`와 연결되는 요구 사항은 새로운 노드가 연결될 때마다 적용됩니다.  
+아래는 이러한 계층 구조를 보여주는 다이어그램입니다:
+
+```mermaid
+graph BT
+    LN1("LayoutNode") --> LNM1("LayoutNode")
+    LN2("LayoutNode") --> LNM1("LayoutNode")
+    LN3("LayoutNode") --> LNM2("LayoutNode")
+    LN4("LayoutNode") --> LNM2("LayoutNode")
+    LNM1 --> Owner("Owner")
+    LNM2 --> Owner("Owner")
+```
+
+`Owner`는 추상화된 개념으로써 플랫폼과의 통합 지점을 의미하며, 각 플랫폼이 이를 다르게 구현할 수 있습니다.  
+Android에서 `Owner`는 View(`AndroidComposeView`)로 구현되며, 컴포저블 트리(`LayoutNode`)와 Android View 시스템 간의 연결을 담당합니다.  
+
+노드가 연결, 분리, 재정렬, 재측정되거나, 어떤 방식으로든 업데이트될 때마다, `Owner`를 통해 Android `View` API를 사용하여 무효화를 트리거할 수 있습니다.
+그 결과, 다음 드로우 패스(draw pass)에서 화면에 최신 변경 사항이 반영됩니다. 이러한 방식으로 화면에 변경 사항이 반영됩니다.
+
+새로운 노드가 어떻게 삽입되고, 실체화되는지를 이해하기 위해서 `LayoutNode#insertAt` 작업을 간단히 살펴보겠습니다.
+
+```kotlin
+internal fun insertAt(
+    index: Int,
+    instance: LayoutNode
+) {
+    check(instance._foldedParent == null) {
+        "Cannot insert, it already has a parent"
+    }
+  
+    check(instance.owner == null) {
+        "Cannot insert, it already has an owner"
+    }
+  
+    instance._foldedParent = this
+    _foldedChildren.add(index, instance)
+    onZSortedChildrenInvalidated()
+  
+    instance.outerLayoutNodeWrapper.wrappedBy = innerLayoutNodeWrapper
+  
+    val owner = this.owner
+    if (owner != null) {
+        instance.attach(owner)
+    }
+}
+```
+
+몇 가지 안정성 검사를 통해 노드가 이미 트리에 있거나, 이미 연결되어 있는지를 확인한 후, 현재 노드가 새로 삽입되는 노드의 부모로 설정됩니다.  
+이후, 새로운 노드는 새로운 부모에 의해 관리되는 자식 목록에 추가됩니다. 이와 더불어, Z 인덱스로 정렬된 자식 목록이 무효화됩니다.  
+
+이 목록은 자식 노드들을 Z 인덱스에 따라 정렬하여, 낮은 Z 인덱스부터 순서대로 그려질 수 있도록 유지하는 역할을 합니다.  
+이 목록을 무효화하면 재정렬이 이루어지게 되며, 이는 새로운 노드가 삽입된 후에 필요한 작업입니다.   
+왜냐하면, Z 인덱스는 레이아웃에서 `placeable.place()` 호출 순서뿐만 아니라, `Modifier.zIndex()`를 사용하여 임의의 값으로 설정할 수 있기 때문입니다.
+(이는 레거시 View가 레이아웃에서 나중에 배치되는 View 위에 표시되는 방식과 유사하며, Z 인덱스를 임의의 값으로 설정할 수 있는 기능도 제공합니다.)
+
+그 다음으로는 `LayoutNodeWrapper`와 관련된 "outer"와 "inner"라는 할당(assignment)을 볼 수 있습니다. 
+
+```kotlin
+instance.outerLayoutNodeWrapper.wrappedBy = innerLayoutNodeWrapper
+```
+
+이것은 노드, 모디파이어, 그리고 자식들이 어떻게 측정되고 그려지는지와 관련이 있습니다.  
+이 내용은 약간 복잡하기 때문에, 측정에 대한 별도의 섹션에서 자세히 설명할 예정입니다.
+
+마지막으로, 노드를 연결할 차례입니다.  
+노드를 연결한다는 것은 새로운 부모와 동일한 `Owner`를 노드에 할당하는 것을 의미합니다.
+
+아래는 노드가 삽입될 때 호출되는 `attach` 함수의 단순화된 버전입니다: (`instance.attach(owner)`)
+
+```kotlin
+internal fun attach(owner: Owner) {
+    check(_foldedParent == null || _foldedParent?.owner == owner) {
+        "Attaching to a different owner than the parent's owner"
+    }
+    val parent = this.parent // [this] is the node being attached
+    
+    this.owner = owner
+    
+    if (outerSemantics != null) {
+        owner.onSemanticsChange()
+    }
+    owner.onAttach(this)
+    _foldedChildren.forEach { child -> 
+        child.attach(owner)
+    }
+  
+    requestRemeasure()
+    parent?.requestRemeasure()
+}
+```
+
+
+위 코드를 보면, 모든 자식 노드가 부모와 동일한 `Owner`에 할당되도록 강제하는 보호 장치(guard)가 동작하는 것을 볼 수 있습니다.  
+`attach` 함수는 자식 노드들에 대해 재귀적으로 호출되기에, 이 노드에 연결된 전체 서브 트리는 최종적으로 동일한 `Owner`에 연결됩니다.  
+이렇게 함으로써, 동일한 컴포저블 트리 내의 모든 노드에서 발생하는 무효화가, 동일한 `View`를 통해 처리되도록 보장하여, 모든 작업을 조정할 수 있게 됩니다.
+
+보호 장치가 실행된 후, `Owner`가 할당됩니다.
+
+이 시점에서, 연결 중인 노드에 시멘틱 메타데이터가 포함되어 있다면, `Owner`에게 이를 알리게 됩니다.  
+이는 노드가 삽입되거나 제거될 때뿐만 아니라, 노드의 값이 업데이트되거나, 시멘틱 모디파이어가 추가되거나 제거될 때도 발생할 수 있습니다.
+
+Android에서는 `Owner`가 접근성을 처리하는 대리자(delegate)를 가지고 있어서, 이 알림을 받아 변경 사항을 처리하고, 시멘틱 트리를 업데이트하여 Android SDK accessibility API와의 연결을 관리합니다.
+Compose의 시멘틱 처리에 대한 자세한 내용은 이후 섹션에서 다루게 될 것입니다. 
+
+> 시멘틱 트리는 접근성 서비스와 테스트 프레임워크가 UI를 검사할 수 있도록, UI를 설명하는 병렬 트리입니다.  
+> 두 개의 시멘틱 트리가 병렬로 유지되지만, 이에 대한 자세한 내용은 이후 섹션에서 다룰 것입니다.
+
+이후, 새로운 노드와 그 부모에 대한 재측정이 요청됩니다. 이는 이전에 설명한 것처럼 매우 중요한 단계로, 이 과정에서 노드가 실체화됩니다.  
+재측정 요청은 `Owner`를 통해 전달되며, 필요에 따라 `View` 기본 요소(primitives)를 사용하여 `invalidate` 또는 `requestLayout`을 호출합니다.  
+
+이러한 과정을 거쳐서, 결국 새로운 노드가 실체화되고, 화면에 변경 사항이 반영됩니다.
+
+## Closing the circle
+
+이제 전체 프로세스를 마무리하면, `Owner`는 `Activity`, `Fragment`, 또는 `ComposeView`에서 `setContent`가 호출되자마자 View 계층 구조에 연결됩니다. 
+이 부분이 지금까지 설명에서 빠져 있던 마지막 단계입니다.
+
+이 프로세스를 간단한 예시로 다시 한 번 요약하겠습니다.
+
+`Activity#setContent`가 호출되어 `AndroidComposeView`가 생성되고, View 계층 구조에 연결된 상황을 가정해봅시다.  
+이 예시에서는 두 개의 `LayoutNode`(루트 노드`LayoutNode(A)`와 그 자식 노드 `LayoutNode(B)`)가 있습니다: 
+
+<img alt="img.png" src="materialization_1.png" width="55%"/>
+
+`Applier`가 `current.insertAt(index, instance)`를 호출하여, 새로운 노드 `LayoutNode(C)`를 삽입(실체화) 한다고 가정해봅시다.  
+이로 인해 새로운 노드가 연결되고, `Owner`를 통해 자신과 부모 노드에 대해 재측정을 요청하게 됩니다.
+
+<img alt="img.png" src="materialization_2.png" width="70%"/>
+
+이런 일이 발생하면 대부분의 경우, `AndroidComposeView#invalidate`가 호출됩니다.  
+위 이미지처럼, 현재 노드와 부모 노드가 동시에, 동일한 View(`Owner`)를 무효화하더라도 문제되지 않습니다. 
+무효화는 `View`를 더러운(dirty) 상태로 표시하는 것과 같기 때문에, 두 프레임 사이에 여러 번 무효화가 일어나도, `View`는 다음 드로잉 단계에서 한 번만 다시 그려집니다.
+
+`View`가 그려지는 시점에는 `AndroidComposeView#dispatchDraw`가 호출되며, Compose UI는 요청된 모든 노드를 재측정하고 레이아웃 단계를 수행합니다.
+만약, 이 재측정 과정에서 루트 노드의 크기가 변경되면, `AndroidComposeView#requestLayout()`이 호출되어 `onMeasure`를 다시 트리거하고, 모든 `View` 형제의 노드 크기에 영향을 줄 수 있도록 합니다.
+
+측정과 레이아웃 단계가 끝나면, `dispatchDraw` 호출은 루트 `LayoutNode`의 `draw` 함수를 호출하게 됩니다.  
+루트 `LayoutNode`는 자신을 캔버스에 그리는 방법을 알고 있으며, 또한 모든 자식 노드들의 `draw` 함수도 트리거합니다.
+
+노드가 이미 측정 중일 때, 재측정 요청이 발생하면, 이 요청은 무시됩니다.   
+마찬가지로, 노드에 대해 이미 재측정이 예약된 경우에도 동일하게 무시됩니다.
+
+> 노드는 항상 먼저 측정되고, 그 다음 레이아웃 단계가 수행되며, 마지막으로 드로잉됩니다.
+
+이것이 새로운 노드가 삽입/실체화되는 방식이며, 사용자가 화면에서 이를 경험할 수 있는 방법입니다.
+
+## Materializing a change to remove nodes
+
+하나 이상의 자식 노드를 제거하는 과정도 유사한 프로세스를 거칩니다.  
+
+`UiApplier`는 `current.removeAt(index, count)`를 호출하여 현재 노드에서 지정된 인덱스와 개수만큼 자식 노드를 제거합니다.  
+그러면 현재 노드(부모)는 제거할 자식 노드들을 마지막부터 순차적으로 제거합니다.  
+각 자식 노드는 부모의 자식 목록에서 제거되고, Z 인덱스 자식 목록의 재정렬이 이루어지며, 해당 자식 노드와 그 자식들이 트리에서 분리(detach)됩니다.
+
+이 프로세스에서 자식 노드와 그 자식들은 모두 `Owner` 참조를 `null`로 리셋되고, 부모 노드가 제거의 영향을 받아 크기가 변경될 수 있으므로, 재측정을 요청합니다.
+
+또한, 새로운 노드를 추가할 때와 마찬가지로, 노드/노드들을 제거함으로써 시멘틱에 변경이 생기는 경우, `Owner`에게 알림을 보냅니다.
