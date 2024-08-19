@@ -662,3 +662,233 @@ instance.outerLayoutNodeWrapper.wrappedBy = innerLayoutNodeWrapper
 측정이 완료되면, 이전에 측정된 크기와 현재 크기를 비교하여 크기가 변경되었는지 확인하고, 변경된 경우 부모에게 재측정을 요청합니다.
 
 이제 측정 정책에 대해 알아보겠습니다.
+
+## Measuring policies
+
+노드를 측정할 때, 해당 `LayoutNodeWrapper`는 노드를 발행할 때 제공된 측정 정책에 의존하며, 다음과 같은 방식으로 적용됩니다:
+
+```kotlin
+@Composable
+inline fun Layout(
+    measurePolicy: MeasurePolicy,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    ...
+  ReusableComposeNode<ComposeUiNode, Applier<Any>>(
+    factory = { LayoutNode() },
+    update = {
+        set(measurePolicy, { this.measurePolicy = it })     // Here
+        ...
+    },
+    skippableUpdate = materializerOf(modifier),
+    content = content
+  )
+}
+```
+
+실제로 측정 정책이 외부에서 전달되는 방식을 볼 수 있습니다.   
+`LayoutNode`는 항상 동일하게 유지되며, `LayoutNode`의 측정 정책이 변경될 때마다 재측정이 요청됩니다.
+
+Compose에서 커스텀 레이아웃을 만들어 본적이 있다면, 측정 정책이 익숙하게 보일 것입니다.  
+측정 정책은 개발자들이 커스텀 레이아웃을 생성할 때 전달하는 람다입니다.  
+만약, 이에 대한 경험이 없다면, [공식 문서](https://developer.android.com/jetpack/compose/layouts/custom)를 읽어보는 것을 추천합니다.
+
+가장 심플한 측정 정책 중 하나는 아마도 `Spacer` 컴포저블에서 설정된 정책일 것입니다:
+
+```kotlin
+@Composable
+fun Spacer(modifier: Modifier) {
+    Layout({}, modifier) { _, constraints -> 
+        with(constraints) {
+            val width = if (hasFixedWidth) maxWidth else 0
+            val height = if (hasFixedHeight) maxHeight else 0
+          
+            layout(width, height) {}
+        }
+    }  
+}
+```
+
+후행 람다가 `MeasurePolicy#measure` 함수의 실질적인 구현이며, 측정 정책을 정의합니다.   
+이 람다에서는 레이아웃 자식들의 측정 가능한 목록(위 경우에는 자식이 없기에 파라미터는 무시됨)과 각 자식이 따라야 할 '제약 조건'을 처리합니다.  
+이 제약 조건들은 레이아웃의 '너비'와 '높이'를 결정하는데 사용됩니다.
+
+- 제약 조건이 고정된 경우(즉, 정확한 너비나 높이가 설정된 경우), `Spacer`는 해당 크기로 설정됩니다.
+  - 이 경우, `maxWidth`가 `minWidth`와 같고, `maxHeight`가 `minHeight`와 같습니다.
+- 제약 조건이 고정되지 않은 경우, 두 치수 값은 기본값인 0으로 설정됩니다.
+
+위 내용은 `Spacer`가 항상 부모나 모디파이어에 의해 크기 제약을 받아야 한다는 것을 의미합니다.  
+또한, `Spacer`는 자식을 포함하지 않기 때문에, `content`에 맞추어 크기를 조정할 수 없다는 점에서도 이러한 방식이 합리적임을 알 수 있습니다.
+
+더 완전한 측정 정책의 예시로 `Box` 컴포저블을 들 수 있습니다:
+
+```kotlin
+@Composable
+inline fun Box(
+    modifier: Modifier = Modifier,
+    contentAlignment: Alignment = Alignment.TopStart,
+    propagateMinConstraints: Boolean = false,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val measurePolicy = rememberBoxMeasurePolicy(contentAlignment, propagateMinConstraints)
+    Layout(
+      content = { BoxScopeInstance.content() },
+      measurePolicy = measurePolicy, 
+      modifier = modifier,
+    )
+}
+```
+
+이 측정 정책은 `Box`에 설정된 정렬(alignment)에 따라 달라집니다. (기본값은 `TopStart`로, 자식들을 위에서 아래로, 왼쪽에서 오른쪽으로 정렬)  
+또한, 부모의 최소 제약 조건을 `content`에 적용할지 여부에 따라, 측정 정책이 달라질 수 있습니다.  
+`Box`를 기반으로 하거나, 이를 포함하는 많은 컴포넌트들이 존재합니다.   
+(e.g : `Crossfade`, `Switch`, `Surface`, `FloatingActionButton`, `IconButton`, `AlertDialog` 등)  
+이처럼 많은 컴포넌트들이 존재하기에, 각 컴포넌트가 자신에게 필요한 제약 조건을 적용할 수 있도록, 최소 제약 조건을 전달할 수 있는 옵션이 제공됩니다.
+
+이제 `Box`의 측정 정책에 대해 더 자세히 알아보겠습니다.
+
+아래의 구현 세부 사항은 시간이 지남에 따라 변경될 수 있습니다.  
+그럼에도 불구하고, 이는 교육적인 예제로 활용할 수 있으며, 측정 정책은 다음과 같이 시작됩니다:
+
+```kotlin
+// Box.kt
+MeasurePolicy { measurables, constraints ->
+    if (measurables.isEmpty()) {
+        return@MeasurePolicy layout(
+            constraints.minWidth,
+            constraints.minHeight
+        ) {}
+    }    
+}
+```
+
+`Box`에 자식이 전혀 없는 경우, 부모(or 모디파이어)가 설정한 최소 너비와 높이에 맞게 크기가 조정됩니다.
+
+이후, 최소 제약 조건이 자식에게 전파되도록 설정된 경우, 부모가 설정한 제약 조건을 그대로 유지합니다.  
+만약, 최소 제약 조건이 전파되지 않도록 설정된 경우, 최소 너비와 높이의 제약 조건을 제거하여, 자식들이 스스로 너비와 높이를 결정할 수 있도록 합니다:
+
+```kotlin
+// Box.kt
+val contentConstraints = 
+    if (propagateMinConstraints) {
+        constraints
+    } else {
+        constraints.copy(minWidth = 0, minHeight = 0)
+    }
+```
+
+제약 조건을 준비한 후, 자식이 하나만 있는지 확인합니다.  
+만약, 자식이 하나만 있는 경우, 그 자식을 측정하고 배치하는 프로세스를 진행합니다:
+
+```kotlin
+// Box.kt
+if (measurables.size == 1) {
+    val measurable = measurables[0]
+    ...
+    if (!measurable.matchesParentSize) {
+        boxWidth = max(constraints.minWidth, placeable.width)
+        boxHeight = max(constraints.minHeight, placeable.height)
+        placeable = measurable.measure(contentConstraints)
+    } else {
+        boxWidth = constraints.minWidth 
+        boxHeight = constraints.minHeight 
+        placeable = measurable.measure(
+            Constraints.fixed(constraints.minWidth, constraints.minHeight)
+        )
+    }
+  
+    return@MeasurePolicy layout(boxWidth, boxHeight) {
+        placeInBox(placeable, measurable, layoutDirection, boxWidth, boxHeight, alignment)
+    }
+}
+```
+
+여기서 흥미로운 차이점을 발견할 수 있으며, 두 가지 시나리오가 있습니다.
+
+- `Box`를 '자식'(`content`)에 맞춰 크기를 조정하는 경우
+- `Box`를 '부모'에 맞춰 크기를 조정하는 경우
+
+자식(유일한 자식)이 부모 크기에 맞추도록 설정되지 않은 경우(e.g : `Modifier.fillMaxSize()`), `Box`는 자식의 크기에 맞춰 자신의 크기를 조정합니다.
+이를 위해 먼저, 자식을 제약 조건에 따라 측정합니다. 이 과정에서 제약 조건이 적용된 상태에서 자식이 차지할 크기가 반환됩니다.  
+그런 다음, `Box`는 이 크기를 사용해 자신의 크기를 결정합니다.  
+`Box`의 너비는 제약 조건의 `minWidth`와 자식의 너비 중 더 큰 값으로 설정되며, 높이도 이와 마찬가지로 결정됩니다.  
+결과적으로, `Box`는 자식의 크기보다 작아지지 않도록 보장됩니다.
+
+반대로, `Box`가 부모의 크기에 맞추도록 설정된 경우, `Box`의 너비와 높이는 부모 제약 조건에서 지정된 최소 너비, 높이와 정확히 동일한 값으로 설정됩니다.
+
+하지만, 위 시나리오는 자식이 하나만 있을 때의 경우에만 해당됩니다.  
+만약에 자식이 여러명이라면, 측정 정책도 달라지기에, 부모 크기에 맞추지 않은 모든 자식을 측정하여 `Box`의 크기를 결정합니다:
+
+```kotlin
+// Box.kt
+val placeables = arrayOfNulls<Placeable>(measurables.size)
+
+val hasMatchParentSizeChildren = false
+var boxWidth = constraints.minWidth
+var boxHeight = constraints.minHeight
+
+measurables.fastForEachIndexed { index, measurable -> 
+    if (!measurable.matchesParentSize) {
+        val placeable = measurable.measure(contentConstraints)
+        placeables[index] = placeable
+        boxWidth = max(boxWidth, placeable.width)
+        boxHeight = max(boxHeight, placeable.height)
+    } else {
+        hasMatchParentSizeChildren = true
+    }
+}
+```
+
+위 코드의 첫 번째 줄은, 측정된 모든 자식들을 추적하기 위해 `placeables` 컬렉션을 초기화합니다.  
+이 컬렉션은 이후에 자식들을 배치할 때 필요합니다.
+
+그 다음, 모든 자식을 순회하면서 부모가 설정한 최소 제약 조건과, 해당 제약 조건 아래에서 각 자식이 차지할 너비와 높이를 비교하여, 최대 너비와 높이를 계산합니다.
+이를 통해, 자식들이 최소 제약 조건을 초과하면 `Box`는 자식들에 맞춰 크기를 조정하고, 반대인 경우엔 최소 제약 조건을 크기로 설정하게 됩니다.  
+이 과정에서 각 자식을 측정하며, 그 결과로 얻어진 `placeble`을 컬렉션에 추가합니다.  
+부모 크기에 맞추도록 설정된 자식들은 이 과정에서 무시되며, 다음 단계에서 `Box` 크기를 측정할 때 고려됩니다.
+
+부모 크기에 맞추도록 설정된 자식들을 측정할 때 주목해야 할 점이 있습니다.  
+만약, 지금까지 계산된 `Box`의 제약 조건이 '무한'이라면, 자식들을 측정할 때 최소 제약 조건이 `0`으로 설정됩니다.  
+이는 각 자식이 스스로를 얼마나 좁게 설정할지 결정할 수 있음을 의미합니다.  
+이 시나리오는 `boxWidth` 또는 `boxHeight`가 무한대인 경우에만 발생할 수 있으며, 이는 부모의 제약 조건에서 최소 크기가 무한대로 설정된 경우에만 발생할 수 있습니다.
+그렇지 않은 경우에는 이미 계산된 `boxWidth`와 `boxHeight`가 사용됩니다:
+
+```kotlin
+// Box.kt
+if (hasMatchParentSizeChildren) {
+  // The infinity check is needed for default intrinsic measurements.
+    val matchParentSizeConstraints = Constraints(
+        minWidth = if (boxWidth != Constraints.Infinity) boxWidth else 0,
+        minHeight = if (boxHeight != Constraints.Infinity) boxHeight else 0,
+        maxWidth = boxWidth,    
+        maxHeight = boxHeight
+    )
+  
+    measurables.fastForEachIndexed { index, measurable -> 
+        if (measurable.matchesParentSize) {
+            placeables[index] = measurable.measure(matchParentSizeConstraints)
+        }
+    }
+}
+```
+
+위 예제를 보면, 부모 크기에 맞춰진 자식들이, 계산된 제약 조건(`matchParentSizeConstraints`)을 사용해 측정되고, 이를 `placeables` 컬렉션에 추가하는 것을 볼 수 있습니다.
+
+측정 정책의 마지막 단계는 계산된 너비와 높이를 사용해, 레이아웃을 생성하고, 모든 자식들을 그 안에 배치하는 것입니다.
+
+```kotlin
+// Box.kt
+layout(boxWidth, boxHeight) {
+    measurables.forEachIndexed { index, placeable -> 
+        placeable as Placeable
+        val measurable = measurables[index]
+        placeInBox(placeable, measurable, layoutDirection, boxWidth, boxHeight, alignment)
+    }
+}
+```
+
+드디어 끝났습니다. 이제 제대로 된 측정 정책을 갖추었습니다.
+
+Compose UI에는 이 외에도 다양한 측정 정책이 존재합니다.   
+모두 나열하고 설명할 수는 없지만, 위 예제를 통해서 측정 정책이 어떻게 작동하는지에 대해 더 자세히 이해할 수 있었을 것입니다.
