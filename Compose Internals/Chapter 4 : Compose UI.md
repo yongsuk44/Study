@@ -892,3 +892,109 @@ layout(boxWidth, boxHeight) {
 
 Compose UI에는 이 외에도 다양한 측정 정책이 존재합니다.   
 모두 나열하고 설명할 수는 없지만, 위 예제를 통해서 측정 정책이 어떻게 작동하는지에 대해 더 자세히 이해할 수 있었을 것입니다.
+
+## Intrinsic measurements
+
+`MeasurePolicy`는 레이아웃의 인트린식 크기를 계산하는 몇 가지 메서드를 포함합니다.   
+
+인트린식 크기 : 제약 조건이 없는 상황에서 레이아웃의 예상 크기
+
+인트린식 측정은 자식을 실제로 측정하기 전에, 얘상되는 크기를 알아야 할 떄 유용합니다.  
+예를 들어, 자식의 높이를 가장 큰 형제의 높이와 일치시키고 싶을 때가 있습니다.   
+다만, 형제 자식들이 아직 측정되지 않은 측정 단계에서 어떻게 이 작업을 수행할 수 있을까요?
+
+이를 해결하는 방법 중 하나로 서브 컴포지션을 사용할 수 있지만, 때로는 이 정도로 복잡한 방법을 사용하지 않아도 되는 경우도 있습니다.  
+
+물론, 두 번 측정하는 방법도 생각해 볼 수 있습니다.   
+하지만, Compose는 성능상의 이유로 컴포저블을 한 번만 측정하도록 제한하고 있습니다. 따라서 두 번 측정을 시도하면 예외가 발생합니다.
+
+이러한 이유로, 인트린식 측정은 좋은 대안이 될 수 있습니다.  
+이미 배운 것처럼, 모든 `LayoutNode`는 측정 정책이 할당되어 있지만, 이와 동시에 해당 측정 정책에 의존하는 '인트린식 측정 정책'도 가지고 있습니다.  
+이 의존성으로 인해, 노드의 측정 정책이 변경되면, 그 노드의 인트린식 측정에 의존하는 모든 상위 요소들의 레이아웃이 다시 계산됩니다.
+
+`LayoutNode`에 할당된 '인트린식 정책'은 다음을 계산하는 메서드를 제공합니다:
+
+- 주어진 높이에 대한 `minIntrinsicWidth`, `maxIntrinsicWidth`
+- 주어진 너비에 대한 `minIntrinsicHeight`, `maxIntrinsicHeight`
+
+제공하는 메서드를 보면, 원하는 치수를 계산하기 위해선 항상 반대되는 치수를 제공해야 합니다.  
+이는 제약 조건이 없는 상황에서 레이아웃 콘텐츠를 올바르게 그릴 수 있는 적절한 크기를 계산할 때, 라이브러리에 제공할 수 있는 유일한 단서가 한쪽의 치수뿐이기 때문입니다.
+라이브러리는 이 치수를 기반으로, 다른 치수를 계산할 수 있습니다.
+
+이 함수들의 공식 kdocs를 보면, 각 함수가 어떤 역할을 하는지 더 명확하게 이해할 수 있습니다:
+
+- `minIntrinsicWidth` : 특정 높이가 주어졌을 때, 레이아웃의 콘텐츠를 올바르게 그려질 수 있는 최소 너비를 제공합니다.
+- `minIntrinsicHeight` : 특정 너비가 주어졌을 때, 레이아웃의 콘텐츠를 올바르게 그려질 수 있는 최소 높이를 제공합니다.
+- `maxIntrinsicWidth` : 특정 높이가 주어졌을 때, 최소 인트린식 높이가 감소하지 않으면서, 증가시킬 수 있는 최소 너비를 제공합니다.
+- `maxIntrinsicHeight` : 특정 너비가 주어졌을 때, 최소 인트린식 너비가 감소하지 않으면서, 증가시킬 수 있는 최소 높이를 제공합니다.
+
+인트린식을 이해하기 위해 `Modifier.width(intrinsicSize: IntrinsicSize)` (또는 이에 대응하는 height)를 예시로 살펴보겠습니다.  
+이 메서드는 일반적으로 사용되는 `Modifier.width(width: Dp)`와는 다릅니다.
+
+- `Modifier.width(width: Dp)` : 노드의 정확한 너비를 설정하는데 사용
+- `Modifier.width(intrinsicSize: IntrinsicSize)` : 노드의 최소/최대 인트린식 너비와 일치하는 너비를 설정하는데 사용
+
+아래는 이 메서드가 어떻게 구현되는지 보여줍니다:
+
+```kotlin
+// Intrinsic.kt
+@Stable
+fun Modifier.width(intrinsicSize : IntrinsicSize) = when (intrinsicSize) {
+    IntrinsicSize.Min -> this.then(MinIntrinsicWidthModifier)
+    IntrinsicSize.Max -> this.then(MaxIntrinsicWidthModifier)
+}
+```
+
+위 메서드를 `Modifier.width(IntrinsicSize.Max)`와 같이 호출하면, `MaxIntrinsicWidthModifier`가 선택됩니다.  
+
+`MaxIntrinsicWidthModifier`는 최소 인트린식 너비를 최대 인트린식 너비와 일치하도록 오버라이드하여 정확한 크기로 설정합니다.   
+또한, 주어진 `maxHeight` 제약 조건에 맞춰, 최대 인트린식 너비에 맞도록 '콘텐츠 제약 조건'을 고정합니다.  
+콘텐츠 제약 조건은 인트린식 모디파이어를 사용하여, 노드를 측정할 때 사용됩니다.
+
+```kotlin
+// Intrinsic.kt
+private object MaxIntrinsicWidthModifier : IntrinsicSizeModifier {
+    
+    override fun MeasureScope.calculateContentConstraints(
+        measurable: Measurable,
+        constraints: Constraints
+    ): Constraints {
+        val width = measurable.maxIntrinsicWidth(constraints.maxHeight) 
+        return Constraints.fixedWidth(width)
+    }
+      
+    override fun IntrinsicMeasureScope.minIntrinsicWidth(
+        measurable: IntrinsicMeasurable,
+        height: Int
+    ) = measurable.maxIntrinsicWidth(height)
+}
+```
+
+여기서 이해해야 할 것은 사용자 관점에서 이 모디파이어가 어떤 영향을 미치는지입니다.  
+이 모디파이어를 사용했을 때 UI가 어떻게 보일지, 또는 어떤 동작을 할지를 이해하기 위해 `DropdownMenu` 컴포저블을 살펴보겠습니다.  
+
+아래는 `DropdownMenuContent`를 사용하여 `Column` 내에서 메뉴 항목을 표시합니다:
+
+```kotlin
+@Composable
+fun DropdownMenuContent(...) {
+    ...
+    Column(
+      modifier = modifier
+        .padding(vertical = DropdownMenuVerticalPadding)
+        .width(IntrinsicSize.Max)
+        .verticalScroll(rememberScrollState()),
+      content = content
+    )
+    ...
+}
+```
+
+위와 같은 설정은 `Column`이 선호하는 모든 자식(메뉴 항목)들의 최대 인트린식 너비와 일치시키도록 합니다.  
+이를 통해, 드롭다운 메뉴의 너비가 가장 넓은 자식의 너비와 일치하도록 강제합니다.
+
+<img alt="img.png" src="dropdown.png" width="15%"/>
+
+인트린식 측정에 대한 [공식 문서](https://developer.android.com/jetpack/compose/layouts/intrinsic-measurements)를 읽어보면, Android UI에서 인트린식이 어떻게 사용되는지에 대한 실제 사용 사례를 더 많이 볼 수 있습니다.
+
+이제부터는 지금까지 매우 중요한 역할을 해온 레이아웃 제약 조건(`Constraints`)에 대해 자세히 살펴보겠습니다.
