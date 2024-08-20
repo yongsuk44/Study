@@ -998,3 +998,94 @@ fun DropdownMenuContent(...) {
 인트린식 측정에 대한 [공식 문서](https://developer.android.com/jetpack/compose/layouts/intrinsic-measurements)를 읽어보면, Android UI에서 인트린식이 어떻게 사용되는지에 대한 실제 사용 사례를 더 많이 볼 수 있습니다.
 
 이제부터는 지금까지 매우 중요한 역할을 해온 레이아웃 제약 조건(`Constraints`)에 대해 자세히 살펴보겠습니다.
+
+## Layout Constraints
+
+레이아웃의 `Constraints`는 부모 `LayoutNode` 또는 모디파이어에서 제공될 수 있으며, 자식 레이아웃을 측정할 때 사용됩니다.
+
+제약 조건을 설정할 때는 너비와 높이에 최소값과 최대값을 지정하여, 픽셀 단위의 범위를 설정합니다.  
+측정된 레이아웃(자식)은 아래의 제약 조건 내에 들어와야 합니다.
+
+- `minWidth <= chosenWidth <= maxWidth`
+- `minHeight <= chosenHeight <= maxHeight`
+
+대부분의 기존 레이아웃은 수정되지 않은 제약 조건을 자식에게 그대로 전달하거나, 최소 제약 조건을 완하(0으로 설정)하여 전달합니다.  
+최소 제약 조건을 완하하는 방식의 예시로는 `Box`가 있으며, 이는 [측정 정책](#measuring-policies)에서 다룬 내용입니다.
+
+아래에서는, 이를 다른 시나리오로 설명해보겠습니다:
+
+가끔씩 부모 노드나 모디파이어는 자식에게 선호하는 크기를 물어보고 싶을 수 있습니다.  
+이 경우에는 `maxWidth`나 `maxHeight`의 제약 조건에 무한대(즉, `Constraints.Infinity`)를 전달할 수 있습니다.  
+
+자식이 가용 공간을 모두 채우도록 정의되어 있을 때, 해당 치수에 무제한(unbounded) 제약 조건을 전달하는 것은, 자식에게 원하는 크기를 스스로 결정하도록 신호를 보내는 것과 같습니다.
+예를 들어, 아래와 같은 `Box`를 생각할 수 있습니다:
+
+
+```kotlin
+// Box filling max height.
+Box(Modifier.fillMaxHeight()) {
+    Text("Hello")
+}
+```
+
+기본적으로, 이 `Box`는 사용 가능한 모든 높이를 채우게 됩니다. 
+하지만, 이 `Box`를 `LazyColumn` 안에 넣으면, `Box`는 `content`의 크기에 맞춰 조정되어 `Text`의 높이를 가지게 됩니다.
+(`LazyColumn`은 스크롤이 가능하기 때문에, 자식들에게 무한한 높이의 제약 조건이 적용됩니다.)
+
+`Box`가 `Text`의 높이를 가지게 되는 이유는 무한한 높이의 제약 조건을 채우는 것이 아무런 의미가 없기 때문입니다.  
+주요 레이아웃 컴포넌트 중에서는 이러한 조건에서 자식들이 `content`에 맞게 크기를 조정하는 것이 일반적입니다.  
+하지만, 최종적으로는 레이아웃이 어떻게 정의도었는지에 따라 달라질 수 있습니다.
+
+`LazyColumn`은 무제한(unbounded) `Constraints`를 배우기 위한 좋은 사례가 될 수 있습니다.  
+`LazyColumn`은 자식 요소를 측정하기 위해, 서브 컴포지션을 사용하는 `LazyList`라는 더 일반적인 레이아웃을 기반으로 합니다.
+
+서브 컴포지션은 사용 가능한 크기에 따라 아이템을 게으르게(lazily) 컴포즈할 때 유용합니다.  
+이 경우, `LazyList`는 화면에 보이는 아이템들만 컴포즈하기 때문에, 화면 크기에 따라 아이템이 컴포즈됩니다.  
+아래는 자식 요소를 측정하기 위한 제약 조건이 어떻게 생성되는지 보여줍니다:
+
+```kotlin
+// LazyMeasuredItemProvider.kt
+
+// The main axis is not restricted
+val childConstraints = Constraints(
+    maxWidth = if (isVertical) constraints.maxWidth else Constraints.Infinity,
+    maxHeight = if (isVertical) Constraints.Infinity else constraints.maxHeight
+)
+```
+
+자식 요소를 측정할 때마다, 위 제약 조건이 적용됩니다.  
+먼저, 해당 아이템의 콘텐츠가 서브 컴포즈됩니다. 이 작업은 `LazyList`의 측정 과정에서 이루어지며, `SubcomposeLayout` 덕분에 가능합니다.  
+콘텐츠를 서브 컴포즈하면, 화면에 보이는 자식들에 대한 측정 가능한 목록이 생성되고, 이 목록은 생성된 `childConstraints`를 사용하여 측정됩니다.  
+이 시점에서 자식 요소들은 높이 제약 조건이 무제한이기 때문에, 기본적으로 스스로가 높이를 선택할 수 있습니다. 
+
+이에 반해, 때로는 모든 자식들에게 정확한 크기를 설정하고 싶을 때가 있습니다.  
+부모나 모디파이어가 자식에게 정확한 크기를 강제하려면, `minWidth == maxWidth`, `minHeight == maxHeight`로 설정합니다.  
+이렇게 하면 자식은 해당 공간에 맞춰지도록 강제됩니다.
+
+이에 대한 예시로 `LazyVerticalGrid` 컴포저블을 들 수 있으며, 이 컴포저블은 동적으로 아이템의 수를 조정하여, 효율적으로 수직 그리드를 표시합니다.  
+또한, 이 컴포저블은 `LazyColumn`이나 `LazyRow`와 매우 유사하며, 화면에 보이는 컴포저블들만 게으르게 컴포즈합니다.  
+
+그리드의 셀 수가 고정된 경우, `LazyVerticalGrid`는 실제로 `LazyColumn`을 사용하며, 각 열에는 여러 개의 아이템을 포함하는 `ItemRow`가 렌더링됩니다. 
+`ItemRow` 레이아웃은 스팬 카운트(열의 수), 열의 크기, 그리고 아이템 간의 간격에 따라서 각 자식을 고정된 너비로 측정합니다.
+
+```kotlin
+// LazyGrid.kt
+val width = span * columnSize + remainderUsed + spacing * (span - 1)
+measurable.measure(Constraints.fixed(width))
+```
+
+이렇게 생성된 제약 조건에서는 너비가 고정되고, 높이는 `0 ~ Infinity` 사이의 범위를 가집니다:
+
+```kotlin
+// Constraints.kt
+minWidth = width,
+maxWidth = width,
+minHeight = 0,
+maxHeight = Constraints.Infinity
+```
+
+다양한 제약 조건의 사용 사례를 더 알아보고 싶다면, 크기와 관련된 일반적인 레이아웃 모디파이어나, Compose UI 소스에서 익숙한 레이아웃의 내부를 살펴보는 것이 좋습니다.
+이 과정을 통하면 측정 방식에 대한 이해가 더욱 증가할 것입니다. 
+
+`Constraints`는 `inline` 클래스로 모델링되어 있으며, 단일 `Long` 값을 사용하여 4가지 제약 조건을 표현합니다. (i.e : `minWidth`, `minHeight`, `maxWidth`, `maxHeight`)
+그리고 비트마스크를 통해 이 값에서 서로 다른 제약 조건을 읽을 수 있습니다.
