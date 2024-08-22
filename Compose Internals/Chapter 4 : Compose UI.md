@@ -1158,12 +1158,12 @@ fun TvShowApp() {
 위 예시에서의 공유 요소 전환의 경우, 각 공유 요소는 자신이 이동할 화면에서의 최종 크기와 위치를 미리 알고, 이를 바탕으로 애니메이션을 수행하게 됩니다. 
 또 다른 예시로, 모핑 애니메이션이 있습니다.
 
-## Yet another way of pre-calculating layouts
+### Yet another way of pre-calculating layouts
 
 `LookaheadLayout`은 `SubcomposeLayout`(서브 컴포지션) 및 인트린식과 더불어 Compose에서 레이아웃을 사전에 계산하는 또 다른 방법으로 볼 수 있습니다. 
 그러나, 이 세 가지 접근 방식에는 중요한 차이점이 있으며, 이를 명확히 이해하는 것이 좋습니다.
 
-### SubcomposeLayout
+#### SubcomposeLayout
 
 측정 시점까지 컴포지션을 지연시켜, 사용 가능한 공간을 기반으로 어떠한 노드/서브트리를 빌드할 지 결정할 수 있습니다.  
 이는 사전 레이아웃(pre-layout) 보다는 조건부 컴포지션에 더 가까운 개념입니다.  
@@ -1171,7 +1171,7 @@ fun TvShowApp() {
 그리고 `SubcomposeLayout`은 성능 비용이 크기 때문에, 다른 시나리오에서 레이아웃을 미리 계산하는 용도로 사용하는 것은 권장되지 않습니다.
 이는 단순한 측정/레이아웃 과정보다 훨씬 더 복잡하기 때문입니다.
 
-### Intrinsics
+#### Intrinsics
 
 인트린식은 서브 컴포지션보다 훨씬 효율적이며, 내부적으로는 `LookaheadLayout`과 매우 유사하게 동작합니다.  
 두 접근 방식 모두 같은 프레임 내에서 `LayoutModifiers`, `MeasurePolicy`에 의해 정의된 측정 람다를 서로 다른 제약 조건으로 호출합니다.
@@ -1180,7 +1180,7 @@ fun TvShowApp() {
 예를 들어, 3개의 자식을 가진 행(row)의 높이를 가장 큰 자식의 높이와 일치시키려면, 
 모든 자식의 인트린식 측정값을 계산한 후, 그 중 최대값을 사용하여 행의 높이를 결정해야 합니다.
 
-### LookaheadLayout
+#### LookaheadLayout
 
 `LookaheadLayout`은 자동 애니메이션을 지원하기 위해, 모든 자식(직접적이거나, 간접적인 자식)의 크기와 위치를 정확하게 사전에 계산하는데 사용됩니다.
 또한, 측정뿐만 아니라, 선행된 크기(lookahead size)를 기반으로 배치 계산도 수행합니다.  
@@ -1191,3 +1191,184 @@ fun TvShowApp() {
 인트린식과의 차이점은, `LookaheadLayout`에서는 레이아웃이 최종적으로 선행 계산된 상태에 도달할 것이라는 암묵적인 보장이 있다는 점입니다. 
 이로 인해, 사용자는 선행된 제약 조건을 임의로 조작할 수 없습니다.
 
+### How it works
+
+실제로, `LookaheadLayout`은 "일반적인" 측정/레이아웃 과정에 앞서, 미리 측정하고 레이아웃을 계산하는 단계를 수행합니다.  
+이 과정에서 미리 계산된 값들은, 이후 측정/레이아웃 단계에서 사용되어, 매 프레임마다 노드를 업데이트하는데 활용됩니다.  
+이러한 '선행(lookahead) 과정'은 트리 구조가 변경되거나, 상태 변화로 인해 레이아웃이 변경될 때만 실행됩니다.
+
+선행 과정이 실행될 때, 레이아웃 애니메이션은 생략되며, 측정과 레이아웃은 애니메이션이 이미 완료된 것처럼 수행됩니다.  
+앞으로 레이아웃 애니메이션의 모든 API들은 설계상 선행 과정에서 자동으로 건너뛰도록 업데이트될 예정입니다.  
+이 기능은 `LookaheadLayout`의 직접적이거나 간접적인 모든 자식 요소에 적용될 것입니다.
+
+`LookaheadLayout`은 미리 계산된 데이터를 노출하기 위해, `LookaheadLayoutScope` 내에서 콘텐츠 람다를 실행합니다.  
+이 스코프를 통해 자식 요소들은 사용할 수 있는 여러 모디파이어에 접근할 수 있습니다.
+
+- `Modifier.intermediateLayout`
+  - 이 모디파이어가 적용된 레이아웃이 다시 '측정'될 때마다 호출됩니다.
+  - 이 모디파이어는 레이아웃의 선행된(미리 계산된) 크기에 접근할 수 있도록 하며, 해당 크기(타겟 크기)를 기반으로 중간(intermediate) 레이아웃을 생성하는 역할을 합니다.
+- `Modifier.onPlaced`
+  - 이 모디파이어가 적용된 레이아웃이 다시 '배치'될 때마다 호출됩니다. 
+    이를 통해, 자식 요소는 부모를 기준으로 자신의 위치를 조정할 수 있습니다.
+  - 이 모디파이어는 `LookaheadLayout`과 모디파이어 자체의 선행 좌표(lookahead coordinate)에 접근할 수 있도록 하여, 부모에 대한 선행 위치와 현재 위치를 계산할 수 있게 해줍니다.
+    이러한 위치 정보는 `intermediateLayout`에서 중간 레이아웃을 생성할 때 저장되고 활용되어, 레이아웃 위치를 애니메이션하는데 사용됩니다.
+
+이 두 모디파이어는 일반적인 측정/레이아웃 단계에서 실행되므로, 람다에서 제공되는 미리 계산된 정보를 사용하여 레이아웃을 타겟 값에 맞게 크기를 조정하거나 재배치할 수 있습니다. 
+개발자들은 이 모디파이어를 기반으로, 맞춤형 애니메이션을 만들기 위한 커스텀 모디파이어를 제작할 수 있습니다.  
+
+아래는 선행 크기를 기반으로 자식을 측정하는데 사용되는 제약 조건을 애니메이션화하는 커스텀 모디파이어의 예시입니다: 
+
+```kotlin
+fun Modifier.animateConstraints(
+    lookaheadScope: LookaheadLayoutScope,
+) = composed {
+    var sizeAnimation: Animatable<IntSize, AnimationVector2D>? by remember { mutableStateOf(null) }
+    
+    var targetSize: IntSize? by remember { mutableStateOf(null) }
+    LaunchedEffect(Unit) {
+        snapshotFlow { targetSize }
+            .collect { target -> 
+                if (target != null && target != sizeAnimation?.targetValue) {
+                    sizeAnimation?.run {
+                        launch { animateTo(target) }
+                    } ?: Animatable(target, IntSize.VectorConverter).let {
+                        sizeAnimation = it
+                    }
+                }
+            }
+    }
+  
+    with(lookaheadScope) {
+        this@composed.intermediateLayout { measurable, _, lookaheadSize -> 
+            targetSize = lookaheadSize
+            val (width, height) = sizeAnimation?.value ?: lookaheadSize
+            val animatedConstraints = Constraints.fixed(width, height)
+          
+            val placeable = measurable.measure(animatedConstraints)
+            layout(placeable.width, placeable.height) {
+                placeable.place(0, 0)
+            }
+        }
+    }
+}
+```
+
+- 크기 값(너비/높이)을 애니메이션하기 위해 `sizeAnimation`이 생성되며, 애니메이션은 레이아웃이 변경될 때마다 `snapshotFlow`를 통해 재시작됩니다.
+- 위 애니메이션은 측정/레이아웃 단계(이 모디파이어가 실행될 때)에서 통제되지 않은 사이드 이펙트가 발생하지 않도록 `LaunchedEffect` 내에서 실행됩니다.
+- 미리 계산된 `lookaheadSize`는 `intermediateLayout` 람다에서 접근할 수 있으며, 이 값이 변경될 때 애니메이션을 트리거하기 위해 `targetSize`로 설정됩니다.
+- `lookaheadSize`는 자식들의 크기를 점진적으로 변경하기 위해 사용됩니다. 이 과정은 매 프레임마다 `sizeAnimation` 값을 따르는 고정된 제약 조건을 새롭게 생성하여, 최종적으로 시간에 따른 애니메이션 효과를 만들어냅니다. 
+
+> `intermediateLayout`의 람다는 선행 과정에서 건너뛰어지는데, 이는 이 모디파이어가 선행된 상태로 가는 중간 상태를 생성하는데 사용되기 때문입니다.
+
+제약 조건을 애니메이션화하는 커스텀 모디파이어를 만들고 나면, 이를 `LookaheadLayout`에서 사용할 수 있습니다.   
+아래는 공식 소스에서 추출한 예시입니다:
+
+```kotlin
+LookaheadLayout(
+    content = {
+      var fullWidth by remember { mutableStateOf(false) } 
+      
+      Row(
+          (if (fullWidth) Modifier.fillMaxWidth() else Modifier.width(100.dp)) 
+            .height(200.dp)
+            .animateConstraints(this@LookaheadLayout)
+            .clickable { fullWidth = !fullWidth }) {
+          
+          Box(
+            Modifier
+              .weight(1f)
+              .fillMaxHeight()
+              .background(Color.Red)
+          )
+        
+          Box(
+              Modifier
+                .weight(2f)
+                .fillMaxHeight()
+                .background(Color.Yellow)
+          )
+      }
+    } 
+) { measurables, constraints ->
+    val placeables = measurables.map { it.measure(constraints) }
+    val maxWidth = placeables.maxOf { it.width }
+    val maxHeight = placeables.maxOf { it.height }
+    layout(maxWidth, maxHeight) {
+        placeables.forEach {
+            it.place(0, 0)
+        }
+    }
+}
+```
+
+- 가변 상태(`fullWidth`)를 사용하여 `Row`의 너비를 "전체 너비"와 "짧은 너비"로 전환할 수 있습니다.
+- `Row` 레이아웃의 변경 사항은, 이전 예제에서 사용한 `animateConstraints` 커스텀 모디파이어를 통해 애니메이션화됩니다. 
+  가변 상태가 토글될 때마다, `Row`의 너비가 변경되고, 이로 인해 새로운 선행 계산을 트리거하게 되며, 결과적으로 애니메이션도 같이 트리거됩니다.
+- 모든 자식 요소 중에서 최대 너비와 최대 높이를 사용해 `LookaheadLayout`의 크기를 측정하여, 모든 자식 요소가 그 안에 들어갈 수 있도록 합니다.
+- 모든 자식 요소는 `(0,0)` 위치에 배치됩니다.
+
+이렇게 하면 레이아웃이 변경될 때마다 자연스러운 애니메이션이 생성됩니다.  
+이는 미리 계산된 선행 크기를 기반으로 한, 리사이즈 애니메이션의 좋은 예시입니다.
+
+이제 선행 위치에 대해 살펴보겠습니다.
+
+앞서 언급했듯이, `LookaheadLayoutScope`에서는 `Modifier.onPlaced`도 사용할 수 있습니다.  
+`onPlaced` 모디파이어는 자식의 위치를 부모를 기준으로 조정하는 역할을 합니다.   
+또한, 이 모디파이어는 부모를 기준으로 레이아웃의 선행 위치와 현재 위치를 계산하는데 필요한 데이터를 제공합니다.  
+그런 다음, 이 위치 값을 변수에 저장하여, 이후 `intermediateLayout` 호출 시 사용하여, 레이아웃을 선행 값에 맞게 재배치할 수 있습니다.
+
+다음은 이 기능의 예시로, 레이아웃이 변경될 때마다 수정된 레이아웃의 로컬 위치를 애니메이션화하는 예시입니다:
+
+```kotlin
+fun Modifier.animatePlacementInScope(lookaheadScope: LookaheadLayoutScope) = composed {
+    var offsetAnimation: Animatable<IntOffset, AnimationVector2D>? by remember { mutableStateOf(null) }
+    
+    var placementOffset: IntOffset by remember { mutableStateOf(IntOffset.Zero) }
+    var targetOffset : IntOffset? by remember { mutableStateOf(null) }
+  
+    LaunchedEffect(Unit) {
+        snapshotFlow { targetOffset }
+            .collect { target -> 
+                if (target != null && target != offsetAnimation?.targetValue) {
+                    offsetAnimation?.run {
+                        launch { animateTo(target) }
+                    } ?: Animatable(target, IntOffset.VectorConverter).let {
+                        offsetAnimation = it
+                    }
+                }
+            }
+    }
+  
+    with(lookaheadScope) {
+        this@composed.onPlaced { lookaheadScopeCoordinates, layoutCoordinates ->
+            // the target position of this modifier in local coordinates.
+            targetOffset = lookaheadScopeCoordinates
+                .localLookaheadPositionOf(layoutCoordinates)
+                .round()
+          
+            // the current position of this modifier in local coordinates.
+            placementOffset = lookaheadScopeCoordinates
+                .localPositionOf(layoutCoordinates, Offset.Zero)
+                .round()
+        }
+          .intermediateLayout { measurable, constraints, _ ->
+              val placeable = measurable.measure(constraints)
+              layout(placeable.width, placeable.height) {
+                  val (x, y) = offsetAnimation?.run { value - placementOffset }
+                      ?: (targetOffset!! - placementOffset)
+
+                  placeable.place(x, y)
+              }
+          }
+    }
+}
+```
+
+- 오프셋 애니메이션은 레이아웃의 위치를 애니메이션화하는데 사용되며, 부모에 대한 상대적인 오프셋을 애니메이션화합니다.
+- 위 애니메이션은 측정/레이아웃 단계(이 모디파이어가 실행될 때)에서 통제되지 않은 사이드 이펙트가 발생하지 않도록 `LaunchedEffect` 내에서 실행됩니다.
+- `lookaheadScopeCoordinates`와 `layoutCoordinates`는 `onPlaced` 람다에서 접근할 수 있습니다.
+  `lookaheadScopeCoordinates`는 `LookaheadLayout` 자체의 선행 좌표를, `layoutCoordinates`는 자식 레이아웃의 선행 좌표를 나타냅니다.
+  이 값들은 로컬 좌표에서 현재 오프셋과 목표 오프셋을 계산하는데 사용됩니다.
+- 계산된 오프셋은 `intermediateLayout`에서 사용되어, 레이아웃의 위치를 업데이트하는데 사용됩니다. (`placeable.place(x, y)` 참조)
+
+커스텀 모디파이어가 준비되면, 이전 예시에서와 마찬가지로 `LookaheadLayout`의 모든 자식들이 동일하게 사용할 수 있습니다.
