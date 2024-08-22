@@ -1089,3 +1089,71 @@ maxHeight = Constraints.Infinity
 
 `Constraints`는 `inline` 클래스로 모델링되어 있으며, 단일 `Long` 값을 사용하여 4가지 제약 조건을 표현합니다. (i.e : `minWidth`, `minHeight`, `maxWidth`, `maxHeight`)
 그리고 비트마스크를 통해 이 값에서 서로 다른 제약 조건을 읽을 수 있습니다.
+
+## LookaheadLayout
+
+`LookaheadLayout`는 Compose에서 측정과 레이아웃을 다루는 중요한 개념입니다. 
+
+[링크를 통해 gif를 보면](https://x.com/doris4lt/status/1531364543305175041), 라디오 버튼을 통해 두 가지 다른 화면 상태 사이를 전환할 때, 요소들이 애니메이션을 통해 움직이는 것을 볼 수 있습니다.
+클릭할 때마다 상태가 변하면서 `Row`와 `Column` 레이아웃 간에 전환되는 `SmartBox` 컴포저블을 예시로 들어보겠습니다:
+
+```kotlin
+@Composable
+fun SmartBox() {
+    var vertical by remember { mutableStateOf(false) }
+    
+    Box(
+      Modifier.clickable { vertical = !vertical }
+    ) { 
+        if (vertical) {
+            Column {
+              Text("Text 1")
+              Text("Text 2")
+            }
+        } else {
+            Row {
+              Text("Text 1")
+              Text("Text 2")
+            }
+        }
+    } 
+}
+```
+
+이상적으로, 두 텍스트들은 완전히 동일하기 때문에, 두 상태 사이에서 텍스트들은 **공유 요소**가 되어야 합니다.  
+또한, 현재 즉시 변경되는 대신에 쉽게 애니메이션 효과를 줄 수 있는 방법이 있으면 좋을 것입니다.  
+애니메이션 중, 또는 그 이후에도 상태를 잃지 않으면서, 이 텍스트를 재사용할 수 있도록 `movableContentOf`을 활용하는 것도 고려할 수 있습니다.
+
+위 예시를 좀 더 확장하면, 가변 상태에 따라, 앱 내에서 두 개의 컴포저블 화면을 전환하는 것이 될 수 있습니다.  
+아래 예시는 보통의 앱은 두 개 이상의 화면이 있을 것이기에, 조금 단순할 수 있지만, 이 정도로 충분할 것입니다: 
+
+```kotlin
+@Composable
+fun TvShowApp() {
+    var listScreen by remember { mutableStateOf(true) }
+  
+    Box(
+      Modifier.clickable { listScreen = !listScreen }
+    ) { 
+        if (listScreen) {
+            CharacterList()
+        } else {
+            Detail()
+        } 
+    }
+}
+```
+
+이 두 화면에도 일부 공유 요소를 포함시켜, `CharacterList` 내에서 캐릭터 이미지나 전체 캐릭터 행을 클릭할 때 애니메이션이 실행되도록 할 수 있습니다. 
+이 시나리오에서의 각 서브 트리는 전체 화면을 나타내기 때문에, 단순한 텍스트 몇 개보다 훨씬 더 복잡해질 것입니다. 
+
+전환 애니메이션을 적용하려면, 공유 요소들이 최종적으로 위치하게 될 곳과 크기를 미리 알아야 하기 때문에, 애니메이션 타겟을 직접 설정해야 할 수 있습니다. 
+하지만, 이 방법은 최선의 방법이 아닙니다. 이상적으로는 Compose UI가 이러한 정보를 미리 계산하여 제공해주고, 이를 기반으로 애니메이션 타겟을 설정하는 것이 좋습니다.
+이때 `LookaheadLayout`이 중요한 역할을 하게 됩니다.
+
+`LookaheadLayout`은 직접적이거나 간접적인 자식들이 변경될 때, 이들의 새로운 측정값과 배치를 미리 계산할 수 있습니다.  
+이 기능을 통해, 각 자식 요소는 자신이 속한 측정/레이아웃 단계에서 미리 계산된 값을 관찰하고, 이 값을 활용해 크기나 위치를 점진적으로 조정할 수 있습니다.  
+이 과정이 애니메이션 효과를 만들어냅니다. 
+
+위 예시에서의 공유 요소 전환의 경우, 각 공유 요소는 자신이 이동할 화면에서의 최종 크기와 위치를 미리 알고, 이를 바탕으로 애니메이션을 수행하게 됩니다. 
+또 다른 예시로, 모핑 애니메이션이 있습니다.
