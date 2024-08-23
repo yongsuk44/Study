@@ -1443,3 +1443,76 @@ Compose UI는 모든 `LookaheadLayout`에 대해 단일 선행 패스를 보장�
 또한, `LookaheadLayout`은 `movableContentOf` 및 `movableContentWithReceiverOf`와 결합하여, 애니메이션 중에도 컴포저블의 상태를 유지할 수 있습니다.
 
 `LookaheadLayout`은 Compose 1.3에서 릴리스되었습니다.
+
+## Modeling modifier chains
+
+현재 챕터에서 모디파이어에 대해 일부 다루긴 했지만, 실제로 모디파이어는 더 많은 역할을 합니다.  
+Compose UI에서 모디파이어는 매우 중요한 요소이므로, 내부 구조를 조금 더 자세히 살펴보겠습니다.
+
+`Modifier` 인터페이스는 UI 컴포저블에 데코레이션이나 행동(behavior)을 추가하는 불변 요소들의 컬렉션을 모델링합니다.
+`Modifier`는 다양한 모디파이어를 체인으로 연결할 수 있는 기능(`then`), 체인을 순회하면서 값을 누적할 수 있는 폴딩 기능(`foldIn`, `foldOut`),
+그리고 체인의 모디파이어들이 특정 조건을 만족하는지 검사할 수 있는 몇 가지 연산을 제공합니다.
+
+코드에서 모디파이어 체인을 발견할 때, 이 체인은 `Modifier` 타입으로 시작되는 "Linked List"로 표현됩니다:
+
+```kotlin
+Box(
+    modifier
+        .then(indentMod) // Returns a new Modifier
+        .fillMaxWidth() // Returns a new Modifier
+        .background(color) // Returns a new Modifier
+)
+```
+
+모디파이어 체인은 명시적 또는 암시적으로 연결될 수 있으며, 위 코드에서는 이 두 가지 방식이 결합되어 있습니다.  
+`then`이 명시되지 않은 경우, 이는 확장 함수를 통해 모디파이어를 체인으로 연결하고 있음을 의미합니다.
+이 확장 함수들은 내부적으로 `then`을 호출하고 있습니다. 두 방식 모두 동등한 결과를 제공합니다.
+
+실제 프로젝트에서는 확장 함수가 더 자주 사용되며, 다음 예시는 확장 함수를 통해 선언된 모디파이어입니다: 
+
+```kotlin
+// Padding.kt
+@Stable
+fun Modifier.padding(
+    horizontal: Dp = 0.dp,
+    vertical: Dp = 0.dp
+) = then(
+        PaddingModifier(
+            start = horizontal,
+            top = vertical,
+            end = horizontal,
+            bottom = vertical,
+            ...
+        )
+    )
+```
+
+`then`을 호출하여 두 개의 모디파이어를 체인으로 연결하면, `CombinedModifier`가 생성됩니다.  
+이 `CombinedModifier`는 체인 구조를 모델링하는 방식으로, 현재의 모디파이어(outer)에 대한 참조와, 체인의 다음 모디파이어(inner)에 대한 포인터를 가집니다.
+이 포인터가 가리키는 'inner' 역시 또 다른 `CombinedModifier`일 수 있습니다. 
+
+```kotlin
+// Modifier.kt
+class CombinedModifier(
+    private val outer: Modifier,
+    private val inner: Modifier
+): Modifier
+```
+
+노드들이 'outer'와 'inner'로 불리는 이유는, `CombinedModifier` 체인에서 현재 노드가 다음 노드를 래핑하는 구졸르 가지고 있기 때문입니다: 
+
+```kotlin
+CombinedModifier(
+  outer = a, 
+  inner = CombinedModifier(
+    outer = b,
+    inner = CombinedModifier(
+      outer = c,
+      inner = d
+    )
+  )
+)
+```
+
+이렇게 모디파이어 체인이 모델링됩니다.  
+다음은 실제로, 모디파이어가 `LayoutNode`에 어떻게 설정되는지 알아보겠습니다.
