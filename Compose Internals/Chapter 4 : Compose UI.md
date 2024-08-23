@@ -1432,3 +1432,14 @@ Compose에서 측정에 대해 배웠던 그래픽을 돌아보면, [`LayoutNode
 측정/레이아웃 및 선행 패스의 무효화는 무효화 범위를 최소화하기 위해 최적화됩니다.  
 즉, 트리의 변경으로 영향을 받지 않는 `LayoutNode`는 무효화되지 않게 됩니다.  
 결과적으로, `LookaheadLayout` 서브트리의 일부만 무효화될 수 있습니다.
+
+### Some extra bits
+
+
+새로운 `LayoutNode`가 트리에 연결되면, 트리에서 가장 바깥쪽에 존재하는 `LookaheadScope`를 상속 받아, `LookaheadLayout`의 모든 직접적이거나 간접적인 자식들이 동일한 스코프를 공유할 수 있습니다.  
+이는 중첩된 `LookaheadLayout`을 지원하기 때문에 가능한 일입니다.   
+Compose UI는 모든 `LookaheadLayout`에 대해 단일 선행 패스를 보장합니다.
+
+또한, `LookaheadLayout`은 `movableContentOf` 및 `movableContentWithReceiverOf`와 결합하여, 애니메이션 중에도 컴포저블의 상태를 유지할 수 있습니다.
+
+`LookaheadLayout`은 Compose 1.3에서 릴리스되었습니다.
