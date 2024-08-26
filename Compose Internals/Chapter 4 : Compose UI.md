@@ -1516,3 +1516,139 @@ CombinedModifier(
 
 이렇게 모디파이어 체인이 모델링됩니다.  
 다음은 실제로, 모디파이어가 `LayoutNode`에 어떻게 설정되는지 알아보겠습니다.
+
+## Setting modifiers to the LayoutNode
+
+모든 `LayoutNode`에는 `Modifier`(또는 그 체인)가 할당됩니다.  
+레이아웃을 선언할 떄, Compose UI는 `update` 람다라는 파라미터를 전달합니다:
+
+```kotlin
+// Layout.kt
+@Composable
+inline fun Layout(
+    measurePolicy: MeasurePolicy,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val viewConfiguration = LocalViewConfiguration.current
+  
+    val materialized = currentComposer.materialize(modifier)
+  
+    ReusableComposeNode<ComposeUiNode, Applier<Any>>(
+        factory = { LayoutNode() },
+        update = {
+            set(measurePolicy, { this.measurePolicy = it })
+            set(density, { this.density = it })
+            set(layoutDirection, { this.layoutDirection = it })
+            set(viewConfiguration, { this.viewConfiguration = it })
+            set(materialized, { this.modifier = it })
+        }
+    )
+}
+```
+
+`factory`를 통해 노드가 생성되면, `update` 람다가 호출되어 `LayoutNode`의 상태를 초기화하거나 업데이트합니다.  
+이 과정에서 측정 정책(measuring policy), 밀도(density), 레이아웃 방향(layout direction), 뷰 구성(view configuration) 등 다양한 속성들이 설정되고, 모디파이어도 설정됩니다.
+
+또한, 마지막 줄에서 "실체화된" 모디파이어 체인이 `LayoutNode`에 설정되는 것을 볼 수 있습니다:
+
+```kotlin
+set(materialized, { this.modifier = it })
+```
+
+그렇다면, "실체화된" 모디파이어란 무엇이냐?  
+바로 몇 줄위에서 모디파이어가 "실체화"되는 지점을 찾을 수 있는데, 이는 노드를 발행하기 전에 이루어집니다:
+
+```kotlin
+val materialized = currentComposer.materialize(modifier)
+```
+
+여기서 `modifier` 파라미터는 싱글 모디파이어일 수 있고, 여러 모디파이어가 연결된 체인일 수 있습니다.  
+만약 `Layout`에 전달된 모든 모디파이어가 "표준" 모디파이어라면, 이 함수는 이들을 그대로 반환하여, 추가적인 처리 없이 `LayoutNode`에 설정합니다. 
+이렇게 "표준" 또는 "일반" 모디파이어가 설정됩니다. 
+
+여기서 의문점은 "표준" 모디파이어가 무엇인가? 입니다.  
+이 말을 다르게 받아들이면, Compose UI에서는 다른 타입의 모디파이어도 존재함을 의미합니다.
+
+바로 "Composed" 모디파이어가 이에 해당합니다.  
+이전 섹션에서 모디파이어는 상태가 없기에 상태를 유지하기 위해서 래핑되어야 한다고 언급했습니다.  
+이 개념은 "표준" 모디파이어에 해당됩니다. 
+
+반면, Composed 모디파이어는 상태를 가지는 특별한 타입으로 컴포지션이 필요한 경우에 사용됩니다.  
+예를 들어, 모디파이어 로직에서 어떤 값을 `remember`해야 하거나, 모디파이어가 `CompositionLocal`에서 값을 읽어야 하는 경우가 있습니다.
+이러한 작업들은 컴포지션 컨텍스트에서 모디파이어 람다를 실행하지 않으면 불가능합니다.
+
+Composed 모디파이어는 수정하려는 각 요소마다 개별적으로 컴포즈됩니다.  
+레이아웃에 여러 개의 Composed 모디파이어가 모디파이어 체인의 일부로 전달될 경우, 이 모디파이어들은 먼저 `factory` 컴포저블 함수를 통해 컴포즈된 후에야 `LayoutNode`에 할당됩니다:  
+
+```kotlin
+// ComposedModifier.kt
+private open class ComposeModifier(
+    inspectorInfo: InspectorValueInfo.() -> Unit,
+    val factory: @Composable Modifier.() -> Modifier,
+) : Modifier.Element, InspectorValueInfo(inspectorInfo)
+```
+
+`factory` 컴포저블 람다를 먼저 실행해야 하는 이유는 `LayoutNode`가 Composed 모디파이어를 처리하는 방법을 모르기 때문입니다.  
+따라서, Composed 모디파이어는 일반 모디파이어로 변환된 후에야 `LayoutNode`에 할당될 수 있습니다.
+
+`factory` 람다는 노드가 사용될 때마다 컴포지션 컨텍스트에서 실행되며, 이를 통해 블록 내의 다른 컴포저블에 접근할 수 있게 됩니다.  
+또한, `factory` 람다는 Composed 모디파이어를 작성하는데 사용됩니다. 
+
+이해를 돕기 위해 `clickable` 모디파이어를 예로 들어보면, 
+`Modifier.composed()` 확장 함수를 사용하여 상태를 가지는(Composed) 모디파이어가 생성되는 것을 볼 수 있습니다:
+
+```kotlin
+// Clickable.kt
+fun Modifier.clickable(
+    interactionSource: MutableInteractionSource,
+    indication: Indication?,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+    ...
+) = composed(
+    factory = {
+        val onClickState = rememberUpdatedState(onClick)
+        val pressedInteraction = remember { mutableStateOf<PressInteraction.Press?>(null) }
+
+        ...
+        val isClickableInScrollableContainer = remember { mutableStateOf(true) }
+        val delayPressInteraction = rememberUpdatedState { 
+            isClickableInScrollableContainer.value || isRootInScrollableContainer()
+        }
+        val gesture = Modifier.pointerInput(interactionSource, enabled) { ... }
+
+        Modifier
+            .then(... adds more extra modifiers)
+            .genericClickableWithoutGesture(
+                gestureModifiers = gesture,
+                ...
+            )
+    },
+    inspectorInfo = ...append info about the modifier for dev tooling
+)
+```
+
+블록 내에서 상태를 `remember`하려면 컴포지션이 필요하기 떄문에, Composed 모디파이어가 사용됩니다.
+
+`clickable` 모디파이어 외에도 `focusable`, `scroll`, `swipeable`, `border`, `selectable`, `pointerInput`, `draggable`, `toggleable` 등 다양한 Composed 모디파이어가 존재합니다.
+이러한 모디파이어들에 대해 더 알아보려면, 소스 코드를 검토하고 `Modifier.composed()` 확장 함수의 사용법을 찾아보는 것이 좋습니다.
+
+Compose UI는 특정한 목적을 위해 임시로 `LayoutNode`를 생성해야 할 때가 있으며, 이때 모디파이어를 설정하는 기회로 활용하기도 합니다.  
+예를 들어, `Owner`의 루트 `LayoutNode`(e.g : `AndroidComposeView`)가 대표적인 예시입니다:
+
+```kotlin
+// AndroidComposeView.android.kt
+override val root = LayoutNode().also {
+    it.measurePolicy = RootMeasurePolicy
+    it.modifier = Modifier
+      .then(semanticsModifier)
+      .then(_focusManager.modifier)
+      .then(keyInputModifier)
+    it.density = density
+}
+```
+
+`AndroidComposeView`가 루트 `LayoutNode`를 연결할 떄, 이 기회를 활용하여 측정 정책, 밀도, 접근성을 위한 몇 가지 모디파이어를 설정합니다. 
+이러한 모디파이어들은 시맨틱 트리의 기본 구성을 적용하고, 접근성을 위한 포커스 관리자, 키 입력 처리를 담당하는 관리자를 설정합니다. 
