@@ -1785,3 +1785,80 @@ override val root = LayoutNode().also {
 `RootMeasurePolicy`는 루트 노드에 연결된 자식들을 측정하고 배치합니다.  
 이를 위해 `placeable.placeRelativeWithLayer(0, 0)`을 호출하여 측정된 자식을 좌표 (0, 0)에 배치하고, 그래픽 레이어를 도입합니다. 
 이 그래픽 레이어는 스냅샷 상태 변경을 자동으로 관찰하고 반응할 수 있도록 구성됩니다.
+
+## Semantics in Jetpack Compose
+
+이 챕터를 시작하는 가장 좋은 방법은 시맨틱에 대한 간단한 요약으로 시작하는 것입니다.  
+Compose에서 컴포지션은 UI를 설명하는 트리입니다. 동시에, 접근성 서비스와 테스트 프레임워크가 이해할 수 있는 방식으로 UI를 설명하는 또 다른 트리가 있습니다.
+이 트리의 노드들은 자신들의 시맨틱 의미에 대한 메타데이터를 제공합니다.
+
+이전 섹션에서 `LayoutNode` 계층의 `Owner`가 Android SDK를 통해, 시맨틱을 전달하는 접근성 델리게이트를 가지고 있다는 것을 확인했습니다.
+그리고 노드가 연결되거나, 분리되거나, 시맨틱이 업데이트될 때마다, 시맨틱 트리는 `Owner`를 통해 알림을 받습니다. 
+
+`Owner`가 생성되면(`AndroidComposeView`에서 `setContent`가 호출되면),   
+몇 가지 기본 모디파이어가 설정된, 임시 루트 `LayoutNode`가 생성됩니다:
+
+```kotlin
+override val root = LayoutNode().also {
+    it.measurePolicy = RootMeasurePolicy
+    it.modifier = Modifier
+      .then(semanticsModifier)
+      .then(_focusManager.modifier)
+      .then(keyInputModifier)
+    it.density = density
+}
+```
+
+위 예시에서의 3가지 모디파이어들은 접근성과 시맨틱에 중요한 역할을 합니다.
+
+- semantics 모디파이어는 루트 노드에 기본 구성으로 코어 시맨틱을 추가하여, 시맨틱 트리를 구축하기 시작합니다.  
+- focusManager 모디파이어는 컴포저블 계층 전체에서 포커스를 관리할 수 있도록, 루트 모디파이어를 설정합니다.   
+  이 매니저는 필요에 따라, 포커스를 설정하고 이동하는 작업을 담당합니다.  
+- keyInput 모디파이어는 키보드 입력을 처리하고, `KeyDown` 이벤트를 focusManager로 전달하여, 키보드를 사용해 포커스를 관리할 수 있도록 합니다.
+
+여기서 focusManager와 keyInput 모디파이어는 접근성 측면에서 매우 중요합니다.
+
+루트가 아닌, 다른 노드에 시맨틱을 추가하려면 `Modifier.semantics` 함수를 사용합니다.  
+`Layout`에 설정되는 모든 semantics 모디파이어는 ID와 일부 시맨틱 구성을 포함하고 있습니다: 
+
+```kotlin
+fun Modifier.semantics(
+    properties: (SemanticsPropertyReceiver.() -> Unit),
+    mergeDescendants: Boolean = false,
+): Modifier = composed(
+    inspectorInfo = debugInspectorInfo {
+        name = "semantics"
+        this.properties["mergeDescendants"] = mergeDescendants
+        this.properties["properties"] = properties
+    }
+) {
+    val id = remember { SemanticsModifierCore.generateSemanticsId() }
+    SemanticsModifierCore(id, mergeDescendants, clearAndSetSemantics = false, properties)
+}
+```
+
+위 코드에서는 Compose 도구가 컴포저블 트리를 검사할 떄, 노드에 대한 세부 정보를 표시할 수 있도록, 디버그 인스펙터 정보가 암묵적으로 생성되는 것을 확인할 수 있습니다.
+
+ID는 자동으로 생성되고 기억됩니다. 이 ID들은 `LayoutNode` 계층 내에서 고유하며(정적으로 공유됨), 순차적으로 생성됩니다.  
+새로 생성된 ID는 이전 ID보다 크며, 이는 새로운 컴포지션이 ID를 처음부터 생성할 수도 있고, 이전에 생성된 다른 컴포지션의 마지막 ID 다음으로 이어서 생성할 수도 있음을 의미합니다.
+
+마지막으로, semantics 모디파이어는 위 요소들과, 제공되는 구성 파라미터(`properties`, `mergeDescendants`)를 사용하여 생성됩니다.
+
+현재, `semantics` 모디파이어는 블록 내에서 생성된 ID를 기억하기 위해 `remember`를 사용해야 하므로, 컴포지션 컨텍스트에 접근할 수 있는 `composed` 모디파이어로 구현되어 있습니다.
+그러나, 이 구현은 변경될 예정이며, 진행 중인 리팩토링에 따라서 ID는 더 이상 `remember`를 필요로 하지 않고, 해당 `LayoutNode`를 생성할 때 자동으로 생성되도록 변경될 것입니다.
+따라서 컴포지션 컨텍스트에 대한 필요성이 제거되면, `composed` 모디파이어도 제거될 것입니다.
+
+`AndroidComposeView`가 루트 노드에 기본 semantics 모디파이어를 할당할 때, 동일한 방식으로 생성합니다:
+
+```kotlin
+private val semanticsModifier = SemanticsModifierCore(
+    id = SemanticsModifierCore.generateSemanticsId(),
+    mergeDescendants = false,
+    clearAndSetSemantics = false,
+    properties = { }
+)
+```
+
+> `material` or `foundation` 라이브러리에서 제공하는 컴포저블을 사용할 때는, 시맨틱이 이미 암묵적으로 연결되어 있을 가능성이 매우 높습니다. 
+> 이는 매우 유용하지만, 직접 커스텀 레이아웃을 작성할 때는 이러한 작업이 자동으로 수행되지 않습니다.
+> 이런 이유로, Compose에서 새로운 레이아웃을 작성할 때마다, 우선시 되는 접근성과 테스트를 위해 시맨틱을 제공하는 것이 중요합니다.
