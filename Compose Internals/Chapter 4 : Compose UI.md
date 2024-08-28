@@ -1886,3 +1886,57 @@ AndroidX Core 라이브러리는 시스템 버전 전반에 걸쳐, 접근성 �
 시맨틱 속성이 변경되면, 네이티브 메커니즘인 `ViewParent#requestSendAccessibilityEvent`를 통해 접근성 서비스에 이를 알립니다.
 
 3. 이전 시맨틱 노드 목록을 현재 시맨틱 노드들로 업데이트합니다.
+
+## Merged and unmerged semantic trees
+
+Compose는 두 가지 시맨틱 트리를 제공합니다: 병합된 시맨틱 트리와 병합되지 않은 시맨틱 트리.   
+때로는 시맨틱적으로 컴포저블들을 병합해야 할 필요가 있습니다. 왜냐하면, 개별적으로 요소를 경험하는 것보다 그룹으로 경험하는 것이 사용자에게 더 나은 시맨틱 의미를 제공하기 때문입니다.
+
+예를 들어, 접근성 도구인 TalkBack이 매우 큰 리스트의 각 행 안에 있는 작은 컴포저블 모두를 하나하나 읽는다고 생각해보면,
+이는 사용자에게 매우 피로감을 줄 뿐만 아니라 실용적이지도 않을 것입니다. 이럴 때는 각 행을 통째로 읽는 것이 더 나을 것입니다.
+
+병합은 `mergeDescendants` 속성을 통해 이루어지며, 이 속성은 시맨틱 노드(i.e : 컴포저블이나 모디파이어)가 자식 노드들을 자신과 병합할지에 대한 여부를 결정합니다.
+실제로, 많은 foundation 및 material 컴포저블과 모디파이어들이 기본적으로 이 작업을 수행합니다.  
+병합된 트리는 `mergeDescendants`를 설정한 노드를 기반으로 병합을 수행하며, 병합되지 않은 트리는 이를 수행하지 않고 노드들을 분리하여 유지합니다. 
+어떤 트리를 사용할지는 도구가 결정합니다.
+
+내부적으로 병합이 이루어지는 방법은 다음과 같습니다: 
+
+시맨틱 프로퍼티에는 병합 정책이 할당되며, `contentDescription`를 예로 들어보겠습니다:
+
+```kotlin
+MyButton(
+    modifier = Modifier.semantics { contentDescription = "Add to cart" }
+)
+```
+
+시맨틱 프로퍼티는 `SemanticsPropertyReceiver`를 상속받은 확장 프로퍼티로 정의됩니다.  
+`SemanticsPropertyReceiver`는 시맨틱 블록에서 다양한 속성을 설정할 수 있는 스코프입니다.
+
+```kotlin
+// SemanticsProperties.kt
+interface SemanticsPropertyReceiver {
+    operator fun <T> set(key: SemanticsPropertyKey<T>, value: T)
+}
+```
+
+시맨틱 프로퍼티를 설정하려면, 시맨틱 키와 값이 필요합니다.  
+시맨틱 키는 타입 세이프 방식으로 정의되며, 생성 시 프로퍼티 이름과 병합 정책이 필요합니다:
+
+```kotlin
+// SemanticsProperties.kt
+val ContentDescription = SemanticsPropertyKey<List<String>>(
+    name = "ContentDescription",
+    mergePolicy = { parentValue, childValue ->
+        parentValue?.toMutableList()?.also { it.addAll(childValue) }  ?: childValue
+    }
+)
+```
+
+병합 정책을 정의하는 람다에서는 해당 프로퍼티가 자식 프로퍼티들을 어떻게 병합할지를 결정합니다.  
+예를 들어, `ContentDescription`은 모든 자식의 `ContentDescription` 값을 리스트에 추가하지만, 다른 방식으로 처리할 수도 있습니다.
+
+사실 Compose에서 시맨틱 프로퍼티의 기본 병합 정책은 병합을 수행하지 않습니다.  
+노드에 부모 값이 있으면 그 값을 유지하고, 자식 값을 버립니다.
+
+이 섹션에서는 내부 구현에만 초점을 맞추고 있기에, Compose 시맨틱에 대한 API와 사용자 관점에 대한 자세한 내용은 [공식 문서](https://developer.android.com/develop/ui/compose/accessibility/semantics)를 참고하시면 됩니다.
