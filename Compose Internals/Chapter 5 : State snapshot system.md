@@ -268,3 +268,114 @@ sealed class Snapshot(...) {
 
 스레드의 현재 스냅샷은 `Snapshot.current`를 통해 언제든지 가져올 수 있습니다.  
 이 함수는 현재 스레드에 스냅샷이 존재하면 해당 스냅샷을 반환하고, 그렇지 않은 경우 전역 상태를 보유한 전역 스냅샷을 반환합니다.
+
+## Observing reads and writes
+
+Compose 런타임은 '관찰된 상태'가 변경될 때 리컴포지션을 트리거할 수 있습니다.   
+이전 챕터에서 설명한 이 메커니즘이 상태 스냅샷 시스템과 어떻게 연결되는지 이해하는 것이 좋습니다.  
+이를 이해하기 위해, 먼저 읽기 작업을 관찰하는 방법부터 알아보겠습니다.
+
+스냅샷을 찍으면(i.e : `Snapshot.takeSnapshot()`), `ReadonlySnapshot`이 반환됩니다.  
+이 스냅샷의 상태 객체는 수정할 수 없고, 오직 읽기만 가능하므로, 스냅샷이 해제될 때까지 상태가 유지됩니다.  
+`takeSnapshot` 함수는 `readObserver`를 옵션 파라미터로 전달할 수 있으며, 이 옵저버는 스냅샷 내에서 **`enter` 호출로** 상태 객체가 읽힐 때마다 알림을 받습니다:
+
+```kotlin
+// ReadOnlySnapshot.kt
+// simple observer to track the total number of reads
+val snapshot = Snapshot.takeSnapshot { reads++ }
+// ...
+snapshot.enter { /* read some state */ }
+// ...
+```
+
+`snapshotFlow` 함수는 `State<T>` 객체를 `Flow`로 변환하는 예시입니다.  
+이 함수는 수집될 때 블록을 실행하고, 블록 내에서 읽은 `State` 객체의 결과를 발행합니다.  
+이후, 읽은 `State` 객체 중 하나가 변경되면, `Flow`는 새로운 값을 컬렉터에게 발행합니다.
+
+이러한 동작을 구현하기 위해, `snapshotFlow`는 모든 상태의 읽기를 기록하고, 상태 객체가 변경될 때마다 블록을 다시 실행할 수 있어야 합니다.  
+이를 위해 '읽기 전용 스냅샷'을 찍고, 읽기 옵저버를 사용하여 읽은 상태 객체를 `Set`에 저장합니다:
+
+```kotlin
+// snapshotFlow.kt
+fun <T> snapshotFlow(block: () -> T): Flow<T> {
+    // ...
+    snapshot.takeSnapshot { readSeet.add(it) }
+    // ...
+    // Do Something with the Set
+}
+```
+
+읽기 전용 스냅샷은 상태가 읽힐 떄 자신의 `readObserver`뿐만 아니라, 부모 스냅샷의 `readObserver`에도 알림을 보냅니다.  
+중첩된 스냅샷에서의 읽기는 부모 스냅샷과 그들의 옵저버에게도 전달되어, 스냅샷 트리의 모든 옵저버가 적절하게 알림을 받습니다.
+
+이제 쓰기 작업을 관찰하는 방법을 알아보겠습니다.
+
+쓰기 작업(상태 업데이트)에도 옵저버를 사용할 수 있으며, 이는 **가변 스냅샷**을 생성할 때만 가능합니다.  
+가변 스냅샷은 자신이 보유한 상태를 수정할 수 있는 스냅샷으로, `Snapshot.takeMutableSnapshot()`을 호출하여 생성할 수 있습니다.  
+이 과정에서 읽기 및 쓰기 옵저버를 선택적으로 전달하여, 상태가 읽히거나 쓰일 때마다 알림을 받을 수 있습니다.
+
+읽기와 쓰기를 관찰하는 좋은 예시로 `Recomposer`가 있습니다.  
+`Recomposer`는 컴포지션 내에서 발생하는 읽기와 쓰기를 추적하여, 필요 시 자동으로 리컴포지션을 트리거합니다.
+
+아래는 그 예시입니다:
+
+```kotlin
+// Recomposer.kt
+private fun readObserverOf(
+    composition: ControlledComposition
+): (Any) -> Unit {
+    return { value -> 
+        composition.recordReadOf(value)  // recording reads 
+    } 
+}
+
+private fun writeObserverOf(
+    composition: ControlledComposition,
+    modifiedValues: IdentityArraySet<Any>?
+): (Any) -> Unit {
+    return { value ->
+        composition.recordWriteOf(value) // recording writes
+        modifiedValues?.add(value)
+    }
+}
+
+private inline fun <T> composing(
+    composition: ControlledComposition,
+    modifiedValues: IdentityArraySet<Any>?,
+    block: () -> T
+): T {
+    val snapshot = Snapshot.takeMutableSnapshot(
+        readObserver = readObserverOf(composition),
+        writeObserver = writeObserverOf(composition, modifiedValues)
+    )
+    
+    try {
+        return snapshot.enter(block)
+    } finally {
+        applyAndCheck(snapshot)
+    }
+}
+```
+
+`composing` 함수는 초기 컴포지션을 생성할 때와 모든 리컴포지션에서 호출됩니다.  
+이 함수는 상태를 읽고 수정할 수 있는 `MutableSnapshot`을 사용하며, 블록 내에서 발생하는 모든 읽기와 쓰기 작업이 컴포지션에 의해 추적(알림이 전달)됩니다. (`enter` 호출 참조)
+
+`block`으로 전달된 코드는 컴포지션 또는 리컴포지션을 실행하는 역할을 하며, 트리 내의 모든 컴포저블을 실행하여 변경 사항 목록을 계산합니다.  
+이 과정이 `enter` 함수 내부에서 이루어지기에, 모든 읽기 및 쓰기 작업이 자동으로 추적됩니다.
+
+스냅샷 상태에 대한 쓰기 작업이, 컴포지션에 추적될 때마다, 해당 스냅샷 상태를 읽고 있는 `RecomposeScopes`는 무효화되고 리컴포지션이 트리거됩니다.
+
+마지막으로 호출되는 `applyAndCheck(snapshot)` 함수는 컴포지션 중에 발생한 변경 사항을, 다른 스냅샷과 전역 상태로 전파합니다.
+
+옵저버는 코드에서 다음과 같이 간단한 함수 타입으로 구현됩니다:
+
+```kotlin
+// ReadAndWriteObservers.kt
+readObserver: ((Any) -> Unit)?
+writeObserver: ((Any) -> Unit)?
+```
+
+현재 스레드에서 읽기 및 쓰기 작업을 관찰하기 위해 `Snapshot.observe(readObserver, writeObserver, block)`라는 유틸리티 함수가 사용됩니다.  
+예를 들어, `derivedStateOf`는 위 함수를 통해, 제공되는 블록에서 모든 객체의 읽기 작업을 감지하고 반응합니다.  
+또한, `TransparentObserverMutableSnapshot`은 위 함수가 사용되는 유일한 곳으로, 부모(루트) 스냅샷으로 생성되어 옵저버에게 읽기 작업이 발생했음을 알립니다. 
+이 스냅샷 타입은 특별한 경우에 스냅샷에 콜백 목록을 가지고 있지 않아도 되도록 만들어졌습니다.
