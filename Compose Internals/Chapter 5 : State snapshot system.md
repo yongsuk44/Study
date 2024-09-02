@@ -379,3 +379,91 @@ writeObserver: ((Any) -> Unit)?
 예를 들어, `derivedStateOf`는 위 함수를 통해, 제공되는 블록에서 모든 객체의 읽기 작업을 감지하고 반응합니다.  
 또한, `TransparentObserverMutableSnapshot`은 위 함수가 사용되는 유일한 곳으로, 부모(루트) 스냅샷으로 생성되어 옵저버에게 읽기 작업이 발생했음을 알립니다. 
 이 스냅샷 타입은 특별한 경우에 스냅샷에 콜백 목록을 가지고 있지 않아도 되도록 만들어졌습니다.
+
+## MutableSnapshots
+
+지금까지 상태 업데이트(쓰기)에 대해 많이 이야기했지만, 가변 스냅샷에 대해 아직 자세히 다루지 않았습니다.   
+이제 이 주제에 대해 자세히 살펴보겠습니다.
+
+`MutableSnapshot`은 가변 스냅샷 상태를 다룰 떄 사용하는 스냅샷 타입으로, 쓰기 작업을 추적하여 자동으로 리컴포지션을 트리거할 수 있도록 합니다.
+
+가변 스냅샷에서는 스냅샷이 찍힐 당시의 상태 객체 값이 그대로 유지되지만, 스냅샷 내에서 로컬로 변경될 때에는 다르게 동작합니다.
+`MutableSanpshot`에서 발생한 모든 변경 사항은 다른 스냅샷에서 발생한 변경 사항과 격리되며, 변경 사항은 트리의 아래에서 위로 전파됩니다.  
+자식 중첩 가변 스냅샷은 먼저 자신의 변경 사항을 적용한 후, 이를 부모 스냅샷이나, 트리의 루트인 경우 전역 스냅샷으로 전파해야 합니다.  
+이 작업은 `NestedMutableSnapshot#apply`를 호출하여 수행되며, 중첩되지 않은 경우 `MutableSnapshot#apply`를 호출합니다.
+
+변경 사항을 아래에서 위로 전파하는 방식은, 중첩된 스냅샷에서 발행한 모든 변경 사항이 부모 스냅샷에 먼저 적용된 후에만 루트 스냅샷이 적용될 수 있도록 보장합니다.  
+이렇게 함으로써, 변경 사항이 전역 상태에 도달하기 전에, 모든 중첩된 스냅샷의 변경 사항이 이미 적용되었음을 보장할 수 있습니다.
+
+다음 문단은 Compose 런타임 Kdocs에서 추출한 내용입니다:
+
+_컴포지션은 가변 스냅샷을 사용하여, 컴포저블에서 발생한 변경 사항을 전역 상태로부터 일시적으로 격리시킵니다. 
+이후 컴포지션이 적용될 때, 이러한 변경 사항이 전역 상태에 반영됩니다. 
+만약 `MutableSnapshot.apply`가 스냅샷을 적용하는데 실패하면, 해당 스냅샷과 컴포지션 동안 계산된 변경 사항은 폐기되고, 새로운 컴포지션이 다시 계산되도록 예약됩니다._
+
+즉, 컴포지션의 마지막 단계에서 `Applier`를 통해 변경 사항을 적용할 때, 가변 스냅샷에서 발생한 모든 변경 사항이 적용되고, 부모 스냅샷이나 최종적으로 전역 스냅샷(프로그램 상태)에 알림이 전달됩니다.
+만약 이러한 변경 사항을 적용하는 과정에서 실패가 발생하면, 새로운 컴포지션이 예약되어 다시 계산됩니다.
+
+가변 스냅샷은 고유한 라이프사이클을 가지며, 반드시 `apply` 또는 `dispose`를 호출하여 끝내야 합니다.  
+이는 상태 변경 사항을 다른 스냅샷에 전파하고 메모리 누수를 방지하기 위해 필요합니다.
+
+`apply`를 통해 전파된 변경 사항은 원자적(atomically)으로 적용됩니다.   
+즉, 전역 상태나 부모 스냅샷(중첩된 경우)은 여러 개의 변경 사항을 각각 따로 처리하는게 아닌, 이들을 하나의 단일 변경 사항으로 인식하고 처리합니다. (**단일 아토믹 변경**)
+이를 통해 상태 변경 이력이 정리되어, 식별, 재현, 중단 또는 되돌리기가 더 쉬워집니다.   
+이것이 바로 동시성 제어 시스템을 배울 때 설명했던, 트랜잭셔널 메모리의 핵심 개념입니다. 
+
+가변 스냅샷이 해제되었지만 적용되지 않은 경우, 그 동안 보류 중인 상태 변경 사항은 폐기됩니다.
+
+다음은 클라이언트 코드에서 `apply`가 어떻게 동작하는지에 대한 실제 예시입니다:
+
+```kotlin
+class Address {
+    var street: MutableState<String> = mutableStateOf("")
+}
+
+fun main() {
+    val address = Address()
+    address.street.value = "Main St."
+    val snapshot = Snapshot.takeMutableSnapshot()
+    
+    println(address.street.value)       // Prints "Main St."
+    snapshot.enter {
+        address.street.value = "Second St."
+        println(address.street.value)   // Prints "Second St."
+    }
+    println(address.street.value)       // Prints "Main St."
+    
+    snapshot.apply()
+    println(address.street.value)       // Prints "Second St."
+}
+```
+
+`enter` 호출 내에서 값을 출력하면 "Second St."로 출력되는데, 이는 스냅샷의 컨텍스트에서 실행되기 때문입니다.  
+하지만 `enter` 호출 이후에서 출력하면, 값이 원래 값으로 되돌아간 것처럼 보입니다.  
+이는 `MutableSnapshot`의 변경 사항이 다른 스냅샷과 격리되어 있기 때문입니다.  
+그러나 `apply`를 호출하면 변경 사항이 전파되어, 다시 출력을 하면 수정된 값("Second St.")이 출력되는 것을 확인할 수 있습니다.
+
+`enter` 호출 내에서 이루어진 상태 업데이트만이 추적되고 전파된다는 점에 유의하셔야 합니다.
+
+이 패턴을 간소화하기 위한 대안으로 `Snapshot.withMutableSnapshot`이 있습니다.   
+이 함수는 마지막에 `apply`가 자도으로 호출되도록 보장합니다.
+
+```kotlin
+fun main() {
+    val address = Address()
+    address.street.value = "Main St."
+    
+    Snapshot.withMutableSnapshot {
+        println(address.street.value)       // Prints "Main St."
+        address.street.value = "Second St."
+        println(address.street.value)       // Prints "Second St."
+    }
+    println(address.street.value)           // Prints "Second St."
+}
+```
+
+> `apply`가 마지막에 호출되는 방식은 챕터 3에서 설명한 바와 같이, Composer가 변경 사항 목록을 기록하고 나중에 적용하는 방식을 떠올릴 수 있습니다. 
+> 이는 동일한 개념으로, 트리 구조에서 변경 사항 목록을 한꺼번에 처리하려면, 이를 기록하거나 연기하여 올바른 순서로 적용(트리거)하고, 그 순간에 일관성을 부여해야 합니다.
+> 이 시점이 바로, 프로그램이 모든 변경 사항을 파악하고, 전체적인 그림을 볼 수 있는 유일한 시점입니다.
+
+최종적으로 수정된 변경 사항을 관찰하기 위해 `apply` 옵저버를 등록할 수 있으며, 이는 `Snapshot.registerApplyObserver`를 통해 이루어집니다.
