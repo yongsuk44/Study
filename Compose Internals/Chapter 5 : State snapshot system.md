@@ -513,3 +513,125 @@ private inline fun <T> compsing(
 
 또 하나 흥미로운 사실은, `Composer`가 생성될 때(즉 `Composition`이 생성될 때), `GlobalSnapshotManager.ensureStarted()`가 호출됩니다.  
 이는 플랫폼(Compose UI)과의 통합 과정의 일부로, 전역 상태에 대한 모든 쓰기 작업을 관찰하고, `AndroidUiDispatcher.Main` 컨텍스트에서 스냅샷 적용 알림을 주기적으로 전송하도록 예약합니다.
+
+## StateObjects and StateRecords
+
+다중 버전 동시성 제어(MVCC)는 상태가 쓰여질 때마다, 새로운 버전이 생성되도록 보장합니다.    
+Compose의 상태 스냅샷 시스템도 이 원칙을 따르므로, 동일한 스냅샷 상태 객체의 여러 버전이 저장될 수 있습니다.
+
+이러한 스냅샷 시스템 설계는 성능 최적화를 위해 다음 세 가지 측면에서 중요합니다:
+
+1. 스냅샷을 생성하는 비용은 O(N)이 아닌, O(1)으로 상태 객체의 수와 무관하게 일정한 시간 내에 이루어집니다.
+2. 스냅샷을 커밋하는 비용은 O(N)으로, N은 스냅샷에서 수정된 객체의 수를 의미합니다.
+3. 스냅샷 시스템에는 스냅샷 데이터를 저장하는 리스트가 없어(일시적으로 수정된 객체 목록만 존재), 상태 객체는 GC에 의해 자유롭게 수집될 수 있습니다. 
+   이 과정에서 스냅샷 시스템에 별도의 알림이 필요하지 않습니다.
+
+내부적으로, 스냅샷 상태 객체는 `StateObject`로 모델링되며, 이 객체에 저장된 여러 버전은 각각 `StateRecord`로 구성됩니다.  
+각 `StateRecord`는 상태의 단일 버전에 대한 데이터를 저장합니다.   
+각 스냅샷이 참조하는 버전(레코드)은 **스냅샷이 생성되었을 때**, 사용 가능한 가장 최신의 유효한 버전(가장 높은 스냅샷 ID를 가진 유효한 버전)을 참조합니다.
+
+<img alt="img.png" src="state_object_and_state_records.png" width="80%"/>
+
+상태 레코드의 "유효성"은 특정 스냅샷에 따라 달라집니다.  
+각 상태 레코드는 생성된 스냅샷의 ID와 연관되어 있으며, 스냅샷에서 유효한 레코드로 간주되기 위해선 다음 조건을 충족해야 합니다:
+
+1. 상태 레코드의 ID가 스냅샷 ID보다 작거나 같음. (즉, 상태 레코드가 현재 또는 이전 스냅샷에서 생성되어야 함.)
+2. 상태 레코드가 스냅샷의 `invalid` 집합에 포함되지 않음. 
+3. 상태 레코드가 명시적으로 무효로 지정되지 않아야 함.
+
+이 조건을 만족하는 유효한 상태 레코드들은, 새로운 스냅샷이 생성될 때 자동으로 복사됩니다.   
+
+위 내용을 보면, 다음과 같은 의문점이 생길것 입니다.
+
+Q : 어떤 경우에 상태 레코드가 `invalid` 집합에 포함되거나, 명시적으로 무효로 지정될까?  
+A : 이 조건은 아래와 같습니다.
+
+- 현재 스냅샷 이후에 생성된 레코드는 무효로 간주됩니다. (즉, 해당 스냅샷 이후에 생성된 경우)  
+- 현재 스냅샷을 생성할 때, 이미 열려있던 스냅샷을 위해 생성된 레코드는 `invalid` 집합에 추가되어, 무효로 간주됩니다.
+- 스냅샷이 시스템에 반영되기 전에 폐기된 경우, 해당 스냅샷에서 생성된 레코드는 명시적으로 무효로 표시됩니다. 
+
+무효화된 레코드는 어떤 스냅샷에서도 보이지 않기 때문에 읽을 수 없습니다.  
+따라서 컴포저블에서 스냅샷 상태를 읽을 때, 무효화된 레코드는 무시되며, 유효한 최신 상태만 반환됩니다.
+
+다시 상태 객체로 돌아가, 상태 스냅샷 시스템에서 어떻게 모델링되는지 간단한 예시를 살펴보겠습니다:
+
+```kotlin
+// Snapshot.kt
+interface StateObject {
+    val firstRecord: StateRecord
+    
+    fun prependRecord(record: StateRecord)
+    
+    fun mergeRecords(
+        previous: StateRecord,
+        current: StateRecord,
+        applied: StateRecord
+    ): StateRecord? = null
+}
+```
+
+어떠한 방식으로든 생성된, 모든 가변 스냅샷 상태 객체는 `StateObject` 인터페이스를 구현합니다.  
+예를 들어, `mutableStateOf`, `mutableStateListOf`, `derivedStateOf` 등 런타임 함수가 반환하는 상태가 이에 해당합니다.
+
+예시로 `mutableStateOf(value)` 함수를 살펴보겠습니다.
+
+```kotlin
+// SnapshotState.kt
+fun <T> mutableStateOf(
+    value: T,
+    policy: SnapshotMutationPolicy<T> = structuralEqualityPolicy()
+): MutableState<T> = 
+    createSnapshotMutableState(value, policy)
+```
+
+`mutableStateOf` 호출은 `SnapshotMutableState` 인스턴스를 반환하며, 이는 업데이트될 때 자동으로 옵저버에게 알림을 보내는, 관찰 가능한 가변 상태입니다.
+
+`SnapshotMutableState` 클래스는 `StateObject`로, 다양한 버전의 상태(value)를 저장하는 레코드들을 연결 리스트로 유지합니다.  
+상태가 읽힐 때마다, 이 레코드 리스트를 순회하여 가장 최근의 유효한 레코드를 찾아 반환합니다.
+
+<img alt="img.png" src="mutableStateOf.png" width="80%"/>
+
+`StateObject` 정의를 살펴보면, 레코드 연결 리스트의 첫 번째 요소를 가리키는 포인터가 있으며, 각 레코드는 다음 레코드를 가리키는 구조임을 알 수 있습니다. 
+또한, 새로운 레코드를 리스트 맨 앞에 추가하여, 해당 레코드를 새로운 `firstStateRecord`로 만들 수 있습니다.
+
+`StateObject` 정의에 포함된 또 다른 함수는 `mergeRecords` 입니다.  
+Compose의 동시성 제어 시스템은 가능한 경우, 충돌을 자동으로 병합할 수 있다고 언급했습니다. `mergeRecords`가 바로 그 역할을 수행합니다.  
+병합 전략은 간단하며, 이후 자세히 다룰 예정입니다.
+
+이제 `StateRecords`를 살펴보겠습니다.
+
+```kotlin
+// Snapshot.kt
+abstract class StateRecord {
+    internal var snapshotId: Int = currentSnapshot().id     // associated with
+    internal var next: StateRecord? = null                  // points to the next one
+    
+    abstract fun assign(value: StateRecord)
+    abstract fun create(): StateRecord
+}
+```
+
+위 코드를 보면, 각 레코드는 스냅샷 ID와 연관되어 있음을 볼 수 있습니다.  
+이 ID는 레코드가 생성된 스냅샷의 ID로, 주어진 스냅샷에서 해당 레코드의 유효 여부를 결정하는 중요한 요소입니다.
+
+객체가 읽힐 때 마다, 주어진 스냅샷 상태(`StateObject`)에 대한 `StateRecords` 리스트를 순회하며, 유효한 최신 레코드(가장 높은 스냅샷 ID를 가진 레코드)를 찾습니다. 
+마찬가지로, 스냅샷이 찍힐 때도 모든 스냅샷 상태 객체에서 가장 최근의 유효한 상태가 캡처되며, 이 상태는 새로운 스냅샷의 수명 동안 유지됩니다.   
+(단, 가변 스냅샷이고 상태가 로컬에서 변경된 경우는 예외입니다.)
+
+`StateRecord`는 다른 레코드에서 값을 할당받거나, 초기 생성을 위한 함수를 가지고 있습니다.
+
+`StateRecord`는 각각의 `StateObject` 타입에 따라서 다양한 구현체가 정의되는 계약(인터페이스)입니다.  
+이는 상태 레코드가 상태 객체와 관련된 정보를 저장하기 떄문인데, 이 정보는 각 타입 및 사용 사례에 따라 다릅니다.
+
+`mutableStateOf`의 예시를 보면, `StateObject`인 `SnapshotMutableState`를 반환합니다.  
+이 `SnapshotMutableState`는 특정 타입의 레코드, 즉 `StateStateRecord`들을 연결 리스트로 유지합니다.  
+각 `StateStateRecord`는 단순히 `T` 타입의 값을 감싸는 래퍼로, 각 레코드에 저장되는 정보는 `T` 타입의 값입니다.
+
+<img alt="img.png" src="snapshot_mutablestate_t.png" width="80%"/>
+
+또 다른 좋은 예시로 `mutableStateListOf()`는 `StateObject`의 또 다른 구현체인 `SnapshotStateList`를 생성합니다.  
+이 `SnapshotStateList`는 관찰 가능한(즉, Kotlin의 `MutableList` 컬렉션 계약을 구현하는) 가변 리스트를 모델링하므로, 이 상태의 레코드는 `StateListStateRecord` 타입을 가집니다. 
+
+이 `StateListStateRecord`는 상태 리스트의 버전을 저장하기 위해 `PersistentList`라는 Kotlin의 불변 컬렉션을 사용합니다. 
+
+<img alt="img.png" src="snapshot_mutablestate_persistentlist.png" width="80%"/>
