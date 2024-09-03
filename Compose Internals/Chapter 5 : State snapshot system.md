@@ -635,3 +635,93 @@ abstract class StateRecord {
 이 `StateListStateRecord`는 상태 리스트의 버전을 저장하기 위해 `PersistentList`라는 Kotlin의 불변 컬렉션을 사용합니다. 
 
 <img alt="img.png" src="snapshot_mutablestate_persistentlist.png" width="80%"/>
+
+## Reading and writing state
+
+상태의 읽기 및 쓰기는 상태 레코드를 읽고 쓰는 것을 의미합니다.
+
+"객체를 읽을 때, 주어진 스냅샷 상태(`StateObject`)에 대한 `StateRecords` 리스트를 순회하며, 가장 최근의 유효한 레코드(가장 높은 스냅샷 ID를 가진 레코드)를 찾습니다." 
+이 과정이 코드에서 어떻게 구현되는지 살펴보겠습니다.
+
+```kotlin
+// TextField.kt
+@Composable
+fun TextField(...) {
+    // ...
+    var textFieldValueState by remember { 
+        mutableStateOf(TextFieldValue(text = value))
+    }
+    // ...
+}
+```
+
+`compose.material` 라이브러리의 `TextField` 컴포저블은 텍스트 값을 저장하는 가변 상태를 기억합니다.   
+이 가변 상태가 업데이트될 때마다, 컴포저블이 리컴포즈되어 화면에 새로운 문자를 표시합니다.
+
+현재 `remember` 호출은 크게 중요하지 않으니 잠시 제쳐두고, 스냅샷 상태를 생성하는 `mutableStateOf` 함수를 살펴보겠습니다: 
+
+```kotlin
+// SnapshotState.kt
+fun <T> mutableStateOf(
+    value: T,
+    policy: SnapshotMutationPolicy<T> = structuralEqualityPolicy()
+): MutableState<T> = 
+    createSnapshotMutableState(value, policy)
+```
+
+이 함수는 `value: T`와 `SnapshotMutationPolicy<T>`를 인자로 받아, `SnapshotMutableState` 상태 객체를 생성합니다.  
+이 객체는 값을 메모리에 저장하며, 값이 업데이트될 때마다 변경 정책을 사용해 새로운 값이 현재 값과 다른지 확인합니다.  
+
+아래는 해당 클래스에서 `value` 프로퍼티가 어떻게 정의되는지 보여줍니다:
+
+```kotlin
+internal open class SnapshotMutableStateImpl<T>(
+    value: T,
+    override val policy: SnapshotMutationPolicy<T>
+): StateObject, SnapshotMutableState<T> {
+
+    private var next: StateStateRecord<T> = StateStateRecord(value)
+   
+    override var value: T
+        get() = next.readable(this).value
+        set(value) = next.withCurrent {
+            if (!policy.equivalent(it.value, value)) {
+                next.overwritable(this, it) { this.value = value }
+            }
+        }
+   
+    // ...
+}
+```
+
+`TextField` 컴포저블에서 getter를 통해 내부 값을 접근할 때(i.e : `textFieldValueState.value`), 연결 리스트의 첫 번째 상태 레코드인 `next`에서 `readable` 함수를 호출하여 반복을 시작합니다.
+
+이 `readable` 함수는 현재 스냅샷에서 가장 최신의 유효한 readable 상태를 찾기 위해 반복 작업을 수행하며, 이 과정에서 등록된 읽기 옵저버에게 알림을 전달합니다.
+각 항목을 반복할 때 마다 유효성을 확인하며, 유효성 조건은 이전 섹션에서 정의된 조건을 따릅니다.   
+현재 스냅샷은 현재 스레드에 연결된 스냅샷이거나, 스레드가 스냅샷에 연결되지 않은 경우 글로벌 스냅샷이 됩니다. 
+
+이와 같은 방식이 `mutableStateOf`의 스냅샷 상태를 읽는 방법입니다.  
+`mutableStateListOf`와 같은 다른 가변 스냅샷 상태 구현에서도 유사한 방식으로 동작합니다.
+
+상태를 쓰는 방법을 알아보기 위해, 프로퍼티의 setter를 살펴보겠습니다: 
+
+```kotlin
+set(value) = next.withCurrent {
+   if (!policy.equivalent(it.value, value)) {
+       next.overwritable(this, it) { this.value = value }
+   }
+}
+```
+
+`withCurrent` 함수는 내부적으로 `readable`을 호출하여, 가장 최신의 유효한 상태 레코드를 파라미터로 전달하여, 제공된 블록을 실행합니다.
+
+그 후, 제공된 `SnapshotMutationPolicy`를 사용하여 새로운 값이 현재 값과 동일한지 확인합니다.  
+값이 다르면, `overwritable` 함수가 호출되어 쓰기 프로세스가 시작됩니다.
+
+`overwritable` 함수의 구변 세부 사항은 쉽게 변경될 수 있어 깊이 다루지는 않겠지만, 간단히 설명하자면 다음과 같습니다.  
+이 함수는 **writable** 상태 레코드를 사용하여 블록을 실행하며, 현재 스냅샷에서 가장 최신의 유효한 레코드를 선택합니다.  
+제안된 레코드가 현재 스냅샷에서 유효하면, 이 레코드를 사용해 쓰기 작업을 수행합니다.  
+유효하지 않다면, 새로운 레코드를 생성하여 리스트의 맨 앞에 추가하고, 이를 새로운 초기 레코드를 만듭니다.  
+블록은 이 새로운 레코드에서 실제로 값을 수정합니다.
+
+마지막으로, 쓰기 작업이 완료되면 등록된 모든 쓰기 옵저버에게 알림을 전달합니다.
