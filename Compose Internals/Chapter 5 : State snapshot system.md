@@ -806,3 +806,66 @@ Compose가 이 문제를 어떻게 해결하는지 설명하기 전에, 먼저 "
 중첩된 가변 스냅샷의 경우, 프로세스가 약간 다릅니다. 왜냐하면 이들은 변경 사항을 글로벌 스냅샷이 아닌 부모 스냅샷으로 전파하기 때문입니다.  
 이러한 이유로, 중첩된 가변 스냅샷은 수정된 상태 객체를 모두, 부모의 수정된 상태 세트에 추가합니다.  
 또한, 이러한 변경 사항이 부모에게 모두 보이도록 하기 위해, 중첩된 가변 스냅샷은 부모의 무효 스냅샷 세트에서 자신의 ID를 제거합니다.
+
+## Merging write conflicts
+
+병합을 수행하기 위해, 가변 스냅샷은 수정된 상태 목록(로컬 변경 사항)을 반복하면서, 각 변경 사항에 대해 다음을 수행합니다:
+
+- 부모 스냅샷 또는 글로벌 상태에서 현재 값(상태 레코드)를 가져옵니다.
+- 변경 사항을 적용하기 전에 이전 값을 가져옵니다.
+- 변경 사항을 적용한 후 객체가 갖게 될 상태를 가져옵니다.
+- 세 가지 값을 자동으로 병합하려 시도하며, 이 작업은 상태 객체에 위임됩니다. 상태 객체는 제공된 **병합 정책**에 의존합니다. ([`StateObject` 참조](#stateobjects-and-staterecords))
+
+사실 현재 런타임에서는 적절한 병합을 지원하는 정책이 없기에, 충돌하는 업데이트는 사용자에게 문제를 알리는 런타임 예외를 발생시킬 것입니다.
+이를 방지하기 위해 Compose는 고유한 키를 통해 상태 객체에 접근함으로써 충돌을 방지합니다. (컴포저블 함수에서 기억된 상태 객체는 주로 고유한 액세스 프로퍼티를 가집니다.)  
+`mutableStateOf`는 병합을 위해 `StructuralEqualityPolicy`를 사용하므로, 객체의 두 버전을 동등성 비교(`==`)를 통해 비교합니다.  
+따라서 고유한 객체 키를 포함한 모든 프로퍼티가 비교되어, 두 객체의 충돌을 방지합니다.
+
+충돌하는 변경 사항의 자동 병합은 잠재적인 최적화로 추가되었습니다.  
+Compose는 아직 이를 사용하지 않지만, 다른 라이브러리들은 사용할 수 있습니다.  
+
+`SnapshotMutationPolicy` 인터페이스를 구현하여, 커스텀 `SnapshotMutationPolicy`를 제공할 수 있습니다.  
+예를 들어, `MutableState<Int>`를 카운터로 취급하는 정책이 있을 수 있습니다.  
+이 정책은 상태 값이 동일하게 변경되는 것은 변경으로 간주하지 않으므로, `counterPolicy`를 사용하는 가변 상태의 변경 사항은 절대로 충돌을 일으키지 않습니다.
+
+```kotlin
+// CounterPolicy.kt
+fun counterPolicy(): SnapshotMutationPolicy<Int> = object : SnapshotMutationPolicy<Int> {
+    override fun equivalent(old: Int, new: Int): Boolean = old == new
+    override fun merge(previous: Int, current: Int, applied: Int): Int = current + (applied - previous)
+}
+```
+
+두 값이 동일하면, 이들은 동등하다고 간주되어 현재 값이 유지됩니다.  
+병합은 새로 적용된 값과 이전 값의 차이를 더함으로써 얻어지므로, 현재 값은 항상 저장된 총량을 반영합니다. 
+
+_정책의 이름이 암시하는 바와 같이, 이 정책은 스냅샷 내에서 자원의 소비량이나 생산량을 추적하는데 유용할 수 있습니다.  
+예를 들어, 스냅샷 A가 10개의 물건을 생산하고, 스냅샷 B가 20개의 물건을 생산한다면, A와 B를 모두 적용한 결과는 30개의 물건이 생산된 것으로 나타나야 합니다._
+
+```kotlin
+// CounterPolicy2.kt
+val state = mutableStateOf(0, counterPolicy())
+val snapshot1 = Snapshot.takeMutableSnapshot()
+val snapshot2 = Snapshot.takeMutableSnapshot()
+
+try {
+    snapshot1.enter { state.value += 10 }
+    snapshot2.enter { state.value += 20 }
+    snapshot1.apply().check()
+    snapshot2.apply().check()
+} finally {
+    snapshot1.dispose()
+    snapshot2.dispose() 
+}
+
+// State is now 30 as the changes made in the snapshots are added together.
+```
+
+위 코드를 보면, 비교를 위해 카운터 정책을 사용하는 단일 가변 상태를 가지고 있으며, 이 상태를 수정하고 변경 사항을 적용하려는 몇 개의 스냅샷이 있습니다.  
+이는 충돌이 발생할 수 있는 완벽한 시나리오지만, 카운터 정책 덕분에 충돌을 완전히 피할 수 있습니다.
+
+이는 충돌을 방지하는 커스텀 `SnapshotMutationPolicy`를 제공하는 방법에 대한 간단한 예시일 뿐, 이를 통해 핵심 개념을 이해할 수 있습니다.  
+충돌이 발생하지 않는 또 다른 구현은, 요소를 추가만 할 수 있고, 제거할 수 없는 집합에 대한 정책이 있을 수 있습니다.  
+유사하게, 로프와 같은 다른 유용한 데이터 타입들도 동작 방식과 예상 결과에 대한 특정 제약 조건이 주어진다면, 충돌이 없는 데이터 타입으로 변환될 수 있습니다.
+
+또한, 충돌을 허용하지만 병합 함수를 사용하여 데이터를 병합함으로써, 충돌을 해결하는 커스텀 정책을 제공할 수도 있습니다.
