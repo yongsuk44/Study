@@ -227,3 +227,50 @@ fun MyScreen(
 또한, `TouchHandler`가 애플리케이션 실행 동안 항상 살아있는 싱글톤으로 메인 화면(항상 보이는 화면)에 사용된다면, 참조를 폐기하지 않는 것이 더 좋을 수 있습니다. 
 
 `SideEffect`는 Compose `State` 시스템에서 관리하지 않는 외부 상태에 **업데이트를 게시**하여, 항상 동기화되도록 유지하는 이펙트 핸들러로 이해할 수 있습니다.
+
+### currentRecomposeScope
+
+`currentRecomposeScope`는 이펙트 핸들러보단 이펙트 자체에 더 가깝지만, 다뤄볼 가치가 있는 흥미로운 주제입니다.
+
+Android 개발자라면 View 시스템의 `invalidate`와 비슷한 개념에 익숙할 수 있습니다.  
+`invalidate`는 뷰에서 새로운 측정, 레이아웃, 드로우 단계를 강제로 실행하는 메서드입니다.  
+예를 들어, `Canvas`를 사용한 프레임 기반 애니메이션을 만들 때 자주 사용됩니다.  
+매번의 드로우 틱마다 뷰를 무효화하여, 경과된 시간에 따라 다시 드로우를 수행하는 방식입니다.
+
+`currentRecomposeScope`는 다음과 같은 단일 목적을 가진 인터페이스입니다:
+
+```kotlin
+// RecomposeScope.kt
+interface RecomposeScope {
+    /**
+     * Invalidate the corresponding scope, requesting the composer recompose this scope.
+     */
+    fun invalidate()
+}
+```
+
+`currentRecomposeScope.invalidate()`를 호출하면 컴포지션을 로컬에서 무효화하고, **리컴포지션을 강제**할 수 있습니다.
+
+이 방식은 **Compose의 상태 스냅샷이 아닌**, 다른 데이터의 출처(source of truth)를 사용할 때 유용할 수 있습니다.
+
+```kotlin
+interface Presenter {
+    fun loadUser(after: @Composable () -> Unit): User
+}
+
+@Composable
+fun MyComposable(presenter: Presenter) {
+    val user = presenter.loadUser { currentRecomposeScope.invalidate() } // Not a State
+    
+    Text(text = "The loaded user: ${user.name}")
+}
+```
+
+위 코드를 보면, 프레젠터를 사용해 결과가 있을 때, `invalidate`를 호출하여 수동으로 리컴포지션을 강제하고 있습니다.  
+이는 `State`를 전혀 사용하지 않기 때문에 발생하는 상황으로, 매우 특이한 상황입니다.  
+대부분의 경우에는 `State`와 스마트 리컴포지션을 사용하는 것이 좋습니다.
+
+전반적으로, 이 방식은 신중하게 사용해야 합니다. 가능한 한 `State`를 사용해 스마트 리컴포지션을 활용하면 Compose 런타임의 성능을 최대한 활용할 수 있습니다.
+
+> 프레임 기반 애니메이션을 위해 Compose는 choreographer에서 다음 렌더링 프레임까지 대기할 수 있는 API를 제공합니다.  
+> 이후 실행이 재개되면, 경과된 시간 등을 사용하여 상태를 업데이트하고, 이를 통해 스마트 리컴포지션을 다시 활용할 수 있습니다.
