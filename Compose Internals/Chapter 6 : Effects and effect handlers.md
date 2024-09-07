@@ -147,3 +147,50 @@ fun MyScreen(
 
 - 비중단 이펙트(Non suspended effects) : 예를 들어, 컴포저블이 컴포지션에 진입할 때 콜백을 초기화하고, 떠날 때 이를 정리하는 이펙트.
 - 중단 이펙트(Suspended effects) : 예를 들어, 네트워크에서 데이터를 로드하여 UI 상태에 데이터를 공급하는 이펙트.
+
+## Non suspended effects
+
+### DisposableEffect
+
+`DisposableEffect`는 컴포지션 라이프사이클과 관련된 사이드 이펙트를 나타냅니다.
+
+- 비중단 이펙트 중에서도 폐기(dispose)가 필요한 경우에 사용됩니다.
+- 컴포저블이 컴포지션에 들어갈 때 처음 실행되고, 이후 키 값이 변경될 때마다 다시 실행됩니다.
+- 마지막에 `onDispose` 콜백이 필요합니다. 컴포저블이 컴포지션에서 떠날 때 or 키 값이 변경될 때마다 폐기되며, 이 경우 이펙트가 폐기되고 다시 실행됩니다.
+
+```kotlin
+// DisposableEffect.kt
+@Composable
+fun backPressHandler(
+    onBackPressed: () -> Unit,
+    enabled: Boolean = true,
+) {
+    val dispatcher = LocalOnBackPressedDispatcherOwner.current.onBackPressedDispatcher
+    
+    val backCallback = remember {
+        object : OnBackPressedCallback(enabled) {
+            override fun handleOnBackPressed() {
+                onBackPressed()
+            }
+        }
+    }
+    
+    DisposableEffect(dispatcher) {      // dispose/relaunch if dispatcher changes
+        dispatcher.addCallback(backCallback)
+        
+        onDispose { 
+            backCallback.remove()       // avoid leaks
+        }
+    }
+}
+```
+
+위 예제는 `CompositionLocal`에서 얻은 디스패처에 콜백을 연결하는 백프레스 핸들러가 있습니다.  
+컴포저블이 컴포지션에 들어갈 때와 디스패처가 변경될 때 콜백을 연결하려면, **디스패처를 이펙트 핸들러의 키로 전달**하면 됩니다.   
+이렇게 하면 디스패처가 변경될 때, 이펙트가 자동으로 폐기되고 다시 실행됩니다.
+
+컴포저블이 컴포지션에서 완전히 떠날 떄, 콜백도 함께 폐기됩니다.
+
+컴포지션에 진입할 때 한 번만 실행하고, 컴포지션을 떠날 때 폐기하려면, **상수를 키로 전달**하면 됩니다: `DisposableEffect(true)` or `DisposableEffect(Unit)`. 
+
+`DisposableEffect`는 항상 최소한 하나의 키를 요구한다는 점을 기억해야 합니다. 
