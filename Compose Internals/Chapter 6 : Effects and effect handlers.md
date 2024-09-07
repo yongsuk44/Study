@@ -194,3 +194,36 @@ fun backPressHandler(
 컴포지션에 진입할 때 한 번만 실행하고, 컴포지션을 떠날 때 폐기하려면, **상수를 키로 전달**하면 됩니다: `DisposableEffect(true)` or `DisposableEffect(Unit)`. 
 
 `DisposableEffect`는 항상 최소한 하나의 키를 요구한다는 점을 기억해야 합니다. 
+
+### SideEffect
+
+컴포지션의 또 다른 사이드 이펙트입니다. 이 이펙트는 조금 특별한데, "이 컴포지션에서 실행하거나 잊어버리기"와 같은 방식입니다.  
+만약 컴포지션이 어떤 이유로 실패한다면, 이펙트는 **폐기**됩니다.
+
+Compose 런타임에 익숙하다면, 이 이펙트가 **슬롯 테이블에 저장되지 않는다**는 점을 기억하세요.  
+이는 컴포지션이 종료되면 이펙트가 유지되지 않으며, 이후 컴포지션에서 다시 시도되거나 실행되지 않습니다.
+
+- **폐기할 필요가 없는** 이펙트에 적합합니다.
+- 매 컴포지션 / 리컴포지션 후에 실행됩니다.
+- **외부 상태에 대한 업데이트를 게시**하는 데 유용합니다.
+
+```kotlin
+// SideEffect.kt
+@Composable
+fun MyScreen(
+    drawerTouchHandler: TouchHandler
+) {
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    
+    SideEffect {
+        drawerTouchHandler.enabled = drawerState.isOpen
+    }
+    
+    // ...
+}
+```
+
+위 예시는 드로어의 현재 상태를 중요하게 생각하며, 이 상태는 언제든지 변경될 수 있습니다. 이런 의미에서, 매번 컴포지션이나 리컴포지션이 발생할 때마다 상태를 알릴 필요가 있습니다. 
+또한, `TouchHandler`가 애플리케이션 실행 동안 항상 살아있는 싱글톤으로 메인 화면(항상 보이는 화면)에 사용된다면, 참조를 폐기하지 않는 것이 더 좋을 수 있습니다. 
+
+`SideEffect`는 Compose `State` 시스템에서 관리하지 않는 외부 상태에 **업데이트를 게시**하여, 항상 동기화되도록 유지하는 이펙트 핸들러로 이해할 수 있습니다.
