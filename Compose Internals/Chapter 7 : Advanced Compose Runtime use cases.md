@@ -52,3 +52,35 @@ graph LR
     UI --> AU("Android UI")
     UI --> DU("Compose Desktop")
 ```
+
+## (Re-) Introducing composition
+
+`Composition`은 모든 컴포저블이 실행되는 컨텍스트를 제공합니다.  
+`SlotTable`을 기반으로 "캐시"를 제공하고, `Applier`를 통해 커스텀 트리를 생성하는 인터페이스를 제공합니다.  
+`Recomposer`는 `Composition`을 구동하며, 상태 변경과 같은 이벤트가 발생할 때마다 리컴포지션을 트리거합니다.  
+일반적으로 `Composition`은 프레임워크에 의해 자동으로 생성되지만, 이 챕터에서는 특별한 사용 사례를 다루며, 직접 `Composition`을 관리하는 방법도 알아볼 것입니다.
+
+<img alt="img.png" src="composition_structure.png" width="40%"/>
+
+`Composition`을 생성하려면 다음과 같은 팩토리 메서드를 사용할 수 있습니다:
+
+```kotlin
+// Composition.kt
+fun Composition(
+    parent: CompositionContext,
+    applier: Applier<*>,
+): Composition = ...
+```
+
+- 부모 `context`는 보통 `rememberCompositionContext()`를 통해 컴포저블 내에서 얻을 수 있습니다.   
+또는, `Recomposer`가 `CompositionContext`를 구현하며, Android에서 사용할 수 있거나 필요에 따라 별도로 생성할 수 있습니다.
+- 두 번째 파라미터는 `Applier`로, `Composition`이 생성하는 트리를 어떻게 구성하고 연결할지를 결정합니다.  
+이전 챕터에서 이에 대해 자세히 다루었으며, 이 챕터에서는 이를 구현하는 몇 가지 좋은 예시를 살펴볼 것입니다.
+
+> 재밌는 점은, 만약 컴포저블 함수의 다른 기능만 필요하다면 아무 동작도 하지 않는 `Applier` 인스턴스를 제공할 수 있습니다.  
+> 노드를 사용하지 않더라도, `@Composable` 어노테이션은 모든 컴포저블이 그러하듯이 상태 변경에 반응하는 데이터 스트림 변환 또는 이벤트 핸들러를 제공할 수 있습니다.  
+> 단순히 `Applier<Nothing>`을 만들고 `ComposeNode`를 사용하지 않으면 됩니다.
+
+이 장의 나머지 부분은 **Compose UI** 없이 **Compose 런타임**을 사용하는 것에 중점을 둡니다.  
+첫 번째 예시는 Compose UI 라이브러리에서 가져온 것으로, 커스텀 트리를 통해 벡터 그래픽을 렌더링하는 예시입니다.  
+이후에는 Kotlin/JS로 전환하여, Compose를 활용한 간단한 브라우저 DOM 관리 라이브러리를 만들것입니다.
