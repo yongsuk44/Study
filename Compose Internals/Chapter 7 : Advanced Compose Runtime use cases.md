@@ -84,3 +84,36 @@ fun Composition(
 이 장의 나머지 부분은 **Compose UI** 없이 **Compose 런타임**을 사용하는 것에 중점을 둡니다.  
 첫 번째 예시는 Compose UI 라이브러리에서 가져온 것으로, 커스텀 트리를 통해 벡터 그래픽을 렌더링하는 예시입니다.  
 이후에는 Kotlin/JS로 전환하여, Compose를 활용한 간단한 브라우저 DOM 관리 라이브러리를 만들것입니다.
+
+## Composition of vector graphics
+
+Compose에서 벡터 렌더링은 `Painter` 추상화를 통해 구현되며, 이는 전통적인 Android 시스템의 `Drawable`과 유사합니다:
+
+```kotlin
+Image(
+    painter = rememberVectorPainter { width, height -> 
+        Group(
+            scaleX = 0.75f,
+            scaleY = 0.75f,
+        ) {
+            val pathData = PathData { ... }
+            Path(pathData = pathData)
+        }
+    }
+)
+```
+
+`rememberVectorPainter` 블록 내부 함수들(`Group`, `Path` 등) 또한 컴포저블이지만, 일반적인 컴포저블과는 다른 타입입니다.  
+Compose UI의 다른 컴포저블들이 `LayoutNode`를 생성하는 것과 달리, 이들은 벡터 그래픽을 구성하는 요소들을 만듭니다.  
+이 요소들이 결합되어 '벡터 트리'가 생성되며, 이후 캔버스에 그려집니다.
+
+<img alt="img.png" src="compose_ui_vectorpainter_composition.jpg" width="80%"/>
+
+`Group`과 `Path`는 일반 UI와는 다른, **벡터 컴포지션**에 속해 있습니다.  
+벡터 컴포지션은 `VectorPainter` 안에 있으며, 벡터 이미지를 구성하는 요소만 사용할 수 있고, 일반적인 UI 컴포저블은 사용할 수 없습니다.
+
+> 벡터 컴포저블에 대한 검사는 현재 런타임에서 이루어지며, `VectorPainter` 블록 안에 `Image` or `Box`를 사용하더라도 컴파일러는 이를 무시하고 건너뜁니다.
+
+이전 챕터에서 설명한 상태, 이펙트, 그리고 **런타임**에 관한 규칙들은 UI 컴포지션뿐만 아니라 벡터 컴포지션에서도 동일하게 적용됩니다.  
+예를 들어, 트랜지션 API를 사용해 UI와 벡터 이미지의 변화를 함께 애니메이션할 수 있습니다. 
+([벡터 그래픽 데모](https://cs.android.com/androidx/platform/frameworks/support/+/56f60341d82bf284b8250cf8054b08ae2a91a787:compose/ui/ui/integration-tests/ui-demos/src/main/java/androidx/compose/ui/demos/VectorGraphicsDemo.kt)와 [애니메이션 벡터 그래픽 데모](https://cs.android.com/androidx/platform/frameworks/support/+/56f60341d82bf284b8250cf8054b08ae2a91a787:compose/animation/animation/integration-tests/animation-demos/src/main/java/androidx/compose/animation/demos/vectorgraphics/AnimatedVectorGraphicsDemo.kt)를 참조하세요.)
