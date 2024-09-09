@@ -347,3 +347,30 @@ fun SpeakerList(eventId: String) {
 
 또한, 다시 실행되어야 할 때마다 이펙트가 취소된다는 점을 기억해야 합니다.  
 `LaunchedEffect`는 최소한 하나의 키가 필요합니다.
+
+### produceState
+
+`produceState`는 `LaunchedEffect` 위에 만들어진 문법적 설탕(syntax sugar)입니다.
+
+- 주로 `LaunchedEffect`가 `State`를 업데이트할 떄 사용됩니다.
+- `LaunchedEfefct`를 기반으로 동작합니다.
+
+```kotlin
+// produceState.kt
+fun SearchScreen(eventId: String) {
+    val uiState = produceState(
+        initialValue = emptyList<Speaker>(), 
+        eventId,
+    ) {
+        viewModel.loadSpeakers(eventId)     // suspended effect
+    }
+    
+    ItemsVerticalList(uiState.value)
+}
+```
+
+상태에 기본값을 제공할 수 있으며, 하나 또는 여러 개의 키를 전달할 수 있습니다.
+
+유의할 점은 `produceState`가 키를 전달하지 않아도 동작된다는 것입니다.  
+이 경우 `LaunchedEffect`는 `Unit`을 키로 사용하여, 컴포지션이 일어날 때마다 이펙트가 다시 실행됩니다.  
+이는 API에서 명확하게 드러나지 않으므로 주의해야 합니다.
