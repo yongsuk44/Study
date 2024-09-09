@@ -318,3 +318,32 @@ fun SearchScreen() {
 텍스트 입력이 변경될 때마다 진행 중인 작업을 취소하고, 새 작업을 실행하기 전에 지연 시간을 두어, 네트워크 요청과 같은 작업 사이에 최소한의 지연 시간을 보장합니다. 
 
 `LaunchedEffect`와의 차이점은 `LaunchedEffect`는 컴포지션에서 시작된 작업을 스코핑하는데 사용되는 반면, `rememberCoroutineScope`는 **사용자 상호작용으로 시작된 작업**을 스코핑하는데 사용된다는 것입니다.
+
+### LaunchedEffect
+
+`LaunchedEffect`는 컴포저블이 컴포지션에 진입하자마자 초기 상태를 로드하는 일시 중단 함수입니다.
+
+- 컴포지션에 진입할 때 이펙트를 실행합니다.
+- 컴포지션을 떠날 때 이펙트를 취소합니다.
+- 키가 변경될 때 이펙트를 취소하고 다시 실행합니다.
+- 리컴포지션 동안 작업을 지속하는데 유용합니다.
+- 컴포지션에 진입할 때 이펙트는 applier 디스패처(일반적으로 `AndroidUiDispatcher.Main`)에서 실행됩니다.
+
+```kotlin
+// LaunchedEffect.kt
+fun SpeakerList(eventId: String) {
+    var speakers by remember { mutableStateOf<List<Speaker>>(emptyList()) }
+    
+    LaunchedEffect(eventId) {   // cancelled / relaunched when eventId varies
+        speakers = viewModel.loadSpeakers(eventId)  // suspended effect
+    }
+    
+    ItemsVerticalList(speakers)
+}
+```
+
+설명할게 많지 않습니다. 
+이 이펙트는 컴포지션에 진입할 떄 한 번 실행되고, 키 값에 의존하기 떄문에 키 값이 변경될 때마다 다시 실행됩니다. 컴포지션을 떠날 때 이펙트가 취소됩니다.
+
+또한, 다시 실행되어야 할 때마다 이펙트가 취소된다는 점을 기억해야 합니다.  
+`LaunchedEffect`는 최소한 하나의 키가 필요합니다.
