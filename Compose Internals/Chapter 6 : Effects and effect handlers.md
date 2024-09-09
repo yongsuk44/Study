@@ -274,3 +274,47 @@ fun MyComposable(presenter: Presenter) {
 
 > 프레임 기반 애니메이션을 위해 Compose는 choreographer에서 다음 렌더링 프레임까지 대기할 수 있는 API를 제공합니다.  
 > 이후 실행이 재개되면, 경과된 시간 등을 사용하여 상태를 업데이트하고, 이를 통해 스마트 리컴포지션을 다시 활용할 수 있습니다.
+
+## Suspended effects
+
+### rememberCoroutineScope
+
+`rememberCoroutineScope`는 컴포지션의 자식으로 간주될 수 있는 작업을 생성하는 `CoroutineScope`를 생성합니다.
+
+- 컴포지션 라이프사이클에 바인딩된 중단 이펙트를 실행하는데 사용됩니다.
+- 컴포지션 라이프사이클에 바인딩된 `CoroutineScope`를 생성합니다.
+- 컴포지션을 떠날 떄 스코프가 취소됩니다.
+- 컴포지션 간에 동일한 스코프가 반환되므로, 여러 작업을 계속해서 제출할 수 있으며, 컴포지션이 종료될 때 진행 중인 모든 작업이 취소됩니다.
+- 사용자 상호작용에 대한 응답으로 작업을 시작하는데 유용합니다.
+- 컴포지션에 진입할 때 이펙트는 applier 디스패처(일반적으로 `AndroidUiDispatcher.Main`)에서 실행됩니다.
+
+```kotlin
+// rememberCoroutineScope.kt
+@Composable
+fun SearchScreen() {
+    val scope = rememberCoroutineScope()
+    var currentJob by remember { mutableStateOf<Job?>(null) }
+    var items by remember { mutableStateOf<List<Item>>(emptyList()) }
+    
+    Column {
+        Row {
+            TextField(
+                value = "Start typing to search",
+                onValueChange = { text -> 
+                    currentJob?.cancel()
+                    currentJob = scope.async {
+                        delay(threshold)
+                        items = viewModel.search(query = text)
+                    }
+                }
+            )
+        }
+        Row { ItemsVerticalList(items) }
+    }
+}
+```
+
+이는 UI에서 쓰로틀링을 구현하는 방법입니다. 과거에 `View` 시스템에서 `postDelayed` or `Handler`를 통해 비슷한 작업을 했을 수 있습니다.  
+텍스트 입력이 변경될 때마다 진행 중인 작업을 취소하고, 새 작업을 실행하기 전에 지연 시간을 두어, 네트워크 요청과 같은 작업 사이에 최소한의 지연 시간을 보장합니다. 
+
+`LaunchedEffect`와의 차이점은 `LaunchedEffect`는 컴포지션에서 시작된 작업을 스코핑하는데 사용되는 반면, `rememberCoroutineScope`는 **사용자 상호작용으로 시작된 작업**을 스코핑하는데 사용된다는 것입니다.
