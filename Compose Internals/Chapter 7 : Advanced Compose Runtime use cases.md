@@ -117,3 +117,156 @@ Compose UI의 다른 컴포저블들이 `LayoutNode`를 생성하는 것과 달�
 이전 챕터에서 설명한 상태, 이펙트, 그리고 **런타임**에 관한 규칙들은 UI 컴포지션뿐만 아니라 벡터 컴포지션에서도 동일하게 적용됩니다.  
 예를 들어, 트랜지션 API를 사용해 UI와 벡터 이미지의 변화를 함께 애니메이션할 수 있습니다. 
 ([벡터 그래픽 데모](https://cs.android.com/androidx/platform/frameworks/support/+/56f60341d82bf284b8250cf8054b08ae2a91a787:compose/ui/ui/integration-tests/ui-demos/src/main/java/androidx/compose/ui/demos/VectorGraphicsDemo.kt)와 [애니메이션 벡터 그래픽 데모](https://cs.android.com/androidx/platform/frameworks/support/+/56f60341d82bf284b8250cf8054b08ae2a91a787:compose/animation/animation/integration-tests/animation-demos/src/main/java/androidx/compose/animation/demos/vectorgraphics/AnimatedVectorGraphicsDemo.kt)를 참조하세요.)
+
+## Building vector image tree
+
+벡터 이미지는 `LayoutNode`보다 더 단순한 요소들로부터 구성되어, 벡터 그래픽의 요구 사항에 더 적합하게 설계됩니다:
+
+```kotlin
+// VNode.kt
+sealed class VNode {
+    abstract fun DrawScoep.draw()
+}
+
+// the root node
+internal class VectorComponent : VNode() { 
+    val root = GroupComponent()
+    
+    override fun DrawScope.draw() { 
+        // set up viewport size and cache drawing
+    } 
+}
+
+internal class PathComponent : VNode() { 
+    var pathData: List<PathNode>
+    // more properties
+    
+    override fun DrawScope.draw() { 
+        // draw path
+    }
+}
+
+internal class GroupComponent : VNode() { 
+    private val children = mutableListOf<VNode>()
+    // more properties
+    
+    override fun DrawScope.draw() { 
+        // draw children with transform
+    }
+}
+```
+
+위 노드들은 전통적인 벡터 드로어블 XML에서 사용되는 것과 유사한 트리 구조를 정의합니다.  
+이 트리는 두 가지 주요 노드 타입으로 구성됩니다:
+
+- `GroupComponent` : 자식 노드들을 결합하고, 공통 변활을 적용하는 노드
+- `PathComponent` : 자식 노드가 없는 리프 노드로, `pathData`를 그리는 역할을 합니다.
+
+`fun DrawScope.draw()` 함수는 노드와 그 자식들의 콘텐츠를 그리는 방법을 제공합니다.  
+이 함수의 시그니처는 나중에 이 트리의 루트와 통합되는 `Painter` 인터페이스와 동일합니다.
+
+> `VectorPainter`는 전통적인 Android 시스템의 XML 벡터 드로어블 리소스를 표시하는데 사용됩니다.   
+> XML 파서는 유사한 구조를 생성하고, 이를 일련의 `Composable` 호출로 변환하여 겉보기에는 다른 타입의 리소스라도 동일한 방식으로 구현됩니다.
+
+위 트리 노드들은 `internal`로 선언되어 있어, 이를 생성하는 유일한 방법은 해당 `@Composable` 선언을 통해 생성하는 것입니다.
+이 함수들은 이 섹션의 시작 부분에서 `rememberVectorPainter` 예제에서 사용된 함수들입니다.
+
+```kotlin
+// VectorComposables.kt
+@Composable
+fun Group(
+    scaleX: Float = DefaultScaleX,
+    scaleY: Float = DefaultScaleY,
+    ...
+    content: @Composable () -> Unit
+) {
+    ComposeNode<GroupComponent, VectorApplier>(
+        factory = { GroupComponent() },
+        update = {
+            set(scaleX) { this.scaleX = it }
+            set(scaleY) { this.scaleY = it } 
+            ...
+        },
+        content = content
+    )
+}
+
+@Composable
+fun Path(
+    pathData: List<PathNode>,
+    ...
+) {
+    ComposeNode<PathComponent, VectorApplier>(
+        factory = { PathComponent() },
+        update = {
+            set(pathData) { this.pathData = it }
+            ...
+        }
+    )
+}
+```
+
+`ComposeNode` 호출은 컴포지션에 노드를 삽입하여 트리 구조를 생성합니다.  
+그 외의 경우에는 `@Composable` 함수가 트리와 직접 상호작용할 필요가 없습니다.  
+초기 삽입(노드 요소가 생성될 때) 이후, Compose는 정의된 파라미터의 업데이트를 추적하고, 관련 속성을 점진적으로 업데이트합니다.
+
+- `factory` 파라미터는 트리 노드가 어떻게 생성되는지를 정의합니다.   
+  여기서는 `Path`나 `Group` 컴포넌트의 생성자를 호출하는 방식으로 노드를 생성합니다.
+- `update` 파라미터는 이미 생성된 인스턴스의 속성을 점진적으로 업데이트하는 방법을 제공합니다.   
+  람다 내부에서 Compose는 헬퍼 함수와 함께 데이터를 메모이즈하여 효율적으로 업데이트합니다.
+
+`fun <T> Updater.set(value: T)` or `fun <T> Updater.update(value: T)`와 같은 헬퍼 함수는 제공된 값이 변경될 때만 트리 노드의 속성을 새로고침하여, 불필요한 무효화를 방지합니다.
+
+- `content` 파라미터는 자식 노드를 부모 노드에 추가하는 방식입니다.  
+  이 파라미터는 노드 업데이트가 끝난 후 실행되며, 생성된 모든 자식 노드는 현재 노드(부모)에 연결됩니다.  
+  또한, `ComposeNode`에는 `content` 파라미터가 없는 버전도 있어, 이는 `Path` 처럼 자식 노드가 없는 리프 노드에 사용될 수 있습니다.
+
+자식 노드를 부모 노드에 연결하기 위해, Compose는 앞서 간략히 설명한 `Applier`를 사용합니다. 
+`VNodes`는 `VectorApplier`를 통해 결합됩니다:
+
+```kotlin
+// VectorApplier.kt
+class VectorApplier(root: VNode) : AbstractApplier<VNode>(root) {
+    override fun insertTopDown(index: Int, instance: VNode) {
+        current.asGroup().insertAt(index, instance)
+    }
+    
+    override fun insertBottomUp(index: Int, instance: VNode) {
+        // Ignored as the tree is built top-down
+    }
+    
+    override fun remove(index: Int, count: Int) {
+        current.asGroup().remove(index, count)
+    }
+    
+    override fun move(from: Int, to: Int, count: Int) {
+        current.asGroup().move(from, to, count)
+    }
+    
+    override fun onClear() {
+        root.asGroup().let { it.remove(0, it.numChildren) }
+    }
+    
+    // VectorApplier only works with [GroupComponent], 
+    // as it cannot add children to [PathComponent] by design
+    private fun VNode.asGroup(): GroupComponent {
+        return when (this) {
+            is GroupComponent -> this
+            else -> error("Cannot only insert VNode into Group")
+        }
+    }
+}
+```
+
+`Applier` 인터페이스의 메서드들은 리스트 연산(`insert`/`move`/`remove`)을 자주 수행합니다.   
+이를 반복적으로 재구현하는 것을 피하기 위해, `AbstractApplier`는 `MutableList`에 대한 편리한 확장 기능을 제공합니다.  
+`VectorApplier`의 경우, 이러한 리스트 연산이 `GroupComponent` 내부에서 직접 구현됩니다.
+
+> `Applier`는 트리 조립 순서에 따라 `topDown`과 `bottomUp` 두 가지 삽입 방법을 제공합니다.
+> 
+> - `topDown`은 먼저 노드를 트리에 추가한 후, 자식들을 하나씩 삽입합니다.
+> - `bottomUp`은 노드를 생성하고 모든 자식을 추가한 후, 트리에 삽입합니다.
+> 
+> 이 방식의 차이는 성능 최적화에 있습니다.  
+> 일부 환경에서는 트리에 자식을 추가할 때 성능 비용이 발생할 수 있습니다. (예를 들어 Android 시스템에서 View를 추가할 때 발생하는 레이아웃 재배치 비용을 생각해보세요.)
+> 벡터의 경우, 이러한 성능 비용이 없으므로 노드가 탑다운 방식으로 삽입됩니다.
