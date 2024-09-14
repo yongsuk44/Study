@@ -270,3 +270,112 @@ class VectorApplier(root: VNode) : AbstractApplier<VNode>(root) {
 > 이 방식의 차이는 성능 최적화에 있습니다.  
 > 일부 환경에서는 트리에 자식을 추가할 때 성능 비용이 발생할 수 있습니다. (예를 들어 Android 시스템에서 View를 추가할 때 발생하는 레이아웃 재배치 비용을 생각해보세요.)
 > 벡터의 경우, 이러한 성능 비용이 없으므로 노드가 탑다운 방식으로 삽입됩니다.
+
+## Integrating vector composition into Compose UI
+
+`Applier`가 준비되었으므로, 벡터 컴포지션은 사용할 준비가 거의 되었습니다. 마지막 부분은 `Painter`와의 통합입니다.
+
+```kotlin
+// VectorPainter.kt
+class VectorPainter internal constructor(): Painter() {
+    ...
+  
+    // 1. Called in the context of UI composition
+    @Composable
+    internal fun RenderVector(
+        content: @Composable () -> Unit
+    ) {
+        // 2. The parent context is captured with [rememberCompositionContext] to propagate its values, e.g : CompositionLocals.
+        val composition = composeVector(
+            rememberCompositionContext(),
+            content
+        )
+      
+        // 3. Whenever the UI "forgets" the VectorPainter, the vector composition is disposed with [DisposableEffect] below.
+        DisposableEffect(composition) {
+            onDispose {
+                composition.dispose()
+            }
+        }
+    }
+  
+    private fun composeVector(
+        parent: CompositionContext,
+        content: @Composable () -> Unit
+    ): Composition {
+        ...
+        // See implementation below
+    }
+}
+```
+
+통합의 첫 단계는 Compose UI의 컴포지션과 벡터 이미지의 컴포지션을 연결하는 것입니다:
+
+1. `RenderVector`는 벡터 이미지를 설명하는 컴포저블인 `content`를 받습니다.  
+`Painter` 인스턴스는 리컴포지션 간에 `remember`로 동일하게 유지되지만, `content`가 변경되면 매 컴포지션에서  `RenderVector`가 호출됩니다.
+2. 컴포지션을 생성하려면 항상 부모 컨텍스트가 필요하며, 여기서는 `rememberCompositionContext`로 UI 컴포지션에서 가져옵니다.  
+이렇게 하면 UI 컴포지션과 벡터 컴포지션이 동일한 `Recomposer`에 연결되고, `CompositionLocals` 값(e.g : 밀도)이 벡터 컴포지션에도 전파됩니다.
+3. 컴포지션은 업데이트 중에는 유지되지만, `RenderVector`가 스코프를 벗어나면 폐기되어야 합니다.  
+이 정리 작업은 다른 구독과 마찬가지로 `DisposableEffect`가 관리합니다.
+
+마지막으로, 컴포지션을 이미지 콘텐츠로 채워, 벡터 노드의 트리를 생성합니다. 이는 이후 캔버스에서 벡터 이미지를 그리는 데 사용됩니다:
+
+```kotlin
+// VectorPainter.kt
+class VectorPainter: Painter() {
+    // The root component for the vector tree
+    private val vector = VectorComponent()
+    // 1. Composition with vector elements.
+    private var composition: Composition? = null
+  
+    @Composable
+    internal fun RenderVector(
+        content: @Composable () -> Unit
+    ) {
+        ...
+        // See full implementation above
+    }
+  
+    private fun composeVector(
+        parent: CompositionContext,
+        content: @Composable () -> Unit
+    ): Composition {
+        // 2. Create composition or reuses an existing one.
+        val composition = 
+            if (this.composition == null || this.composition.isDisposed) {
+                Composition(
+                  VectorApplier(vector.root),
+                  parent
+                )
+            } else {
+                this.composition
+            }
+        
+        this.composition = composition
+        
+        // 3. Sets the vector content to the updated composable value
+        composition.setContent {
+            // Vector composables can be called inside this block only
+            composable(vector.viewportWidth, vector.viewportHeight)
+        }
+      
+        return composition 
+    }
+  
+    // Painter interface integration, is called every time the system needs to draw the vector image on screen
+    override fun DrawScope.onDraw() {
+        with(vector) {
+            draw()
+        }
+    }
+}
+```
+
+1. `ComposeNode`는 컴포지션에 전달되는 요소와 일치하는 applier가 필요하며, UI 컨텍스트에서 사용하는 applier가 벡터 노드와 호환되지 않기 때문에, 페인터는 자체적으로 컴포지션을 관리합니다.
+2. 페인터의 컴포지션은 초기화되지 않았거나, 해당 컴포지션이 스코프를 벗어난 경우 다시 새로고침됩니다.
+3. 컴포지션이 생성된 후, `setContent`를 통해 채워지며, 이는 `ComposeView` 내부에서 사용되는 방식과 유사합니다.  
+  `RenderVector`가 다른 `content`로 호출되면, `setContent`가 다시 실행되어 벡터 구조가 새로고침됩니다.   
+  이 `content`는 자식 노드를 `root` 노드에 추가하며, 이는 나중에 `Painter`의 콘텐츠를 그리는 데 사용됩니다.
+
+이로써 통합이 완료되어 `VectorPainter`는 화면에 `@Composable` 콘텐츠를 그릴 수 있습니다.  
+페인터 내부의 컴포저블은 UI 컴포지션에서 전달된 상태와 컴포지션 로컬 값에 접근하여, 자체적으로 업데이트를 수행할 수 있습니다.
