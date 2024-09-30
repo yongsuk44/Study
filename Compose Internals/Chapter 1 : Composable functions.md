@@ -49,14 +49,21 @@ Compose 런타임은 컴포저블이 부여된 속성들을 준수할 것으로 
 
 ## Calling context
 
-컴포저블 함수는 Compose 컴파일러에 의해 암묵적으로 Composer 컨텍스트 인스턴스를 파라미터로 받는 함수로 변환되며, 
-이 인스턴스를 자신의 컴포저블 자식에게도 전달합니다. 이는 Compose 런타임과 개발자가 명시적으로 다룰 필요 없이, 주입된 암묵적 파라미터로 생각할 수 있습니다.
+컴포저블의 대부분 속성은 Compose 컴파일러에 의해 활성화됩니다.  
+Compose 컴파일러는 Kotlin 컴파일러 플러그인으로서, 일반적인 컴파일 과정에서 실행되며, Kotlin 컴파일러가 접근할 수 있는 모든 정보에 접근할 수 있습니다.  
+이를 통해 컴포저블의 중간 표현(IR, Intermediate Representation)을 가로채고 변환하여, 함수에 추가적인 정보를 삽입할 수 있습니다.
+
+각 컴포저블에 추가되는 중요한 요소 중 하나는 파라미터 목록의 끝에 추가되는 `Composer`라는 새로운 파라미터입니다.  
+`Composer` 파라미터는 개발자가 직접 다루지 않는 **암묵적인** 파라미터로, 인스턴스는 런타임에 주입되며, 모든 자식 컴포저블 호출로 전달되어 트리의 모든 레벨에서 접근할 수 있게 됩니다. 
 
 예를 들어, 다음 컴포저블이 있다고 가정해봅시다:
 
 ```kotlin
 @Composable
-fun NamePlate(name: String, lastname: String) {
+fun NamePlate(
+    name: String,
+    lastname: String
+) {
     Column(
         modifier = Modifier.padding(16.dp)
     ) {
@@ -69,14 +76,18 @@ fun NamePlate(name: String, lastname: String) {
 }
 ```
 
-컴파일러는 트리의 각 컴포저블 호출에 암묵적인 Composer 파라미터를 추가하고, 각 컴포저블의 시작과 끝에 몇 가지 마커를 추가합니다.
-다음 코드는 단순화된 예시이지만, 결과는 다음과 같을 것입니다:
+컴파일러는 이를 다음과 같이 변환합니다:
 
 ```kotlin
-fun NamePlate(name: String, lastname: String, $composer: Composer) {
-    $composer.start(123)
+fun NamePlate(
+    name: String,
+    lastname: String,
+    $composer: Composer
+) {
+    ...
     Column(
-        modifier = Modifier.padding(16.dp)
+        modifier = Modifier.padding(16.dp),
+        $composer
     ) {
         Text(
           text = name,
@@ -88,19 +99,16 @@ fun NamePlate(name: String, lastname: String, $composer: Composer) {
           $composer
         )
     }
-    $composer.end()
+    ...
 }
 ```
 
-이처럼 트리가 오직 컴포저블 함수로만 구성되어 있는 경우에 Composer 컨텍스트를 하위 컴포저블에서도 사용할 수 있도록 합니다.
-이는 컴파일러가 매우 엄격한 규칙(컴포저블은 다른 컴포저블에서만 호출될 수 있음)을 적용하여 보장합니다.
+보다시피, `Composer`는 컴포저블의 본문 내에서 모든 컴포저블에 전달됩니다.  
+이와 더불어, Compose 컴파일러는 컴포저블에 대한 엄격한 규칙을 부여합니다: **컴포저블은 다른 컴포저블에서만 호출될 수 있습니다.**  
+이것이 컴포저블의 호출 콘텍스트(calling context)이며, 이를 통해 컴포지션 트리가 오직 컴포저블로만 구성되도록 보장하며, `Composer`가 계속 하위로 전달될 수 있도록 합니다.
 
-이러한 엄격한 규칙을 통해, Compose는 런타임에 필요한 정보가 어떤 서브트리에 있어도 항상 접근이 가능하도록 보장할 수 있습니다.
-이를 기반으로, **컴포저블 함수는 컴포지션 동안 주입된 Composer 인스턴스를 통해 트리의 변경 사항을 발행하며, 
-이후 발행된 변경 사항은 재구성(Recomposition)의 기준이 됩니다.**
-
-이것이 개발자가 작성한 코드와 Compose 런타임을 연결하는 방법입니다.   
-이 연결을 통해 런타임에는 트리의 형태를 알리고, 이를 바탕으로 인메모리 표현을 구축하여 다양한 최적화가 가능해집니다.
+`Composer`는 개발자가 작성한 컴포저블 코드와 Compose 런타임을 연결하는 역할을 합니다.  
+컴포저블은 `Composer`를 사용해 트리의 변경 사항을 발행하고, 트리 구조를 Compose 런타임에 알려, 메모리 내의 트리 구조를 생성하거나 업데이트합니다.
 
 ## Idempotent
 
