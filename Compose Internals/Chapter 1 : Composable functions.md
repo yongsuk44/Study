@@ -402,13 +402,10 @@ Kotlin에서 `suspend`는 비동기 non-blocking 프로그램을 간결하고 �
 
 ## Composable function types
 
-`@Composable`은 컴파일 시 함수의 타입을 변경합니다.  
-더 구체적으로 설명하면, 컴포저블은 `@Composable (T) -> Unit` 함수 타입을 따릅니다.  
-
-- `T`는 **입력 데이터**를 나타냄
-- `Unit`은 **입력을 소비하고, 트리에 변화를 발행해야 함을 나타냄**
-
-개발자는 위 함수 타입을 사용하여 컴포저블 람다를 Kotlin의 일반 람다를 선언하듯이 선언할 수 있습니다.
+`@Composable` 어노테이션은 컴파일 시점에서 함수의 타입을 변경합니다.  
+문법적으로 보면, 컴포저블의 타입은 `@Composable (T) -> A` 형태이며, 여기서 `A`는 함수가 반환하는 값입니다.  
+`A`는 `Unit`일 수도 있고, `remember` 함수처럼 다른 타입을 반환할 수도 있습니다.  
+개발자는 이 타입을 사용하여 컴포저블 람다를 정의할 수 있으며, 이는 Kotlin의 스탠다드 람다를 선언하는 것과 동일합니다.
 
 ```kotlin
 // This can be reused from any Composable tree
@@ -420,7 +417,10 @@ val textComposable: @Composable (String) -> Unit = {
 }
 
 @Composable
-fun NamePlate(name: String, lastName: String) {
+fun NamePlate(
+    name: String,
+    lastName: String
+) {
     Column(
         modifier = Modifier.padding(16.dp)
     ) {
@@ -433,10 +433,7 @@ fun NamePlate(name: String, lastName: String) {
 }
 ```
 
-리시버가 있는 람다가 필요한 경우 `@Composable Scope.() -> Unit` 타입을 따를 수 있습니다.  
-이 타입은 DSL을 활용하여 중첩된 컴포저블을 작성할 때 자주 사용되는 스타일 입니다.  
-
-이 경우, 스코프는 보통 Modifier 혹은 컴포저블과 관련된 변수를 포함하여 블록 내에서 읽을 수 있도록 합니다:
+컴포저블은 `@Composable Scope.() -> A` 타입을 가질 수 있으며, 이는 특정 컴포저블에만 정보를 스코핑하는데 자주 사용됩니다:
 
 ```kotlin
 inline fun Box(
@@ -452,17 +449,5 @@ inline fun Box(
 }
 ```
 
-컴파일러가 컴포저블에 부과하는 제한과 속성은 타입 정의의 일부로 이해될 수 있습니다.  
-왜냐하면 결국 타입은 데이터를 정제하고 속성과 제한을 부여하여 컴파일러가 정적으로 검사할 수 있게 하기 때문입니다.  
-타입 시스템과 유사한 방식으로 동작할 수 있도록 하는 것이 바로 `@Composable` 어노테이션이 하는 일입니다. 
-
-### Composable requirements
-
-컴파일러는 호출 타입, 선언 검사기를 통해 코드 작성 중에도 컴포저블의 요구 사항을 검사하며, 다음을 수행합니다:
-
-- 필요한 호출 컨텍스트 보장
-- 멱등성 보장
-- 제어되지 않은 부수 효과 금지
-
-이러한 검사기(checker)들은 Kotlin 컴파일러의 프론트엔드 단계에서 실행되며, 전통적으로 정적 분석에 사용되는 가장 빠른 피드백 루프를 가집니다.
-라이브러리는 의도적으로 설계된 API와 정적 검사를 통해 개발자에게 올바른 경험을 제공하는 것을 목표로 합니다.
+언어적으로 보면, 타입은 컴파일러에게 정적 검사를 수행할 수 있는 정보를 제공하고, 때로는 편리한 코드를 생성하며, 런타임에서 데이터 사용을 제한하고 세분화하는 역할을 합니다.
+`@Composable` 어노테이션은 함수가 런타임에서 어떻게 검증되고 사용되는지를 변경하므로, 컴포저블은 스탠다드 함수와는 다른 타입으로 간주됩니다.
