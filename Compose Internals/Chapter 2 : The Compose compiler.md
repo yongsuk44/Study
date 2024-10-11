@@ -401,20 +401,19 @@ Chapter1에서 설명한 것처럼, `suspend`는 `@Composable`는 서로 다른 
 
 ## Diagnostic suppression
 
-컴파일러 플러그인은 확장 기능으로 진단 억제기(diagnostic suppressor)를 등록하여 특정 상황에서 진단 메시지(e.g : 정적 검사에 의해 보고된 오류 등)를 무시할 수 있습니다.  
-이는 일반적으로 Kotlin 컴파일러가 허용하지 않는 코드를 컴파일러 플러그인이 생성하거나 지원하려 할 때, 해당 검사를 우회하여 코드를 작동시키기 위해 사용됩니다.
+컴파일러 플러그인은 '진단 억제기'를 확장 기능으로 등록하여, 특정 상황에서 발생하는 진단 메시지를 무시할 수 있습니다. (e.g : 정적 검사에 의해 보고된 오류 등)  
+이는 일반적으로 플러그인이 Kotlin 컴파일러에서 허용하지 않는 코드를 생성하거나 지원할 때, 발생하는 제약을 우회하고 코드를 작동시키기 위해 사용됩니다.
 
-Compose는 Kotlin 언어 제한을 우회하기 위해 `ComposeDiagnosticSuppressor`를 등록하여 컴파일 오류를 피하고, 특정 사용 사례를 실행할 수 있습니다.
+Compose는 `ComposeDiagnosticSuppressor`를 등록하여, 컴파일 시 실패할 수 있는 언어 제약을 우회하여 특정 사용 사례를 가능하게 만듭니다.
 
-Kotlin 언어 제한 중 하나는 호출 지점에서 "non-source annotations"로 어노테이트된 인라인 람다에 대한 것입니다.  
-`BINARY` 또는 `RUNTIME` 유지 정책(retention)을 가진 어노테이션들은 컴파일 후에도 바이너리에 남아있습니다.  
-반면, `SOURCE` 어노테이션은 컴파일 시점에서만 존재하고 이후에는 사라집니다.
+이러한 제약 중 하나는 호출 위치에서 `BINARY` 또는 `RUNTIME`과 같은 "non-source annotations"이 붙은 `inline` 람다입니다.  
+이러한 어노테이션은 최종 바이너리 파일까지 살아남는 반면, `SOURCE` 어노테이션은 컴파일 이후에는 사라집니다.  
+`inline` 람다는 컴파일 시 호출자 코드에 실제로 인라인되기 때문에 더 이상 저장할 곳이 없게 되며, 그 결과 어노테이션도 사라지게 됩니다.  
+이로 인해 Kotlin에서는 이를 금지하며 다음과 같은 오류를 보고합니다:
 
-인라인 람다는 컴파일할 때 호출한 함수에 실제 코드로 삽입되므로, 어디에도 저장되지 않아서 어노테이션을 달 수 있는 대상이 없어집니다.
-그래서 Kotlin 컴파일러는 인라인 람다에 `BINARY` 또는 `RUNTIME` 어노테이션을 달 수 없게하고, 다음과 같은 오류를 보고 합니다:   
-"The lambda expression here is an inlined argument so this annotation cannot be stored anywhere."
+“The lambda expression here is an inlined argument so this annotation cannot be stored anywhere.”.
 
-위 오류를 트리거하는 예시 코드 입니다:
+다음은 Kotlin을 사용하여 오류를 트리거하는 예제 입니다:
 
 ```kotlin
 @Target(AnnotationTarget.FUNCTION)
@@ -427,28 +426,33 @@ fun main() {
 }
 ```
 
-Compose 컴파일러는 `@Composable`로 어노테이된 경우에만, 위와 같은 오류를 우회할 수 있게하여 다음과 같이 코드를 작성할 수 있습니다:
+Compose 컴파일러는 어노테이션이 `@Composable`인 경우에만 이 검사를 억제하여, 개발자가 아래와 같은 코드를 작성할 수 있도록 합니다:
 
 ```kotlin
 @Composable
-inline fun MyComposable(@StringRes nameResID: Int, resolver: (Int) -> String) {
+inline fun MyComposable(
+    @StringRes nameResID: Int,
+    resolver: (Int) -> String
+) {
     val name = resolver(nameResID)
     Text(name)
 }
 
 @Composable
 fun Screen() {
-    MyComposable(R.string.app_name) @Composable { 
-        LocalContext.current.resources.getString(it)
-    }
+    MyComposable(
+        nameResID = R.string.app_name,
+        resolver = @Composable { LocalContext.current.resources.getString(it) }
+    )
 }
 ```
 
-위와 같이 람다 파라미터가 아닌 호출 지점에서 `@Composable` 어노테이트가 가능하기에, 함수를 선언할 때 반드시 `@Composable`을 어노테이트 할 필요가 없습니다.
-이와 같은 방식으로 함수는 더 유연한 계약(contract)를 가질 수 있습니다.
+이 기능을 통해, 호출 위치에서 람다 파라미터에 `@Composable`을 적용할 수 있으며, 이를 반드시 함수 선언부에서 명시할 필요가 없습니다.  
+이렇게 하면 함수는 더 유연한 계약(contract)를 가질 수 있습니다.
 
-또 다른 Kotlin 언어 제한은 억제기(suppressor)를 통해 우회되며, 
-함수가 `@Composable`로 어노테이트된 경우에 Kotlin 컴파일러가 지원하지 않는 위치에서 명명된 인자(named argument)를 사용할 수 있는 것입니다.
+또한, Kotlin 컴파일러가 원래 허용하지 않는 위치에서도 `@Composable`로 어노테이션된 함수에 대해서는 네임드 아규먼트(named argument)를 사용할 수 있도록 제한이 해제됩니다.
+
+예를 들어, Kotlin은 함수 타입에 대해서 네임드 아규먼트를 허용하지 않지만, 해당 함수가 `@Composable`로 어노테이션된 경우 Compose는 이러한 제약을 우회하여 사용을 가능하게 합니다.
 
 ```kotlin
 interface FileReaderScope {
@@ -477,8 +481,8 @@ fun FileReader(
 
 위 예시에서 `@Composable`를 제거하면, "Named arguments are not allowed for function types."와 같은 오류가 발생합니다.
 
-이와 같은 요구 사항은 expected 클래스의 멤버와 같은 경우에도 억제됩니다.  
-Compose는 멀티 플랫폼을 목표로 하므로, 런타임에서 컴포저블로 처리된 expect 함수와 프로퍼티를 반드시 지원해야 합니다.
+이와 같은 요구 사항은 `expected` 클래스의 멤버와 같은 경우에도 제약을 억제합니다.  
+Compose는 멀티 플랫폼 지원을 목표로 하므로, 런타임에서는 `expect` 함수와 프로퍼티가 `@Composable`로 표시된 경우도 허용해야 합니다.
 
 ## Runtime version check
 
