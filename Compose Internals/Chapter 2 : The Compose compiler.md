@@ -642,18 +642,20 @@ interface UiState<T : Result<T>> {
 
 ## Enabling live literals
 
-컴파일러에 전달할 수 있는 플래그 중 하나는 라이브 리터럴(live literals)입니다.  
-라이브 리터럴은 두 가지 구현이 있으며, `liveLiterals(v1)` 또는 `liveLiteralsEnabled(v2)` 플래그를 사용하여 둘 중 하나를 활성화할 수 있습니다. 
+> ⚠️ 이 섹션은 구변 세부사항과 밀접하기에, 지속적으로 업데이트됩니다.  
+> 향후 더 효율적인 구현 방법이 등장하면, 여러 번 수정되고 다른 방향으로 발전할 수 있습니다.
 
-라이브 리터럴은 컴파일 없이 Compose 도구가 프리뷰에서 변경 사항을 실시간으로 반영할 수 있게 해주는 기능입니다.  
-컴파일러는 상수(e.g: 문자열, 숫자, boolean 등) 표현식을 `MutableState`에서 읽어오는 코드로 바꿉니다.  
-이를 통해 프로젝트를 다시 컴파일하지 않아도 런타임에서 변경 사항을 즉시 알릴 수 있습니다.  
-Kdocs에서는 이를 다음과 같이 설명합니다:
-이러한 변환은 DX(developer experience)를 향상시키기 위한 것이며, 성능에 민감한 코드에서는 성능이 크게 저하되므로 릴리즈 빌드에서는 절대로 활성화해서는 안됩니다.
+컴파일러에 전달할 수 있는 플래그 중 하나는 Live literals입니다.  
+Live literals는 두 가지 구현이 있으며, `liveLiterals(v1)` 또는 `liveLiteralsEnabled(v2)` 플래그를 사용하여 둘 중 하나를 활성화할 수 있습니다. 
 
-Compose 컴파일러는 코드베이스의 각 상수 표현식에 대해 유니크 ID를 생성한 후, 
-파일당 생성되는 싱글톤 클래스의 `MutableState`에서 모든 상수 표현식을 프로퍼티 getter로 변환합니다.  
-런타임에서는 생성된 키를 사용하여 해당 상수의 값을 얻기 위한 API가 제공됩니다.
+Live literals는 Compose 도구가 다시 컴파일하지 않고도 프리뷰에서 실시간으로 변경 사항을 반영할 수 있도록 해줍니다.  
+Compose 컴파일러는 해당 표현식을 `MutableState`에서 값을 읽는 형태로 변환하여, 런타임이 변경 사항을 즉시 감지할 수 있게 만듭니다.  
+라이브러리 Kdocs에서는 이를 다음과 같이 설명합니다:
+
+"이러한 변환은 개발자 경험을 개선하기 위한 것이며, 성능에 민감한 코드에서는 성능 저하를 유발할 수 있으므로 릴리즈 빌드에서는 절대로 활성화해서는 안됩니다."
+
+Compose 컴파일러는 코드 내 모든 상수 표현식에 대해 고유한 ID를 생성한 후, 이 상수들을 프로퍼티 getter로 변환하여, `MutableState`에서 값을 읽도록 만듭니다.   
+각 파일마다 생성된 싱글톤 클래스에 이러한 상태가 저장되며, 런타임에서는 생성된 키를 통해 상수 값을 얻을 수 있는 API가 제공됩니다.
 
 Kdocs 라이브러리에서 가져온 예시로, 다음과 같은 컴포저블이 있다고 가정하겠습니다:
 
@@ -670,9 +672,7 @@ fun Foo() {
 // file: Foo.kt
 @Composable
 fun Foo() {
-    print(
-        LiveLiterals$FooKt.`getString$arg-0$call-print$fun-Foo`()
-    )
+    print(LiveLiterals$FooKt.`getString$arg-0$call-print$fun-Foo`())
 }
 
 object LiveLiterals$FooKt {
@@ -680,18 +680,24 @@ object LiveLiterals$FooKt {
     var `State$String$arg-0$call-print$fun-Foo`: MutableState<String>? = null
 
     fun `getString$arg-0$call-print$fun-Foo`(): String {
-        val state = this.`State$String$arg-0$call-print$fun-Foo`
-        if (state == null) {
-            val tmpState = mutableStateOf(this.`String$arg-0$call-print$fun-Foo`)
-            this.`State$String$arg-0$call-print$fun-Foo` = tmpState
-            return tmpState.value
-        }
-        return state.value
+
+        val field = this.`String$arg-0$call-print$fun-Foo`
+
+        val state = if (field == null) {
+            val tmp = liveLiteral(
+                "String$arg-0$call-print$fun-Foo",
+                this.`String$arg-0$call-print$fun-Foo`
+            )
+            this.`String$arg-0$call-print$fun-Foo` = tmp
+            tmp
+        } else field
+        
+        return field.value
     }
 }
 ```
 
-위 예제를 통해 상수가 `MutableState`에 저장되고, 런타임에서 해당 상수를 읽는 방법을 알 수 있습니다.
+상수 값이 해당 파일의 싱글톤에 저장된 `MutableState`에서 값을 읽는 getter로 대체되는 과정을 확인할 수 있습니다. 
 
 ## Compose lambda memoization
 
