@@ -808,12 +808,10 @@ fun Container(
 
 ## Injecting the Composer
 
-Compose 컴파일러는 모든 컴포저블에 Composer 합성(synthetic) 파라미터를 추가한 새로운 버전으로 대체합니다.  
-Composer 파라미터는 모든 컴포저블 호출에 전달되어 트리의 어느 지점에서나 항상 사용 가능하도록 합니다.  
-여기에는 컴포저블 람다 호출도 포함됩니다.
+이 단계에서는 Compose 컴파일러가 모든 컴포저블에 `Composer`라는 합성 파라미터를 추가하여, 새로운 버전으로 변환합니다.  
+이 `Composer` 파라미터는 코드의 모든 컴포저블 호출에 전달되며, 트리 어느 위치에서도 항상 사용 할 수 있게됩니다. 컴포저블 람다 호출 또한 포함됩니다.
 
-컴파일러 플러그인이 컴포저블에 파라미터를 추가할 때는 함수 시그니처가 변경되어, 함수 타입이 변경됩니다.  
-이러한 함수 타입 변경으 처리하기 위해 '타입 리매핑 작업'이 필요합니다.
+또한, 컴파일러 플러그인이 컴포저블에 파라미터를 추가하면서 함수 타입이 달라지므로, 타입 리매핑 작업이 필요합니다.
 
 ```mermaid
 graph LR
@@ -826,13 +824,16 @@ graph LR
     Compiler --> ComposerC("@Composable fun C(composer)")
 ```
 
-이 작업은 실질적으로 Composer를 모든 서브트리에서 사용할 수 있게 하며,   
-Composer를 통해 컴포저블 트리를 구성하고 업데이트하는데 필요한 모든 정보를 제공합니다.
+이 작업을 통해 `Composer`는 모든 서브트리에서 사용할 수 있게 되어, 컴포저블 트리를 구성하고 지속적으로 업데이트하는데 필요한 모든 정보를 제공합니다.
 
 아래는 예시입니다:
 
 ```kotlin
-fun NamePlate(name: String, lastname: String, $composer: Composer) {
+fun NamePlate(
+    name: String,
+    lastname: String,
+    $composer: Composer
+) {
     $composer.start(123)
     Column(
         modifier = Modifier.padding(16.dp), 
@@ -852,8 +853,8 @@ fun NamePlate(name: String, lastname: String, $composer: Composer) {
 }
 ```
 
-'컴포저블이 아닌 인라인 람다'는 컴파일 시 호출자에게 인라인되어 사라지므로, 의도적으로 변환되지 않습니다.  
-또한, `expect` 함수도 타입 해석 시 실제 함수로 해석되므로, 변환되지 않습니다.
+컴포저블이 아닌 인라인 람다는 컴파일 시점에 호출한 곳으로 인라인 처리되어 사라지므로, 의도적으로 변환되지 않습니다.  
+또한, `expect` 함수도 변환되지 않는데, 이 함수들은 타입 해석 중 `actual` 함수로 대체되므로, 변환이 필요한 것은 `actual` 함수입니다.
 
 ## Comparison propagation
 
