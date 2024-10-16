@@ -155,14 +155,13 @@ Writer는 테이블에서 특정 인덱스로 빠르게 접근할 수 있도록 
 
 ## The Composer
 
-주입된 `$composer`는 작성한 컴포저블을 Compose 런타임에 연결하는 역할을 합니다.
+주입된 `$composer`는 작성한 컴포저블을 Compose 런타임과 연결하는 역할을 합니다.
 
 ## Feeding the Composer
 
-트리의 인메모리 표현에서 노드가 어떻게 추가되는지 자세히 알아보기 위해, `Layout` 컴포저블을 예로 들어 설명할 수 있습니다.  
-`Layout`은 Compose UI에서 제공하는 모든 UI 구성 요소의 기본 요소로, 다양한 UI 컴포넌트들이 배치되고 정렬되는 방식의 기반이 됩니다.  
-
-코드를 보면 다음과 같습니다:
+트리의 메모리 내 표현에 노드가 어떻게 추가되는지 살펴보기 위한 예시로 `Layout` 컴포저블을 사용할 수 있습니다.  
+`Layout`은 Compose UI에서 제공하는 모든 UI 컴포넌트의 기본 구조를 담당합니다.  
+코드는 다음과 같습니다:
 
 ```kotlin
 @Suppress("ComposableLambdaParameterPosition")
@@ -188,8 +187,8 @@ inline fun Layout(
 }
 ```
 
-`Layout`은 `ReusableComposeNode`을 통해 컴포지션에 `LayoutNode`를 발행합니다.  
-이 작업은 노드를 바로 생성하고 추가하는 것처럼 보이지만, 실제로는 런타임에 노드를 생성, 초기화 및 컴포지션 위치에 삽입하는 방법을 알려주는 것입니다.
+`Layout`은 `ReusableComposeNode`을 사용하여 컴포지션에 `LayoutNode`를 발행합니다. 이는 노드를 즉시 생성하고 추가하는 것처럼 보입니다.  
+하지만, 실제로는 런타임에게 노드를 어떻게 생성하고, 초기화할지, 그리고 적절한 시점에 컴포지션 내 현재 위치에 삽입할지를 알려주는 역할을 합니다.
 
 이를 코드로 보면:
 
@@ -215,11 +214,11 @@ inline fun <T, reified E : Applier<*>> ResuableComposeNode(
 }
 ```
 
-위 코드에선 아직 관련이 없는 몇 가지 부분을 생략했지만, 모든 작업을 `currentComposer` 인스턴스에 위임하는 것을 볼 수 있습니다.  
-또한, 컴포저블의 `content`를 저장할 때, 이를 래핑하기 위해 Replaceable 그룹을 시작하는 것을 볼 수 있습니다.  
-이로 인해, `content` 람다 내에서 발행되는 모든 자식 컴포저블을 Replaceable 그룹 내에서 컴포지션에 저장합니다. 
+아직 관련되지 않은 일부분은 생략했지만, 이 코드가 `currentComposer` 인스턴스에 모든 작업을 위임하고 있다는 점을 주목해야 합니다.  
+또한, 이 컴포저블의 `content`를 저장할 때 Replaceable 그룹을 시작하여 래핑하는 방식도 볼 수 있습니다.  
+`content` 람다에서 발행된 자식들은 Replaceable 그룹의 자식으로 컴포지션에 저장됩니다.
 
-다른 컴포저블도 동일한 발행 작업이 수행되며, `remember`를 예시로 살펴보겠습니다:
+이 발행 작업은 다른 컴포저블에도 동일하게 적용됩니다. `remember`를 살펴보겠습니다:
 
 ```kotlin
 @Composable
@@ -227,8 +226,8 @@ inline fun <T> remember(calculation: @DisallowComposableCalls () -> T): T =
     currentComposer.cache(invalid = false, calculation)
 ```
 
-`remember` 컴포저블은 `currentComposer`를 활용하여 특정 값을 컴포지션에 캐시합니다.  
-`invalid` 파라미터를 사용하면, 이전에 저장된 값이 있더라도 이를 무시하고 값을 강제로 업데이트하여 항상 최신 값을 유지할 수 있습니다.
+`remember` 컴포저블은 `currentComposer`를 사용하여 제공된 람다의 반환 값을 컴포지션에 캐시(remember) 처리 합니다.  
+`invalid` 파라미터는 이전에 저장된 값과 상관없이 값을 강제로 업데이트하도록 지시하는 데 사용됩니다.
 
 `cache` 함수는 다음과 같이 작성됩니다:
 
@@ -241,7 +240,7 @@ inline fun <T> Composer.cache(
     return rememberedValue().let {
         if (invalid || it === Composer.Empty) {
             val value = block()
-            rememberedValue(value)
+            updateRememberedValue(value)
             value
         } else {
             it
@@ -250,9 +249,8 @@ inline fun <T> Composer.cache(
 }
 ```
 
-위 코드를 보면, 컴포지션의 슬롯 테이블에서 값을 검색합니다.  
-만약 값이 발견되지 않으면, 해당 값을 업데이트하도록 변경 사항을 기록합니다. 즉, 값을 저장하고 나중에 사용할 수 있도록 예약합니다.  
-값이 이미 존재하는 경우, 추가적인 변경 없이 현재 값을 그대로 반환합니다.
+먼저 컴포지션(슬롯 테이블)에서 값을 검색합니다.  
+값을 찾지 못하면, 값을 **업데이트하도록 예약**하는 변경 사항을 발행하고, 값을 찾으면 그대로 반환합니다.
 
 ## Modeling the Changes
 
