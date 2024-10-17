@@ -374,24 +374,22 @@ Composer는 리컴포지션이 필요할 때, 현재 부모 그룹의 '무효화
 
 ## SideEffects in the Composer
 
-Composer는 `SideEffects`를 관리하여, 항상 컴포지션이 완료된 후에 실행되도록 합니다.  
-즉, `SideEffect`는 컴포지션 트리에 변경 사항이 적용된 후, 호출될 함수로 등록됨을 말합니다.  
+Composer는 `SideEffect`도 기록할 수 있습니다.  
+`SideEffect`는 항상 **컴포지션이 완료된 후**에 실행되며, 트리에 대한 변경 사항이 **이미 적용된 후**에 호출될 함수로 기록됩니다.
 
-이 부수 효과(`SideEffect`)는 컴포저블의 생명주기와는 무관하게 발생합니다.  
-예를 들어, 컴포지션을 벗어날 때 자동으로 취소되거나, 재구성 시 다시 시도되지 않습니다.  
-
-이는 `SideEffect`가 슬롯 테이블에 저장되지 않으며, 컴포지션이 실패하면 단순하게 폐기됨을 의미합니다.
+`SideEffect`는 컴포저블의 라이프사이클과는 무관하게 발생하기에, 컴포지션을 떠날 때 자동으로 취소되거나, 리컴포지션 시 다시 실행되지 않습니다.  
+이는 `SideEffect`가 **슬롯 테이블에 저장되지 않기 때문에**, 컴포지션이 실패하면 단순히 폐기됩니다.  
+이와 관련된 내용은 이펙트 핸들러 챕터에서 더 다루겠지만, Composer를 통해 이들이 어떻게 기록되는지 살펴보는 것도 흥미로운 부분입니다.
 
 ## Storing CompositionLocals
 
-Composer는 `CompositionLocals`를 등록하고, 키를 통해 해당 값을 얻을 수 있는 방법을 제공합니다.  
-`CompositionLocal.current` 호출은 이러한 메커니즘을 사용하여 현재 값을 반환합니다.  
-프로바이더와 현재 값은 함께 그룹으로, 슬롯 테이블에 저장되어 필요한 시점에 참조될 수 있습니다. 
+Composer는 `CompositionLocals`를 등록하고, 키를 통해 해당 값을 가져오는 수단을 제공합니다.  
+`CompositionLocal.current` 호출은 이를 기반으로 동작합니다.  
+Provider와 해당 값들은 모두 그룹으로 슬롯 테이블에 함께 저장됩니다. 
 
 ## Storing source information
 
-Composer는 컴포지션 프로세스에서 수집된 `CompositionData`를 통해 소스 코드 정보를 저장합니다.  
-이 정보들은 컴포지션 도구에서 활용되어, 컴포저블의 디버깅, 분석, 최적화 등의 작업을 지원합니다.
+Composer는 컴포지션 중에 수집된 소스 정보를 `CompositionData` 형태로 저장하여, 이를 Compose 도구에서 활용할 수 있도록 합니다.
 
 ## Linking Compositions via CompositionContext
 
