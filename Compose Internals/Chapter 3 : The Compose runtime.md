@@ -329,8 +329,10 @@ Composer는 값을 컴포지션에 기억할 수 있고(슬롯 테이블에 기�
 
 ## Recompose scopes
 
-재구성 범위(Recompose scope)는 Composer를 통해 관리되며, 스마트 재구성을 가능하게 합니다.  
-재구성 범위는 Restartable 그룹과 직접적으로 연결되며, Restartable 그룹이 생성될 때마다, Composer는 이 그룹에 대한 `RecomposeScope`를 생성하고, 이를 `Composition`의 `currentRecomposeScope`로 설정합니다.
+Composer가 처리하는 또 다른 작업은 재구성 범위(Recompose scope)입니다.  
+재구성 범위는 스마트 리컴포지션을 가능하게 하며, Restartable 그룹과 직접적으로 연결됩니다.  
+
+Restartable 그룹이 생성될 때마다, Composer는 이 그룹에 맞는 `RecomposeScope`를 생성하고, 이를 `Composition`의 `currentRecomposeScope`로 설정합니다.
 
 ```mermaid
 graph LR;
@@ -338,16 +340,17 @@ graph LR;
     B --> C[Composition의 currentRecomposeScope로 설정]
 ```
 
-`RecomposeScope`는 컴포지션 내에서 특정 영역을 독립적으로 재구성할 수 있도록 모델링하고, 수동으로 무효화하여 컴포저블의 재구성을 트리거할 수 있습니다.  
-무효화는 Composer를 통해 요청됩니다: `composer.currentRecomposeScope().invalidate()`  
-또한, Composer는 특정 영역을 재구성하기 위해 슬롯 테이블을 Restartable 그룹의 시작 위치로 이동시키고, 람다에 전달된 '재구성 블록(Recompose block)'을 호출합니다.  
-이는 컴포저블을 다시 호출하여, 다시 한 번 발행하여 테이블의 기존 데이터를 덮어쓰도록 요청합니다.
+`RecomposeScope`는 컴포지션에서 특정 부분을 독립적으로 재구성할 수 있는 영역을 나타냅니다.  
+이 범위는 수동으로 무효화하여 컴포저블의 리컴포지션을 트리거하는데 사용될 수 있으며, 무효화는 Composer를 통해 요청됩니다: `composer.currentRecomposeScope().invalidate()`  
+재구성이 시작되면, Composer는 슬롯 테이블을 Restartable 그룹의 시작 위치로 이동시키고, 람다에 전달된 재구성 블록(Recompose block)을 호출합니다.  
+이렇게 하면 컴포저블이 다시 호출되어, 한 번 더 발행되고, Composer는 테이블에 있는 기존 데이터를 덮어쓰게 됩니다.
 
-Composer는 무효화된 재구성 범위들을 스택에 추가하고, 보류 상태로 유지하다가, 재구성이 필요할 때 이 스택을 사용하여 어떤 범위가 재구성되어야 하는지 결정합니다.   
-`currentRecomposeScope`는 이 스택에서 가장 최근에 무효화된 재구성 범위를 가리킵니다. 
+Composer는 무효화된 재구성 범위들을 모두 `Stack`에 저장합니다.  
+`Stack`에 저장된 무효화된 재구성 범위들은 보류 중인 재구성으로, 다음 리컴포지션에서 트리거되어야 합니다.  
+`currentRecomposeScope`는 이 `Stack`에서 피크(peek)하여 얻어집니다.
 
-`RecomposeScope`는 항상 활성화되지 않으며, 컴포저블 내에서 `State` 스냅샷으로부터 읽기 작업이 수행될 때만 활성화됩니다.  
-이 경우 Composer는 `RecomposeScope`를 사용되었음으로 표시하여, "end" 호출이 null을 반환하지 않게 하고, 재구성 람다를 활성화 합니다.
+`RecomposeScope`는 항상 활성화되지 않고, 컴포저블 내에서 `State` 스냅샷을 읽는 작업을 발견했을 때만 활성화됩니다.  
+이 경우, Composer는 `RecomposeScope`를 `used`로 표시하며, 컴포저블 끝에서 호출되는 "end"는 **non-null을 반환**하고, 그 다음의 리컴포지션 람다가 활성화됩니다. (아래의 `?` 문자 이후 참조)
 
 ```kotlin
 // After compiler inserts boilerplate
@@ -366,8 +369,8 @@ fun A(
 }
 ```
 
-Composer는 재구성이 필요할 때, 현재 부모 그룹 내의 '무효화된 모든 자식 그룹'을 재구성할 수 있습니다.    
-재구성이 필요하지 않는 경우, Reader에게 해당 그룹을 건너뛰어 끝으로 이동하도록 지시할 수 있습니다.
+Composer는 리컴포지션이 필요할 때, 현재 부모 그룹의 '무효화된 자식 그룹' 모두를 재구성할 수 있습니다.    
+리컴포지션이 필요하지 않다면, Reader가 해당 그룹을 스킵하고 끝으로 이동하게 할 수 있습니다. ([see](Chapter%202%20%3A%20The%20Compose%20compiler.md#comparison-propagation))
 
 ## SideEffects in the Composer
 
