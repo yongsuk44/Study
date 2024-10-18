@@ -393,15 +393,15 @@ Composer는 컴포지션 중에 수집된 소스 정보를 `CompositionData` 형
 
 ## Linking Compositions via CompositionContext
 
-컴포지션은 단일 구조가 아니라, 여러 개의 컴포지션과 자식 컴포지션으로 이루어진 트리 형태를 가집니다.  
-자식 컴포지션은 현재 컴포지션의 컨텍스트 내에서 별도로 생성된 컴포지션으로, 독립적인 무효화를 지원하기 위해 인라인으로 생성됩니다.
+컴포지션은 단일 구조가 아니라, 컴포지션과 서브 컴포지션들로 이루어진 트리 구조를 가지고 있습니다.  
+서브 컴포지션은 독립적인 무효화를 지원하기 위해, 현재 컴포지션 내에서 별도의 컴포지션을 생성할 목적으로 인라인에서 생성됩니다.
 
-자식 컴포지션은 부모 컴포지션과 부모의 `CompositionContext` 참조를 통해 연결됩니다.  
-즉, `CompositionContext`는 컴포지션과 자식 컴포지션을 트리 구조로 연결하는 역할을 합니다.  
-이를 통해 `CompositionLocals`와 무효화를 마치 하나의 단일 컴포지션 내에서 이루어지는 것처럼 트리 아래로 자연스럽게 전달되고 적용됩니다.  
-또한, `CompositionContext` 자체도 슬롯 테이블에 그룹으로 저장되어, 전체 커머포지션 구조 내에서 컴포지션 간의 연관성을 유지하고 관리합니다.
+서브 컴포지션은 부모의 `CompositionContext` 참조를 통해 부모 컴포지션과 연결됩니다.  
+즉, `CompositionContext`는 컴포지션과 서브 컴포지션들을 트리처럼 연결하기 위해 존재합니다.  
+또한, `CompositionContext`를 통해서 `CompositionLocals`와 무효화 작업이 하나의 컴포지션처럼 트리 내에서 자연스럽게 처리되고 전파됩니다.   
+`CompositionContext` 역시 슬롯 테이블에 그룹 형태로 기록됩니다.
 
-일반적으로 자식 컴포지션의 생성은 `rememberCompositionContext`를 통해 이루어집니다:
+서브 컴포지션의 생성은 일반적으로 `rememberCompositionContext`를 통해 이루어집니다:
 
 ```kotlin
 @Composable
@@ -410,9 +410,8 @@ fun rememberCompositionContext(): CompositionContext {
 }
 ```
 
-이 함수는 슬롯 테이블의 현재 위치에 새로운 컴포지션을 기억하거나, 이미 기억된 경우 해당 컴포지션을 반환합니다.  
-이는 `VectorPainter`, `Dialog`, `SubcomposeLayout`, `Popup`, `AndroidView`와 같이 별도의 컴포지션이 필요한 곳에서 하위 컴포지션을 생성하는데 사용됩니다.
-(`AndroidView`는 Android View를 컴포저블 트리에 통합하기 위한 래퍼입니다.)
+`rememberCompositionContext()`은 현재 슬롯 테이블 위치에서 새로운 컴포지션을 기억하거나, 이미 존재하는 컴포지션이 있다면 해당 컴포지션을 반환합니다.  
+이 함수는 서브 컴포지션을 생성하는데 사용되며, 별도의 컴포지션이 필요한 `VectorPainter`, `Dialog`, `SubcomposeLayout`, `Popup`, `AndroidView` 래퍼 등에서 사용됩니다.
 
 ## Accessing the current State snapshot
 
