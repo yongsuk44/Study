@@ -57,7 +57,7 @@ graph LR
 
 `Composition`은 모든 컴포저블이 실행되는 컨텍스트를 제공합니다.  
 `SlotTable`을 기반으로 "캐시"를 제공하고, `Applier`를 통해 커스텀 트리를 생성하는 인터페이스를 제공합니다.  
-`Recomposer`는 `Composition`을 구동하며, 상태 변경과 같은 이벤트가 발생할 때마다 리컴포지션을 트리거합니다.  
+`Recomposer`는 `Composition`을 구동하며, 상태 변경과 같은 이벤트가 발생할 때마다 Recomposition을 트리거합니다.  
 일반적으로 `Composition`은 프레임워크에 의해 자동으로 생성되지만, 이 챕터에서는 특별한 사용 사례를 다루며, 직접 `Composition`을 관리하는 방법도 알아볼 것입니다.
 
 <img alt="img.png" src="composition_structure.png" width="40%"/>
@@ -312,7 +312,7 @@ class VectorPainter internal constructor(): Painter() {
 통합의 첫 단계는 Compose UI의 컴포지션과 벡터 이미지의 컴포지션을 연결하는 것입니다:
 
 1. `RenderVector`는 벡터 이미지를 설명하는 컴포저블인 `content`를 받습니다.  
-`Painter` 인스턴스는 리컴포지션 간에 `remember`로 동일하게 유지되지만, `content`가 변경되면 매 컴포지션에서  `RenderVector`가 호출됩니다.
+`Painter` 인스턴스는 Recomposition 간에 `remember`로 동일하게 유지되지만, `content`가 변경되면 매 컴포지션에서  `RenderVector`가 호출됩니다.
 2. 컴포지션을 생성하려면 항상 부모 컨텍스트가 필요하며, 여기서는 `rememberCompositionContext`로 UI 컴포지션에서 가져옵니다.  
 이렇게 하면 UI 컴포지션과 벡터 컴포지션이 동일한 `Recomposer`에 연결되고, `CompositionLocals` 값(e.g : 밀도)이 벡터 컴포지션에도 전파됩니다.
 3. 컴포지션은 업데이트 중에는 유지되지만, `RenderVector`가 스코프를 벗어나면 폐기되어야 합니다.  

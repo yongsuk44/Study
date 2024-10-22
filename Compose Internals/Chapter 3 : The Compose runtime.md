@@ -3,36 +3,36 @@ Chapter3는 Compose 런타임에 초점을 맞추고 있지만, Compose의 다�
 Compose에서 중요한 점은 컴포저블이 실제로 UI를 생성하지 않고, Composer를 통해 런타임에서 관리하는 메모리 내 구조(슬롯 테이블)에 변경 사항을 "발행"한다는 사실입니다.  
 이러한 표현은 나중에 해석되어 UI를 "구체화"하는데 사용됩니다.
 
-이는 컴포저블이 어떻게 컴포지션에 변경 사항을 **발행**하는지, 그리고 이를 통해 컴포지션은 필요한 모든 정보로 업데이트되는 과정을 설명한 것입니다.       
-이 과정은 컴파일러가 주입한 현재의 `$composer` 인스턴스를 통해 이루어지며, `Composer` 인스턴스와 컴포지션은 Compose 런타임의 중요한 구성 요소입니다.
+이는 컴포저블이 어떻게 Composition에 변경 사항을 **발행**하는지, 그리고 이를 통해 Composition은 필요한 모든 정보로 업데이트되는 과정을 설명한 것입니다.       
+이 과정은 컴파일러가 주입한 현재의 `$composer` 인스턴스를 통해 이루어지며, `Composer` 인스턴스와 Composition은 Compose 런타임의 중요한 구성 요소입니다.
 
-지금까지는 런타임에서 '메모리에 유지되는 상태'를 “컴포지션”이라고 불러왔지만, 이 개념은 의도적으로 단순화된 것입니다.  
-이제부터 컴포지션 상태를 저장하고 관리하는 데이터 구조에 대해 자세히 알아보겠습니다.
+지금까지는 런타임에서 '메모리에 유지되는 상태'를 “Composition”이라고 불러왔지만, 이 개념은 의도적으로 단순화된 것입니다.  
+이제부터 Composition 상태를 저장하고 관리하는 데이터 구조에 대해 자세히 알아보겠습니다.
 
 ## The slot table and the list of changes
 
 Compose 내부에 대한 문서가 부족하다 보니, '슬롯 테이블'과 '변경 목록'의 데이터 구조 차이에 대해 혼란을 느낄 수 있습니다.  
 먼저 이 부분을 명확히 하는 것이 중요합니다.
 
-슬롯 테이블은 컴포지션의 현재 상태를 저장하는 메모리 내 구조로, 컴포저블이 호출될 때 그 위치와 관련 데이터를 기록하는 역할을 합니다.  
+슬롯 테이블은 Composition의 현재 상태를 저장하는 메모리 내 구조로, 컴포저블이 호출될 때 그 위치와 관련 데이터를 기록하는 역할을 합니다.  
 여기에는 컴포저블의 위치, 파라미터, `remember`로 처리된 값, `CompositionLocal`와 같은 중요한 정보들이 포함됩니다.  
-초기 컴포지션이 실행되면 슬롯 테이블에 위 정보들이 기록되며, 이후 리컴포지션이 발생할 때마다 이미 기록된 정보를 바탕으로 필요한 부분만 업데이트됩니다.  
-Composer는 슬롯 테이블에 기록된 컴포지션의 현재 상태를 바탕으로 다음 변경 사항 목록을 생성합니다.  
-또한, 트리에서 발생하는 모든 변경 사항은 슬롯 테이블에 기록된 컴포지션의 현재 상태에 의존합니다.
+초기 Composition이 실행되면 슬롯 테이블에 위 정보들이 기록되며, 이후 Recomposition이 발생할 때마다 이미 기록된 정보를 바탕으로 필요한 부분만 업데이트됩니다.  
+Composer는 슬롯 테이블에 기록된 Composition의 현재 상태를 바탕으로 다음 변경 사항 목록을 생성합니다.  
+또한, 트리에서 발생하는 모든 변경 사항은 슬롯 테이블에 기록된 Composition의 현재 상태에 의존합니다.
 
-슬롯 테이블이 컴포지션의 상태를 기록하는 동안, 변경 목록은 실제로 노드 트리에 변경 사항을 적용하는 역할을 합니다.   
+슬롯 테이블이 Composition의 상태를 기록하는 동안, 변경 목록은 실제로 노드 트리에 변경 사항을 적용하는 역할을 합니다.   
 변경 목록은 패치 파일처럼 생각할 수 있습니다. 즉, 모든 변경 사항을 먼저 기록한 후, 그 기록된 변경 사항을 한꺼번에 트리에 적용하는 구조입니다.   
 이 변경 목록을 적용하는 것은 `Applier`가 담당하며, 이는 런타임에서 트리를 구체화하는데 의존하는 추상화된 개념입니다.  
 이 부분에 대해서는 나중에 자세히 다룰 것입니다.
 
-마지막으로, `Recomposer`는 전체 과정을 조율하며, 리컴포지션을 언제, 어떤 스레드에서 실행할지, 그리고 변경 사항을 언제, 어떤 스레드에서 적용할지를 결정합니다.  
+마지막으로, `Recomposer`는 전체 과정을 조율하며, Recomposition을 언제, 어떤 스레드에서 실행할지, 그리고 변경 사항을 언제, 어떤 스레드에서 적용할지를 결정합니다.  
 이 또한, 나중에 자세히 다룰 것입니다.
 
 ## The slot table in depth
 
-컴포지션의 상태가 어떻게 저장되는지 알아보겠습니다.  
+Composition의 상태가 어떻게 저장되는지 알아보겠습니다.  
 슬롯 테이블은 빠른 선형 접근이 가능하도록 최적화된 데이터 구조로, 텍스트 편집기에서 자주 사용되는 "갭 버퍼"라는 개념을 기반으로 합니다.  
-슬롯 테이블은 이를 위해 두 개의 선형 배열에 데이터를 저장하는데, 하나는 컴포지션에 포함된 **그룹** 정보를 저장하고, 다른 하나는 각 그룹에 속한 **슬롯**을 저장합니다.
+슬롯 테이블은 이를 위해 두 개의 선형 배열에 데이터를 저장하는데, 하나는 Composition에 포함된 **그룹** 정보를 저장하고, 다른 하나는 각 그룹에 속한 **슬롯**을 저장합니다.
 
 ```kotlin
 var groups = IntArray(0)
@@ -58,7 +58,7 @@ var slots = Array<Any?>(0) { null }
 |------------------|-----------------|-----------------|------------------|-----------------|-----------------|
 
 반면, 슬롯 배열은 각 그룹에 대한 관련 데이터를 저장하며, 모든 타입(`Any?`)의 값을 저장할 수 있도록 설계되어 있습니다.  
-따라서, 실제 컴포지션 데이터는 이 슬롯 배열에 저장됩니다.  
+따라서, 실제 Composition 데이터는 이 슬롯 배열에 저장됩니다.  
 `groups` 배열에 있는 각 그룹은 `slots` 배열에서 자신과 연결된 슬롯을 어떻게 찾아 해석할지에 대한 정보를 포함하고 있으며, 각 그룹은 특정 슬롯 범위와 연결되어 있습니다.
 
 슬롯 테이블은 데이터를 읽고 쓰기 위해 갭(gap)이라는 개념을 사용합니다.  
@@ -122,32 +122,32 @@ Writer는 테이블에서 특정 인덱스로 빠르게 접근할 수 있도록 
 테이블 내 그룹의 위치(그룹 인덱스)도 `Anchor`를 통해 추적됩니다.  
 그룹이 이동되거나 교체, 삽입, `Anchor`가 가리키는 위치 이전에서 제거되는 경우, 해당 `Anchor`는 업데이트됩니다.
 
-슬롯 테이블은 컴포지션 그룹의 Iterator 역할도 하기 떄문에, 도구들이 컴포지션의 세부 정보를 검사하고 표시할 수 있는 정보를 제공합니다.
+슬롯 테이블은 Composition 그룹의 Iterator 역할도 하기 떄문에, 도구들이 Composition의 세부 정보를 검사하고 표시할 수 있는 정보를 제공합니다.
 
 이제 변경 목록에 대해 알아보겠습니다.
 
 ## The list of changes
 
-위에서 슬롯 테이블이 컴포지션의 현재 상태를 추적하는 방법을 배웠습니다.  
+위에서 슬롯 테이블이 Composition의 현재 상태를 추적하는 방법을 배웠습니다.  
 그렇다면 변경 목록의 정확한 역할을 무엇이고, 언제 생성되며, 무엇을 모델링하는지, 언제 적용되는지, 그 이유는 무엇인지 등 명확히 알아야 할 것들이 남아 있습니다.  
 이번 섹션에서는 이 모든 것들을 정리하겠습니다.
 
-컴포지션(or 리컴포지션)이 발생할 때마다, 소스 코드의 컴포저블들이 실행되고 **발행**됩니다.  
+Composition(or Recomposition)이 발생할 때마다, 소스 코드의 컴포저블들이 실행되고 **발행**됩니다.  
 "발행"은 먼저 슬롯 테이블을 업데이트하고, 그 후에 구체화된 트리를 업데이트 하기 위한 **deferred 변경 사항**을 생성하는 것을 의미합니다.  
 'deferred 변경 사항'들은 목록으로 저장되며, 이 새로운 변경 목록은 이미 슬롯 테이블에 저장된 현재 상태를 기반으로 만들어집니다.  
-기억할 점은, 트리의 모든 변경 사항은 컴포지션의 현재 상태에 의존해야 한다는 것입니다.
+기억할 점은, 트리의 모든 변경 사항은 Composition의 현재 상태에 의존해야 한다는 것입니다.
 
 > 이에 대한 예시로, 리스트에서 컴포저블 요소의 순서를 변경하여, 노드가 이동하는 상황을 생각할 수 있습니다.  
 > 이 경우, 해당 노드가 테이블 어디에 위치했는지 확인한 후, 해당 슬롯을 제거하고, 새로운 위치에서 다시 기록해야 합니다.
 
 즉, 컴포저블이 발행될 때마다 슬롯 테이블을 참조하여, 필요한 정보에 따라 'deferred 변경 사항'을 생성하고, 이를 변경 목록에 추가합니다.  
-이후 컴포지션이 완료되면, 구체화가 이루어지고, 이때 **기록된** 변경 사항들이 실제로 실행됩니다. 이 괴정에서 슬롯 테이블은 컴포지션의 최신 정보로 업데이트됩니다.   
+이후 Composition이 완료되면, 구체화가 이루어지고, 이때 **기록된** 변경 사항들이 실제로 실행됩니다. 이 괴정에서 슬롯 테이블은 Composition의 최신 정보로 업데이트됩니다.   
 이러한 과정 덕분에 발행 프로세스는 나중에 실행될 지연된 작업만 생성되기에 매우 빠르게 처리됩니다.
 
 이 과정을 통해 변경 목록이 슬롯 테이블에 변경 사항을 반영하는 역할을 담당한다는 것을 알 수 있습니다.  
 그 후, `Applier`에게 구체화된 노드 트리를 업데이트하도록 알림을 보냅니다.
 
-앞에서 설명한 것처럼, `Recomposer`는 이 과정을 조율하여 어떤 스레드에서 컴포지션이나 리컴포지션을 할지, 그리고 변경 목록의 변경 사항을 어느 스레드에서 적용할지를 결정합니다.
+앞에서 설명한 것처럼, `Recomposer`는 이 과정을 조율하여 어떤 스레드에서 Composition이나 Recomposition을 할지, 그리고 변경 목록의 변경 사항을 어느 스레드에서 적용할지를 결정합니다.
 후자는 `LaunchedEffect`가 이펙트를 실행하기 위해 사용하는 기본 컨텍스트가 되기도 합니다.
 
 이로써 변경 사항이 어떻게 기록되고, 지연되며, 최종적으로 실행되는 방식과 상태가 슬롯 테이블에 저장되는 방식을 명확하게 이해할 수 있습니다.  
@@ -187,8 +187,8 @@ inline fun Layout(
 }
 ```
 
-`Layout`은 `ReusableComposeNode`을 사용하여 컴포지션에 `LayoutNode`를 발행합니다. 이는 노드를 즉시 생성하고 추가하는 것처럼 보입니다.  
-하지만, 실제로는 런타임에게 노드를 어떻게 생성하고, 초기화할지, 그리고 적절한 시점에 컴포지션 내 현재 위치에 삽입할지를 알려주는 역할을 합니다.
+`Layout`은 `ReusableComposeNode`을 사용하여 Composition에 `LayoutNode`를 발행합니다. 이는 노드를 즉시 생성하고 추가하는 것처럼 보입니다.  
+하지만, 실제로는 런타임에게 노드를 어떻게 생성하고, 초기화할지, 그리고 적절한 시점에 Composition 내 현재 위치에 삽입할지를 알려주는 역할을 합니다.
 
 이를 코드로 보면:
 
@@ -216,7 +216,7 @@ inline fun <T, reified E : Applier<*>> ResuableComposeNode(
 
 아직 관련되지 않은 일부분은 생략했지만, 이 코드가 `currentComposer` 인스턴스에 모든 작업을 위임하고 있다는 점을 주목해야 합니다.  
 또한, 이 컴포저블의 `content`를 저장할 때 Replaceable 그룹을 시작하여 래핑하는 방식도 볼 수 있습니다.  
-`content` 람다에서 발행된 자식들은 Replaceable 그룹의 자식으로 컴포지션에 저장됩니다.
+`content` 람다에서 발행된 자식들은 Replaceable 그룹의 자식으로 Composition에 저장됩니다.
 
 이 발행 작업은 다른 컴포저블에도 동일하게 적용됩니다. `remember`를 살펴보겠습니다:
 
@@ -226,7 +226,7 @@ inline fun <T> remember(calculation: @DisallowComposableCalls () -> T): T =
     currentComposer.cache(invalid = false, calculation)
 ```
 
-`remember` 컴포저블은 `currentComposer`를 사용하여 제공된 람다의 반환 값을 컴포지션에 캐시(remember) 처리 합니다.  
+`remember` 컴포저블은 `currentComposer`를 사용하여 제공된 람다의 반환 값을 Composition에 캐시(remember) 처리 합니다.  
 `invalid` 파라미터는 이전에 저장된 값과 상관없이 값을 강제로 업데이트하도록 지시하는 데 사용됩니다.
 
 `cache` 함수는 다음과 같이 작성됩니다:
@@ -249,7 +249,7 @@ inline fun <T> Composer.cache(
 }
 ```
 
-먼저 컴포지션(슬롯 테이블)에서 값을 검색합니다.  
+먼저 Composition(슬롯 테이블)에서 값을 검색합니다.  
 값을 찾지 못하면, 값을 **업데이트하도록 예약**하는 변경 사항을 발행하고, 값을 찾으면 그대로 반환합니다.
 
 ## Modeling the Changes
@@ -274,14 +274,14 @@ internal typealias Change = (
 이런 이유로 "변경 사항을 발행한다"는 표현을 쓸 때, "변경 사항을 기록한다" or "변경 사항을 예약한다"는 말도 함께 사용할 수 있습니다.  
 이들은 모두 같은 의미를 가리킵니다. 
 
-컴포지션이 끝나고, 모든 컴포저블 호출이 완료되어 변경 사항들이 기록되면, `Applier`가 이 모든 변경 사항을 한 번에 일괄 처리하여 적용합니다.
+Composition이 끝나고, 모든 컴포저블 호출이 완료되어 변경 사항들이 기록되면, `Applier`가 이 모든 변경 사항을 한 번에 일괄 처리하여 적용합니다.
 
-> 컴포지션은 `Composition` 클래스로 모델링됩니다.  
+> Composition은 `Composition` 클래스로 모델링됩니다.  
 > 하지만 이 부분은 나중에 자세히 다룰 것이기에, `Composer`에 대해 더 알아보겠습니다.
 
 ## Optimizing when to write
 
-앞서 배운 것처럼, 새로운 노드의 삽입 작업은 `Composer`에게 위임되기에, `Composer`는 새로운 노드를 컴포지션에 삽입하는 중인지를 항상 알고 있습니다.  
+앞서 배운 것처럼, 새로운 노드의 삽입 작업은 `Composer`에게 위임되기에, `Composer`는 새로운 노드를 Composition에 삽입하는 중인지를 항상 알고 있습니다.  
 그래서 노드가 삽입 중일 떄는 변경 사항을 기록하여 나중에 처리하는 대신, 슬롯 테이블에 즉시 변경 사항을 적용하여 프로세스를 단축할 수 있습니다.  
 반면, 삽입 중이 아닐 때는 변경 사항이 기록되고 지연 처리됩니다. 이는 아직 변경 사항을 적용할 시점이 아니기 때문입니다.
 
@@ -321,16 +321,16 @@ Composer가 그룹을 "시작"하려고 할 때, 다음과 같은 일들이 발�
 
 ## Remembering values
 
-Composer는 값을 컴포지션에 기억할 수 있고(슬롯 테이블에 기록), 이후에 그 값을 업데이트할 수 있다는 점을 배웠습니다.  
-기억된 값이 이전 컴포지션과 비교하여 변경되었는지는 `remember`가 호출될 때 바로 확인되지만, 업데이트 작업은 Composer가 삽입 중이 아닐 경우 `Change`로 기록됩니다.
+Composer는 값을 Composition에 기억할 수 있고(슬롯 테이블에 기록), 이후에 그 값을 업데이트할 수 있다는 점을 배웠습니다.  
+기억된 값이 이전 Composition과 비교하여 변경되었는지는 `remember`가 호출될 때 바로 확인되지만, 업데이트 작업은 Composer가 삽입 중이 아닐 경우 `Change`로 기록됩니다.
 
-업데이트할 값이 `RememberObserver`인 경우, Composer는 컴포지션에서 remember 작업을 추적하기 위한 암시적인 `Change`를 기록합니다.  
+업데이트할 값이 `RememberObserver`인 경우, Composer는 Composition에서 remember 작업을 추적하기 위한 암시적인 `Change`를 기록합니다.  
 이 `Change`는 나중에 기억된 모든 값들을 잊어야 할 때 필요하게 됩니다.
 
 ## Recompose scopes
 
 Composer가 처리하는 또 다른 작업은 재구성 범위(Recompose scope)입니다.  
-재구성 범위는 스마트 리컴포지션을 가능하게 하며, Restartable 그룹과 직접적으로 연결됩니다.  
+재구성 범위는 스마트 Recomposition을 가능하게 하며, Restartable 그룹과 직접적으로 연결됩니다.  
 
 Restartable 그룹이 생성될 때마다, Composer는 이 그룹에 맞는 `RecomposeScope`를 생성하고, 이를 `Composition`의 `currentRecomposeScope`로 설정합니다.
 
@@ -340,17 +340,17 @@ graph LR;
     B --> C[Composition의 currentRecomposeScope로 설정]
 ```
 
-`RecomposeScope`는 컴포지션에서 특정 부분을 독립적으로 재구성할 수 있는 영역을 나타냅니다.  
-이 범위는 수동으로 무효화하여 컴포저블의 리컴포지션을 트리거하는데 사용될 수 있으며, 무효화는 Composer를 통해 요청됩니다: `composer.currentRecomposeScope().invalidate()`  
+`RecomposeScope`는 Composition에서 특정 부분을 독립적으로 재구성할 수 있는 영역을 나타냅니다.  
+이 범위는 수동으로 무효화하여 컴포저블의 Recomposition을 트리거하는데 사용될 수 있으며, 무효화는 Composer를 통해 요청됩니다: `composer.currentRecomposeScope().invalidate()`  
 재구성이 시작되면, Composer는 슬롯 테이블을 Restartable 그룹의 시작 위치로 이동시키고, 람다에 전달된 재구성 블록(Recompose block)을 호출합니다.  
 이렇게 하면 컴포저블이 다시 호출되어, 한 번 더 발행되고, Composer는 테이블에 있는 기존 데이터를 덮어쓰게 됩니다.
 
 Composer는 무효화된 재구성 범위들을 모두 `Stack`에 저장합니다.  
-`Stack`에 저장된 무효화된 재구성 범위들은 보류 중인 재구성으로, 다음 리컴포지션에서 트리거되어야 합니다.  
+`Stack`에 저장된 무효화된 재구성 범위들은 보류 중인 재구성으로, 다음 Recomposition에서 트리거되어야 합니다.  
 `currentRecomposeScope`는 이 `Stack`에서 피크(peek)하여 얻어집니다.
 
 `RecomposeScope`는 항상 활성화되지 않고, 컴포저블 내에서 `State` 스냅샷을 읽는 작업을 발견했을 때만 활성화됩니다.  
-이 경우, Composer는 `RecomposeScope`를 `used`로 표시하며, 컴포저블 끝에서 호출되는 "end"는 **non-null을 반환**하고, 그 다음의 리컴포지션 람다가 활성화됩니다. (아래의 `?` 문자 이후 참조)
+이 경우, Composer는 `RecomposeScope`를 `used`로 표시하며, 컴포저블 끝에서 호출되는 "end"는 **non-null을 반환**하고, 그 다음의 Recomposition 람다가 활성화됩니다. (아래의 `?` 문자 이후 참조)
 
 ```kotlin
 // After compiler inserts boilerplate
@@ -369,16 +369,16 @@ fun A(
 }
 ```
 
-Composer는 리컴포지션이 필요할 때, 현재 부모 그룹의 '무효화된 자식 그룹' 모두를 재구성할 수 있습니다.    
-리컴포지션이 필요하지 않다면, Reader가 해당 그룹을 스킵하고 끝으로 이동하게 할 수 있습니다. ([see](Chapter%202%20%3A%20The%20Compose%20compiler.md#comparison-propagation))
+Composer는 Recomposition이 필요할 때, 현재 부모 그룹의 '무효화된 자식 그룹' 모두를 재구성할 수 있습니다.    
+Recomposition이 필요하지 않다면, Reader가 해당 그룹을 스킵하고 끝으로 이동하게 할 수 있습니다. ([see](Chapter%202%20%3A%20The%20Compose%20compiler.md#comparison-propagation))
 
 ## SideEffects in the Composer
 
 Composer는 `SideEffect`도 기록할 수 있습니다.  
-`SideEffect`는 항상 **컴포지션이 완료된 후**에 실행되며, 트리에 대한 변경 사항이 **이미 적용된 후**에 호출될 함수로 기록됩니다.
+`SideEffect`는 항상 **Composition이 완료된 후**에 실행되며, 트리에 대한 변경 사항이 **이미 적용된 후**에 호출될 함수로 기록됩니다.
 
-`SideEffect`는 컴포저블의 라이프사이클과는 무관하게 발생하기에, 컴포지션을 떠날 때 자동으로 취소되거나, 리컴포지션 시 다시 실행되지 않습니다.  
-이는 `SideEffect`가 **슬롯 테이블에 저장되지 않기 때문에**, 컴포지션이 실패하면 단순히 폐기됩니다.  
+`SideEffect`는 컴포저블의 라이프사이클과는 무관하게 발생하기에, Composition을 떠날 때 자동으로 취소되거나, Recomposition 시 다시 실행되지 않습니다.  
+이는 `SideEffect`가 **슬롯 테이블에 저장되지 않기 때문에**, Composition이 실패하면 단순히 폐기됩니다.  
 이와 관련된 내용은 이펙트 핸들러 챕터에서 더 다루겠지만, Composer를 통해 이들이 어떻게 기록되는지 살펴보는 것도 흥미로운 부분입니다.
 
 ## Storing CompositionLocals
@@ -389,19 +389,19 @@ Provider와 해당 값들은 모두 그룹으로 슬롯 테이블에 함께 저�
 
 ## Storing source information
 
-Composer는 컴포지션 중에 수집된 소스 정보를 `CompositionData` 형태로 저장하여, 이를 Compose 도구에서 활용할 수 있도록 합니다.
+Composer는 Composition 중에 수집된 소스 정보를 `CompositionData` 형태로 저장하여, 이를 Compose 도구에서 활용할 수 있도록 합니다.
 
 ## Linking Compositions via CompositionContext
 
-컴포지션은 단일 구조가 아니라, 컴포지션과 서브 컴포지션들로 이루어진 트리 구조를 가지고 있습니다.  
-서브 컴포지션은 독립적인 무효화를 지원하기 위해, 현재 컴포지션 내에서 별도의 컴포지션을 생성할 목적으로 인라인에서 생성됩니다.
+Composition은 단일 구조가 아니라, Composition과 SubComposition들로 이루어진 트리 구조를 가지고 있습니다.  
+SubComposition은 독립적인 무효화를 지원하기 위해, 현재 Composition 내에서 별도의 Composition을 생성할 목적으로 인라인에서 생성됩니다.
 
-서브 컴포지션은 부모의 `CompositionContext` 참조를 통해 부모 컴포지션과 연결됩니다.  
-즉, `CompositionContext`는 컴포지션과 서브 컴포지션들을 트리처럼 연결하기 위해 존재합니다.  
-또한, `CompositionContext`를 통해서 `CompositionLocals`와 무효화 작업이 하나의 컴포지션처럼 트리 내에서 자연스럽게 처리되고 전파됩니다.   
+SubComposition은 부모의 `CompositionContext` 참조를 통해 부모 Composition과 연결됩니다.  
+즉, `CompositionContext`는 Composition과 SubComposition들을 트리처럼 연결하기 위해 존재합니다.  
+또한, `CompositionContext`를 통해서 `CompositionLocals`와 무효화 작업이 하나의 Composition처럼 트리 내에서 자연스럽게 처리되고 전파됩니다.   
 `CompositionContext` 역시 슬롯 테이블에 그룹 형태로 기록됩니다.
 
-서브 컴포지션의 생성은 일반적으로 `rememberCompositionContext`를 통해 이루어집니다:
+SubComposition의 생성은 일반적으로 `rememberCompositionContext`를 통해 이루어집니다:
 
 ```kotlin
 @Composable
@@ -410,8 +410,8 @@ fun rememberCompositionContext(): CompositionContext {
 }
 ```
 
-`rememberCompositionContext()`은 현재 슬롯 테이블 위치에서 새로운 컴포지션을 기억하거나, 이미 존재하는 컴포지션이 있다면 해당 컴포지션을 반환합니다.  
-이 함수는 서브 컴포지션을 생성하는데 사용되며, 별도의 컴포지션이 필요한 `VectorPainter`, `Dialog`, `SubcomposeLayout`, `Popup`, `AndroidView` 래퍼 등에서 사용됩니다.
+`rememberCompositionContext()`은 현재 슬롯 테이블 위치에서 새로운 Composition을 기억하거나, 이미 존재하는 Composition이 있다면 해당 Composition을 반환합니다.  
+이 함수는 SubComposition을 생성하는데 사용되며, 별도의 Composition이 필요한 `VectorPainter`, `Dialog`, `SubcomposeLayout`, `Popup`, `AndroidView` 래퍼 등에서 사용됩니다.
 
 ## Accessing the current State snapshot
 
@@ -439,8 +439,8 @@ Reader와 Writer의 동기화 유지는 다소 저수준의 개념이지만, 그
 ## Applying the changes
 
 Chapter 3에서 여러 번 언급했듯이, `Applier`는 변경 사항을 적용하는 작업을 담당합니다.  
-현재 `Composer`는 리컴포지션 후에 기록된 모든 변경 사항을 적용하기 위해, 이를 추상화된 `Applier`에 위임합니다.  
-이 과정을 "구체화"라고 부르며, 이 과정은 기록된 변경 목록을 실행하고, 그 결과로 슬롯 테이블을 업데이트하며, 그 안에 저장된 컴포지션 데이터를 해석하여 최종 결과를 산출합니다.
+현재 `Composer`는 Recomposition 후에 기록된 모든 변경 사항을 적용하기 위해, 이를 추상화된 `Applier`에 위임합니다.  
+이 과정을 "구체화"라고 부르며, 이 과정은 기록된 변경 목록을 실행하고, 그 결과로 슬롯 테이블을 업데이트하며, 그 안에 저장된 Composition 데이터를 해석하여 최종 결과를 산출합니다.
 
 **런타임은 `Applier`의 구현 방식에 대해서는 관여하지 않는** 대신, 클라이언트 라이브러리에서 구현해야 하는 public contract에 의존합니다.  
 이는 `Applier`가 플랫폼과의 통합 지점이기 때문에, 사용 사례에 따라 달라질 수 있기 떄문입니다.
@@ -468,7 +468,7 @@ interface Applier<N> {
 참고로, **이 작업은 나중에 노드 자체에 위임됩니다.**
 
 contract에서는 현재 노드의 주어진 범위 내 자식 노드를 제거하는 방법이나, 자식 노드를 이동시켜 위치를 변경하는 방법도 정의하고 있습니다.  
-또한, `clear` 연산은 루트를 가리키며 트리 내의 모든 노드를 제거하여, `Applier`와 그 루트를 새로운 컴포지션의 타겟으로 사용할 수 있도록 준비하는 방법을 정의합니다.
+또한, `clear` 연산은 루트를 가리키며 트리 내의 모든 노드를 제거하여, `Applier`와 그 루트를 새로운 Composition의 타겟으로 사용할 수 있도록 준비하는 방법을 정의합니다.
 
 `Applier`는 트리 전체를 순회하며 각 노드를 방문하고 변경 사항을 적용합니다. 이때, 트리는 하향식/상향식으로 탐색할 수 있습니다.   
 `Applier`는 항상 현재 방문 중인 노드를 참조하며, 해당 노드에 필요한 변경 사항을 적용합니다.  
@@ -628,24 +628,26 @@ graph BT
 다음 챕터에서 이 과정에 대해 더 깊이 다룰 것입니다.
 
 하나의 사이클을 마무리했지만, 아직 이른 감이 있습니다.  
-지금까지 컴포지션이 어떻게 작동하는지에 대한 흥미로운 세부 사항을 수집했지만, 정작 컴포지션 과정 자체를 아직 다루지 않았습니다.
+지금까지 Composition이 어떻게 작동하는지에 대한 흥미로운 세부 사항을 수집했지만, 정작 Composition 과정 자체를 아직 다루지 않았습니다.
 
-이제 컴포지션 과정에 대해 알아보겠습니다.
+이제 Composition 과정에 대해 알아보겠습니다.
 
 ## Composition
 
-이전 섹션에서는 Composer가 슬롯 테이블에 쓰거나 읽기 위한 변경 사항을 어떻게 기록하고, 컴포저블이 실행될 때 이러한 변경 사항이 어떻게 발생하는지, 
-그리고 최종적으로 이러한 변경 사항이 어떻게 적용되는지에 대해 살펴보았습니다. 그러나, 아직 컴포지션 프로세스 자체에 대해서는 다루지 않았습니다.  
-이제부터 컴포지션이 어떻게 생성되고, 누가 이를 담당하며, 언제 이루어지는지, 그리고 어떤 단계들이 포함되는지 알아보겠습니다.
+이전 섹션에서는 Composer의 많은 디테일을 알아보았습니다. 
+Composer가 슬롯 테이블에 변경 사항을 기록하거나 읽는 방법, 컴포저블이 실행될 때 변경 사항이 어떻게 발생하는지, 그리고 기록된 변경 사항이 최종적으로 어떻게 적용되는지를 살펴보았습니다.
+하지만 아직 Composition을 누가, 어떻게, 그리고 언제 생성하는지, 그리고 그 과정에 어떤 단계들이 있는지는 다루지 않았습니다.
 
-`Composer`가 `Composition`에 대한 참조를 가지고 있다고 언급했지만, 실제로는 `Composition`이 생성되면, 컴포지션 스스로가 `Composer`를 생성합니다.  
-생성된 Composer는 `currentComposer` 메커니즘을 통해 접근 가능하며, 컴포지션이 관리하는 트리를 생성하고 업데이트하는 데 사용됩니다.
+`Composer`가 `Composition`에 대한 참조를 가진다고 했지만, 이것이 마치 `Composition`이 `Composer`에 의해 생성되고 소유되는 것처럼 오해할 수 있습니다.  
+그러나 실제로는 그 반대입니다. Composition이 생성될 때 스스로 Composer를 만들고, 이렇게 만들어진 Composer는 `currentComposer`를 통해 접근할 수 있게 됩니다.  
+이후 이 Composer는 Composition이 관리하는 트리를 생성하고 업데이트하는데 사용됩니다.
 
-Compose 런타임에 대한 클라이언트 라이브러리의 진입점은 두 가지 부분으로 나뉩니다:
+Compose 런타임에 대한 클라이언트 라이브러리의 진입점은 두 가지로 나눌 수 있습니다.
 
-- 컴포저블을 작성하여 UI와 관련된 모든 정보를 발행하여, 사용 사례와 런타임을 연결합니다.
-- 컴포저블이 정의되었더라도, 실제로 이를 실행하여 화면에 표시하려면 컴포지션 프로세스가 필요합니다.  
-이를 위해 컴포지션을 생성하고, 시작하는 역할인 `setContent`가 사용되며, 대상 플랫폼(Android)과의 통합 계층(integration layer)을 구축합니다.
+- 컴포저블 작성: 컴포저블은 필요한 모든 정보를 발행하여, 사용 사례와 런타임을 연결합니다.
+- 컴포저블은 Composition 과정 없이는 절대 실행될 수 없습니다. 
+  - 그래서 또 다른 진입점인 `setContent`가 필요합니다. 
+  - `setContent`는 타겟 플랫폼과의 통합 레이어 역할을 하며, 여기에서 `Composition`이 생성되고 시작됩니다.
 
 ## Creating a Composition
 
@@ -689,7 +691,7 @@ private fun doSetContent(
 마지막으로 `composition.setContent(content)`가 호출되는 부분을 볼 수 있습니다.  
 `Composition#setContent`는 컴포지션의 `content`를 설정하여, 해당 컴포저블에서 제공하는 모든 정보를 사용하여 컴포지션을 업데이트합니다.
 
-컴포지션 생성의 좋은 예로, Compose UI 라이브러리의 일부인 `VectorPainter`를 들 수 있습니다.  
+Composition 생성의 좋은 예로, Compose UI 라이브러리의 일부인 `VectorPainter`를 들 수 있습니다.  
 `VectorPainter`는 자체적으로 `Composition`을 만들고 유지합니다:
 
 ```kotlin
@@ -732,7 +734,7 @@ private fun composeVector(
 예를 들어, 위 코드에서는 `VectorApplier`를 사용하여 벡터 트리의 루트 노드를 가리키고 있습니다. 이 루트 노드는 `VNode`가 될 것입니다.  
 이처럼, 다른 `Applier` 전략을 통해 다양한 트리 구조를 효율적으로 관리할 수 있습니다.
 
-마지막으로, 컴포지션 생성의 또 다른 예시는 Compose UI의 `SubcomposeLayout`이 있습니다.  
+마지막으로, Composition 생성의 또 다른 예시는 Compose UI의 `SubcomposeLayout`이 있습니다.  
 `SubcomposeLayout`는 자체 컴포지션을 유지하는 `Layout`으로, 측정(measuring) 단계에서 `content`를 서브 컴포즈(sub-compose)할 수 있습니다.  
 이는 부모의 측정 결과가 자식의 컴포지션에 필요할 때 유용합니다. (e.g : 부모의 크기나 위치를 기준으로 자식의 레이아웃 조정 시)
 
@@ -756,7 +758,7 @@ private fun composeVector(
 이전 예제 코드를 보면, 새로운 컴포지션이 생성될 때마다 `composition.setContent(content)`이 항상 호출됩니다.  
 이는 컴포지션이 처음으로 데이터를 채우는 과정이며, 이 과정에서 슬롯 테이블은 컴포지션의 상태와 UI 요소들의 데이터로 채워집니다.
 
-`composition.setContent(content)` 호출은 부모 컴포지션에 위임되어 초기 컴포지션 프로세스를 시작합니다.  
+`composition.setContent(content)` 호출은 부모 컴포지션에 위임되어 초기 Composition 프로세스를 시작합니다.  
 (컴포지션과 서브 컴포지션이 부모의 `CompositionContext`를 통해 연결되는 방식을 기억해보세요.)
 
 ```kotlin
@@ -770,7 +772,7 @@ override fun setContent(content: @Composable () -> Unit) {
 서브 컴포지션의 부모는 다른 컴포지션이 되고, 루트 컴포지션의 부모는 `Recomposer`가 됩니다.  
 그러나, 초기 컴포지션을 수행하는 모든 로직은 `Recomposer`에 의존합니다.  
 서브 컴포지션에서 `composeInitial` 호출은 부모 컴포지션에 위임되며, 이러한 위임 과정이 계속 반복되어 루트 컴포지션에 도달하게 되면
-루트 컴포지션에서 `Recomposer`가 초기 컴포지션 프로세스를 수행합니다.
+루트 컴포지션에서 `Recomposer`가 초기 Composition 프로세스를 수행합니다.
 
 따라서 `parent.composeInitial(composition, content)` 호출은 `recomposer.composeInitial(composition, content)`로 변환되어 초기 컴포지션을 채우기 위한 몇 가지 중요한 작업을 수행합니다:
 
@@ -786,16 +788,16 @@ override fun setContent(content: @Composable () -> Unit) {
 이를 통해 `Composition`은 영향을 받는 재구성 범위를 `used`로 플래그 처리하고, 해당 범위가 나중에 다시 재구성될 수 있도록 합니다.
 
 4. `snapshot.enter(block)`을 호출하여, 실제로 컴포지션이 이루어지는 블록(`composition.composeContent(content)`)을 전달함으로써 스냅샷에 진입합니다.
-스냅샷에 진입하는 작업은 컴포지션 동안 읽거나 쓰는 모든 상태 객체가 `Recomposer`에 의해 추적되도록 하여, 상태 변경 사항이 컴포지션에 통보되도록 합니다.
+스냅샷에 진입하는 작업은 Composition 동안 읽거나 쓰는 모든 상태 객체가 `Recomposer`에 의해 추적되도록 하여, 상태 변경 사항이 컴포지션에 통보되도록 합니다.
 
-5. 컴포지션 프로세스는 Composer에게 위임됩니다. (이 단계에 대해서는 아래에서 더 자세히 다룰 것입니다.)
+5. Composition 프로세스는 Composer에게 위임됩니다. (이 단계에 대해서는 아래에서 더 자세히 다룰 것입니다.)
 
 6. 컴포지션이 완료되면, 상태 객체에 대한 모든 변경 사항은 현재 상태 스냅샷에만 적용됩니다.  
 따라서 이러한 변경 사항을 전역 상태로 전파할 필요가 있으며, 이는 `snapshot.apply()`를 호출하여 수행됩니다.
 
-이것이 '초기 컴포지션 프로세스'의 대략적인 순서입니다. 상태 스냅샷 시스템에 관한 모든 내용은 다음 장에서 더 자세히 다루게 됩니다.
+이것이 '초기 Composition 프로세스'의 대략적인 순서입니다. 상태 스냅샷 시스템에 관한 모든 내용은 다음 장에서 더 자세히 다루게 됩니다.
 
-이제 컴포지션 프로세스를 구체적으로 설명하겠습니다.  
+이제 Composition 프로세스를 구체적으로 설명하겠습니다.  
 이 과정은 Composer에게 위임되며, 대략적으로 다음 순서로 진행됩니다:
 
 1. 컴포지션이 이미 실행 중인 경우, 컴포지션을 시작할 수 없습니다.  
@@ -814,14 +816,14 @@ override fun setContent(content: @Composable () -> Unit) {
 ## Applying changes after initial Composition
 
 초기 컴포지션이 완료된 후, `Applier`는 `composition.applyChanges()`를 통해 기록된 모든 변경 사항을 적용하도록 알립니다.
-이 과정은 컴포지션을 통해 수명되며, 다음 단계로 진행됩니다:
+이 과정은 Composition을 통해 수명되며, 다음 단계로 진행됩니다:
 
 1. `Composition`은 `applier.onBeginChanges()`를 호출하여 변경 사항 적용을 시작합니다.
 2. `Composition`은 변경 사항 목록을 순회하면서 각 변경 사항을 실행하고, 필요한 `Applier`와 `SlotWriter` 인스턴스를 각 변경 사항에 전달합니다.
 3. 모든 변경 사항이 적용된 후, `applier.onEndChanges()`를 호출하여 변경 사항 적용을 종료합니다.
 
 이 후, 등록된 모든 `RememberedObservers`를 디스패치하여, 컴포지션에 들어가거나 나갈 때 `RememberObserver` 계약을 구현하는 클래스들이 알림을 받을 수 있도록 합니다.
-이 계약을 구현하는 클래스로는 `LaunchedEffect`나 `DisposableEffect` 등이 있으며, 이를 통해 컴포지션 내에서 컴포저블 생명주기에 효과(effect)를 제한할 수 있습니다.
+이 계약을 구현하는 클래스로는 `LaunchedEffect`나 `DisposableEffect` 등이 있으며, 이를 통해 Composition 내에서 컴포저블 생명주기에 효과(effect)를 제한할 수 있습니다.
 
 마지막으로, 모든 `SideEffects`가 기록된 순서대로 트리거됩니다.
 
@@ -838,7 +840,7 @@ override fun setContent(content: @Composable () -> Unit) {
 컴포지션은 특정 객체 집합이 자신에 의해 관촬되고 있는지 감지하여, 해당 객체들이 변경될 때 재구성을 강제할 수 있는 방법을 제공합니다. 
 예를 들어, `CompositionContext`로 연결된 부모 컴포지션에서 `CompositionLocal`이 변경될 때, 자식 컴포지션에서 재구성을 강제하기 위해 `Recomposer`를 사용합니다.
 
-컴포지션 중에 오류가 발생할 때는, 컴포지션을 중단할 수 있습니다.  
+Composition 중에 오류가 발생할 때는, 컴포지션을 중단할 수 있습니다.  
 이는 Composer, 모든 참조/스택 및 기타 모든 것을 초기화하는 과정과 유사합니다. 
 
 Composer는 다음 조건을 만족할 때, 재구성을 건너뛴다고 가정합니다.
@@ -916,10 +918,10 @@ val contextWithClock = currentThreadContext + (pauseableClock ?: EmptyCoroutineC
 val recomposer = Recomposer(effectCoroutineContext = contextWithClock)
 ```
 
-이렇게 결합된 컨텍스트는 `Recomposer`가 내부 `Job`을 생성하여, `Recomposer`가 종료될 때, 모든 컴포지션 또는 재구성 이펙트를 안전하게 취소할 수 있도록 합니다. 
+이렇게 결합된 컨텍스트는 `Recomposer`가 내부 `Job`을 생성하여, `Recomposer`가 종료될 때, 모든 Composition 또는 재구성 이펙트를 안전하게 취소할 수 있도록 합니다. 
 예를 들어, Android 윈도우가 파괴(destroyed)되거나 분리(unattached)될 때 이 작업이 필요합니다.  
 
-또한, 결합된 컨텍스트는 컴포지션 또는 재구성 후 변경 사항을 적용하는 데 사용되며, 추가로 `LaunchedEffect`가 이펙트를 실행하는 데 사용되는 기본 컨텍스트가 됩니다. 
+또한, 결합된 컨텍스트는 Composition 또는 재구성 후 변경 사항을 적용하는 데 사용되며, 추가로 `LaunchedEffect`가 이펙트를 실행하는 데 사용되는 기본 컨텍스트가 됩니다. 
 이로 인해, 이펙트가 변경 사항을 적용하는 데 사용하는 스레드와 동일한 스레드에서 시작되며, Android에서는 일반적으로 메인 스레드를 사용합니다.  
 물론, 이펙트 내에서 필요에 따라 언제든지 메인 스레드를 벗어날 수 있습니다.
 
@@ -1027,9 +1029,9 @@ private fun doSetContent(
 이제 본격적인 작업이 시작됩니다. `Recomposer`는 마지막 재구성 호출 이후 수정된 모든 상태 값(보류 중인 모든 스냅샷 무효화)을 가져와, 모든 변경 사항을 Composer에 기록하여 재구성 대기 작업으로 만듭니다.
 
 `composition.invalidate()`를 통해 무효화된 컴포지션이 있을 수도 있습니다. 예를 들어, 상태가 컴포저블 람다 내에서 변경된 경우가 이에 해당합니다.
-`Recomposer`는 이러한 모든 무효화된 컴포지션에 대해 재구성을 수행하고, 변경 사항을 적용할 대기 중인 컴포지션 목록에 추가합니다.
+`Recomposer`는 이러한 모든 무효화된 컴포지션에 대해 재구성을 수행하고, 변경 사항을 적용할 대기 중인 Composition 목록에 추가합니다.
 
-재구성이란, 컴포지션 상태(슬롯 테이블)와 실체화된 트리(Applier)에 필요한 모든 변경 사항을 다시 계산하는 것을 의미합니다.  
+재구성이란, Composition 상태(슬롯 테이블)와 실체화된 트리(Applier)에 필요한 모든 변경 사항을 다시 계산하는 것을 의미합니다.  
 이 과정은 이미 [The initial Composition process](#the-initial-composition-process)에서 다뤘으므로, 이 섹션을 참조하세요. 
 
 이후에 컴포지션으로 값이 변경되어 재구성이 필요한 잠재적인 후행 재구성을 찾아, 이를 재구성할 수 있도록 예약합니다.  
