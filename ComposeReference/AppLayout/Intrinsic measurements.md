@@ -96,3 +96,66 @@ Divider 요소는 주어진 constraints가 없을 때 공간을 차지하지 않
 `Text`의 `minIntrinsicHeight`는 주어진 너비에서의 텍스트 높이에 따라 결정됩니다.  
 `Row`안에 여러 `Text` 요소가 있다면, `Row`는 이들 중 가장 큰 `minIntrinsicHeight` 값을 기준으로 높이 constraints를 계산합니다.  
 그 후, Divider는 `Row`가 제공하는 `height` constraints에 맞춰 자신의 `height`를 확장하게 됩니다.
+
+### Intrinsics in your custom layouts
+
+Custom `Layout` 또는 `Layout` Modifier를 만들 때, intrinsics measurements는 자동으로 근사값을 기반으로 계산됩니다.  
+따라서 모든 레이아웃에 대해 정확하지 않을 수 있습니다. 이러한 이유로, 해당 API는 기본값을 재정의할 수 있는 옵션을 제공합니다.
+
+Custom `Layout`의 경우에는 `MeasurePolicy` 인터페이스를 생성할 떄, 
+`minIntrinsicWidth`, `maxIntrinsicWidth`, `minIntrinsicHeight`, `maxIntrinsicHeight`를 재정의할 수 있습니다.
+
+```kotlin
+@Composable
+fun MyCustomComposable(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    Layout(
+        content = content,
+        modifier = modifier,
+        measurePolicy = object : MeasurePolicy {
+            override fun MeasureScope.measure(
+                measurables: List<Measurable>,
+                constraints: Constraints
+            ): MeasureResult {
+                // Measure and layout here
+                // ...
+            }
+
+            override fun IntrinsicMeasureScope.minIntrinsicWidth(
+                measurables: List<IntrinsicMeasurable>,
+                height: Int
+            ): Int {
+                // Logic here
+                // ...
+            }
+        }
+    )
+}
+```
+
+Custom `layout` modifier의 경우, `LayoutModifier` 인터페이스에서 관련 메서드를 재정의할 수 있습니다.
+
+```kotlin
+fun Modifier.myCustomModifier(
+    /* ... */
+) = this then object : LayoutModifier {
+
+    override fun MeasureScope.measure(
+        measurable: Measurable,
+        constraints: Constraints
+    ): MeasureResult {
+        // Measure and layout here
+        // ...
+    }
+
+    override fun IntrinsicMeasureScope.minIntrinsicWidth(
+        measurable: IntrinsicMeasurable,
+        height: Int
+    ): Int {
+        // Logic here
+        // ...
+    }
+}
+```
