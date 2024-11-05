@@ -16,7 +16,7 @@ Compose 내부에 대한 문서가 부족하다 보니, '슬롯 테이블'과 '�
 
 슬롯 테이블은 Composition의 현재 상태를 저장하는 메모리 내 구조로, 컴포저블이 호출될 때 그 위치와 관련 데이터를 기록하는 역할을 합니다.  
 여기에는 컴포저블의 위치, 파라미터, `remember`로 처리된 값, `CompositionLocal`와 같은 중요한 정보들이 포함됩니다.  
-초기 Composition이 실행되면 슬롯 테이블에 위 정보들이 기록되며, 이후 Recomposition이 발생할 때마다 이미 기록된 정보를 바탕으로 필요한 부분만 업데이트됩니다.  
+Initial Composition이 실행되면 슬롯 테이블에 위 정보들이 기록되며, 이후 Recomposition이 발생할 때마다 이미 기록된 정보를 바탕으로 필요한 부분만 업데이트됩니다.  
 Composer는 슬롯 테이블에 기록된 Composition의 현재 상태를 바탕으로 다음 변경 사항 목록을 생성합니다.  
 또한, 트리에서 발생하는 모든 변경 사항은 슬롯 테이블에 기록된 Composition의 현재 상태에 의존합니다.
 
@@ -760,11 +760,11 @@ Composition이 생성되면, 더 이상 필요하지 않을 때 반드시 폐기
 
 ## The initial Composition process
 
-이전 예제 코드를 보면, 새로운 컴포지션이 생성될 때마다 `composition.setContent(content)`이 항상 호출됩니다.  
-이는 컴포지션이 처음으로 데이터를 채우는 과정이며, 이 과정에서 슬롯 테이블은 컴포지션의 상태와 UI 요소들의 데이터로 채워집니다.
+새로운 Composition이 생성될 때, 항상 `composition.setContent(content)`가 호출됩니다.  
+이 호출은 Composition이 데이터를 채우는 첫 단계입니다. (슬롯 테이블이 관련 데이터로 채워짐)  
 
-`composition.setContent(content)` 호출은 부모 컴포지션에 위임되어 초기 Composition 프로세스를 시작합니다.  
-(컴포지션과 서브 컴포지션이 부모의 `CompositionContext`를 통해 연결되는 방식을 기억해보세요.)
+`setContent` 호출은 `parent` Composition에 위임되어, Initial Composition 프로세스를 시작합니다.  
+(부모 `CompositionContext`를 통해 Composition과 Subcomposition이 연결되는 방식을 기억하세요.)
 
 ```kotlin
 override fun setContent(content: @Composable () -> Unit) {
@@ -774,49 +774,51 @@ override fun setContent(content: @Composable () -> Unit) {
 }
 ```
 
-서브 컴포지션의 부모는 다른 컴포지션이 되고, 루트 컴포지션의 부모는 `Recomposer`가 됩니다.  
-그러나, 초기 컴포지션을 수행하는 모든 로직은 `Recomposer`에 의존합니다.  
-서브 컴포지션에서 `composeInitial` 호출은 부모 컴포지션에 위임되며, 이러한 위임 과정이 계속 반복되어 루트 컴포지션에 도달하게 되면
-루트 컴포지션에서 `Recomposer`가 초기 Composition 프로세스를 수행합니다.
+Subcomposition은 부모가 또 다른 Composition이 되고, 루트 Composition은 부모가 `Recomposer`가 됩니다.  
+그러나 이와 관계없이, Initial Composition을 수행하는 로직은 언제나 `Recomposer`에 의존하게 됩니다.  
+왜냐하면 Subcomposition은 `composeInitial()`이 루트 Composition에 도달할 떄까지 계속해서 부모에게 위임되기 때문입니다.
 
-따라서 `parent.composeInitial(composition, content)` 호출은 `recomposer.composeInitial(composition, content)`로 변환되어 초기 컴포지션을 채우기 위한 몇 가지 중요한 작업을 수행합니다:
+따라서 `parent.composeInitial(composition, content)` 호출은 `recomposer.composeInitial(composition, content)`로 변환될 수 있습니다.  
+이를 통해, Initial Composition을 설정하기 위한 몇 가지 중요한 작업이 수행됩니다.
 
-1. 모든 상태(State) 객체의 현재 값을 스냅샷으로 저장합니다. 이 값들은 다른 스냅샷의 변경 사항으로부터 격리됩니다.    
-또한, 이 스냅샷은 **수정** 가능하고, 동시성 안정성(concurrency safe)을 보장합니다.  
-상태 객체의 모든 변경 사항은 해당 스냅샷에만 적용되기에 다른 스냅샷에 영향을 주지 않고 안전하게 수정될 수 있습니다.  
-이후 단계에서 상태 객체의 모든 변경 사항은 전역 공유 상태(global shared state)와 원자적으로 동기화됩니다.
+---
 
-2. 가변 스냅샷의 상태 값은 `snapshot.enter(block: () -> T)`를 호출할 때 전달된 블록 내에서만 수정될 수 있습니다.
-   
-3. 스냅샷을 찍을 때 `Recomposer`는 상태 객체에 대한 읽기/쓰기 작업을 감지할 수 있는 옵저버를 전달하여,   
-상태 객체가 읽히거나 쓰일 때마다 컴포지션에 알림을 줍니다. 
-이를 통해 `Composition`은 영향을 받는 재구성 범위를 `used`로 플래그 처리하고, 해당 범위가 나중에 다시 재구성될 수 있도록 합니다.
+모든 상태 객체의 현재 값을 스냅샷으로 캡처하며, 이 값들은 다른 스냅샷의 변경 사항으로부터 격리됩니다.   
+이 스냅샷은 **가변성**을 가지면서도 동시성에 안전합니다.  
+격리되어 있기 때문에 기존의 다른 상태 스냅샷에 영향을 주지 않고 안전하게 수정할 수 있으며, 상태 객체의 변경 사항은 오직 해당 스냅샷에만 적용됩니다.   
+이후 단계에서 모든 변경 사항이 글로벌 공유 상태와 atomically synchronized 됩니다.
 
-4. `snapshot.enter(block)`을 호출하여, 실제로 컴포지션이 이루어지는 블록(`composition.composeContent(content)`)을 전달함으로써 스냅샷에 진입합니다.
-스냅샷에 진입하는 작업은 Composition 동안 읽거나 쓰는 모든 상태 객체가 `Recomposer`에 의해 추적되도록 하여, 상태 변경 사항이 컴포지션에 통보되도록 합니다.
+가변 스냅샷의 상태 값은 `snapshot.enter(block: () -> T)`를 호출할 때 전달된 블록 내에서만 수정 가능합니다.
 
-5. Composition 프로세스는 Composer에게 위임됩니다. (이 단계에 대해서는 아래에서 더 자세히 다룰 것입니다.)
+스냅샷을 캡처할 때, `Recomposer`는 언급된 상태 객체에 대한 read 및 write 작업을 위한 옵저버를 전달하여, Composition이 이러한 작업이 발생할 때 적절하게 알림을 받을 수 있도록 합니다.
+이를 통해 `Composition`은 영향을 받는 Recomposition 범위를 `used`로 표시할 수 있으며, 적절한 시점에 Recomposition이 이루어지게 됩니다.
 
-6. 컴포지션이 완료되면, 상태 객체에 대한 모든 변경 사항은 현재 상태 스냅샷에만 적용됩니다.  
-따라서 이러한 변경 사항을 전역 상태로 전파할 필요가 있으며, 이는 `snapshot.apply()`를 호출하여 수행됩니다.
+`snapshot.enter(block)`를 통해, `composition.composeContent(content)` 블록을 전달함으로써 스냅샷에 진입합니다. **여기서 실제로 Composition이 이루어집니다.**   
+진입하는 액션은 Composition 동안 읽거나 쓰는 모든 상태 객체가 추적될 것임을 `Recomposer`에게 알리는 역할을 합니다.
 
-이것이 '초기 Composition 프로세스'의 대략적인 순서입니다. 상태 스냅샷 시스템에 관한 모든 내용은 다음 장에서 더 자세히 다루게 됩니다.
+Composition 프로세스는 Composer에게 위임됩니다. (이 단계에 대해서는 아래에서 더 자세히 다룰 것입니다.)
 
-이제 Composition 프로세스를 구체적으로 설명하겠습니다.  
-이 과정은 Composer에게 위임되며, 대략적으로 다음 순서로 진행됩니다:
+Composition이 완료되면, 상태 객체에 대한 모든 변경 사항은 현재 상태 스냅샷에만 적용되므로, 이러한 변경 사항을 전역 상태로 전파할 필요가 있습니다.
+이는 `snapshot.apply()`를 통해 이루어집니다.
 
-1. 컴포지션이 이미 실행 중인 경우, 컴포지션을 시작할 수 없습니다.  
-이 경우 예외가 발생하고, 새로운 컴포지션은 무시됩니다. 이는 컴포지션의 재진입을 방지하기 위한 조치입니다.
-2. 보류 중인 무효화가 있는 경우, 이를 Composer가 관리하는 무효화 목록으로 복사됩니다.  
-이 무효화 목록은 재구성이 필요한 `RecomposeScopes`를 추적하고 관리하는데 사용됩니다.
-3. 컴포지션이 시작되기 전에 `isComposing` 플래그를 `true`로 설정하여, 현재 컴포지션이 진행 중임을 표시합니다.
-4. `startRoot()`를 호출하여 컴포지션을 시작합니다.  
-이는 슬롯 테이블에서 컴포지션의 루트 그룹을 시작하고, 필요한 다른 필드와 구조를 초기화 합니다.
-5. `startGroup()`을 호출하여 슬롯 테이블에서 `content`에 대한 그룹을 시작합니다.
+---
+
+이것이 Initial Composition과 관련된 대략적인 순서입니다.  
+상태 스냅샷 시스템에 대한 모든 내용은 다음 챕터에서 더 자세히 다룰 것입니다.
+
+이제 Composition 프로세스 자체, 즉 `Composer`에게 위임된 프로세스를 살펴보겠습니다.  
+대략적으로 다음과 같은 방식으로 진행됩니다:
+
+1. Composition이 이미 실행 중인 경우, 새로운 Composition을 시작할 수 없습니다.  
+이 경우 예외가 발생하고, 새로운 Composition은 무시됩니다. 즉, Composition의 재진입은 지원되지 않습니다.
+2. 보류 중인 무효화가 있는 경우, 이를 `RecomposeScopes`의 무효화 목록에 복사합니다. 이 목록은 Composer에 의해 관리됩니다.
+3. Composition이 시작될 예정이므로 `isComposing`을 `true`로 설정합니다.
+4. `startRoot()`를 호출하여 Composition을 시작합니다. 이 호출은 슬롯 테이블에서 Composition의 루트 그룹을 시작하고 필요한 필드와 구조를 초기화합니다.
+5. 슬롯 테이블의 `content`를 위해 `startGroup`을 호출하여 그룹을 시작합니다.
 6. `content` 람다를 호출하여 모든 변경 사항을 발행합니다.
-7. `endGroup()`을 호출하여 컴포지션을 종료합니다.
-8. 컴포지션이 완료되었으므로 `isComposing` 플래그를 `false`로 설정하여, 현재 컴포지션이 종료되었음을 표시합니다.
-9. 임시 데이터를 유지하는 다른 구조를 정리합니다.
+7. `endGroup()`을 호출하여 Composition을 종료합니다.
+8. Composition이 완료되었으므로 `isComposing` 플래그를 `false`로 설정합니다.
+9. 임시 데이터를 유지하는 다른 구조를 초기화합니다.
 
 ## Applying changes after initial Composition
 

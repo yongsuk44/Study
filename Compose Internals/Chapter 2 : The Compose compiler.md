@@ -16,7 +16,7 @@ graph LR
 
 - Compose 컴파일러가 소스 코드를 어떻게 런타임 요구 사항에 맞추는지
 - 런타임이 어떻게 작동하는지
-- 초기 컴포지션과 Recomposition이 언제 발생하는지
+- Initial Composition과 Recomposition이 언제 발생하는지
 - 메모리 내 트리 표현이 어떻게 전달되고 사용되는지
 
 위 개념을 이해하게 되면 라이브러리가 어떻게 작동하는지에 대한 전반적인 흐름을 파악하고, 코딩 중에 무엇을 기대할 수 있을지에 대한 통찰을 얻을 수 있습니다.
@@ -102,7 +102,7 @@ Kotlin 자체는 모듈 간 `internal` 사용을 지원하지 않으므로, 이 
 또한, Recomposition마다 호출되지 않는 람다에 적용하는 것이 적합합니다.
 
 예를 들어, `remember` 함수에서 이 원칙을 확인할 수 있습니다.  
-`remember`는 `calculation` 블록에서 생성된 값을 초기 컴포지션에서만 평가하고, 이후 Recomposition에서는 이전에 생성된 값을 그대로 반환합니다. 
+`remember`는 `calculation` 블록에서 생성된 값을 Initial Composition에서만 평가하고, 이후 Recomposition에서는 이전에 생성된 값을 그대로 반환합니다. 
 
 ```kotlin
 // Composables.kt
