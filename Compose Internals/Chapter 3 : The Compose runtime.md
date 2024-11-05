@@ -822,17 +822,20 @@ Composition이 완료되면, 상태 객체에 대한 모든 변경 사항은 현
 
 ## Applying changes after initial Composition
 
-초기 컴포지션이 완료된 후, `Applier`는 `composition.applyChanges()`를 통해 기록된 모든 변경 사항을 적용하도록 알립니다.
-이 과정은 Composition을 통해 수명되며, 다음 단계로 진행됩니다:
+Initial Composition이 완료된 후, 이 과정에서 기록된 모든 변경 사항을 적용하라고 `Applier`에게 알림을 보냅니다: `composition.applyChanges()`.  
+이 과정은 Composition을 통해 이루어지며, 다음과 같은 단계로 진행됩니다.
 
-1. `Composition`은 `applier.onBeginChanges()`를 호출하여 변경 사항 적용을 시작합니다.
-2. `Composition`은 변경 사항 목록을 순회하면서 각 변경 사항을 실행하고, 필요한 `Applier`와 `SlotWriter` 인스턴스를 각 변경 사항에 전달합니다.
-3. 모든 변경 사항이 적용된 후, `applier.onEndChanges()`를 호출하여 변경 사항 적용을 종료합니다.
+1. `applier.onBeginChanges()`를 호출하여 변경 사항 적용을 시작합니다.
+2. 변경 목록을 순회하면서 각 변경 사항을 실행하고, 각 변경 사항에 필요한 `Applier`와 `SlotWriter` 인스턴스를 전달합니다.
+3. 모든 변경 사항이 적용된 후에는 `applier.onEndChanges()`를 호출합니다.
 
-이 후, 등록된 모든 `RememberedObservers`를 디스패치하여, 컴포지션에 들어가거나 나갈 때 `RememberObserver` 계약을 구현하는 클래스들이 알림을 받을 수 있도록 합니다.
-이 계약을 구현하는 클래스로는 `LaunchedEffect`나 `DisposableEffect` 등이 있으며, 이를 통해 Composition 내에서 컴포저블 생명주기에 효과(effect)를 제한할 수 있습니다.
+이러한 일련의 과정이 자연스럽게 이루어집니다.
 
-마지막으로, 모든 `SideEffects`가 기록된 순서대로 트리거됩니다.
+그 후, 등록된 모든 `RememberedObservers`가 호출됩니다.  
+이렇게 하면 `RememberObserver` 계약을 구현하는 클래스가 Composition에 진입하거나 떠날 때 알림을 받을 수 있습니다.  
+예를 들어, `LaunchedEffect`나 `DisposableEffect`와 같은 클래스들이 이 계약을 구현하여, 해당 이펙트가 Composition 내의 컴포저블 라이프사이클에 맞춰 제한될 수 있습니다.
+
+그 직후에는 모든 `SideEffects`가 기록된 순서대로 트리거됩니다.
 
 ## Additional information about the Composition
 
